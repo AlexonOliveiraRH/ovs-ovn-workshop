@@ -1,0 +1,637 @@
+= Module 04 - OVN Architecture
+
+
+== What is OVN
+
+=== Definition and Purpose
+
+*Open Virtual Network (OVN)* is a network virtualization platform built on top of Open vSwitch (OVS). It provides a high-level abstraction layer that allows you to define virtual networks - complete with switches, routers, security policies, DHCP, NAT, and load balancing - using simple commands, while OVN handles all the complex work of translating those definitions into the low-level OpenFlow rules that OVS needs to actually forward packets.
+
+In simpler terms: OVN lets you describe *what* your network should look like, and it figures out *how* to make it happen on OVS.
+
+
+[NOTE]
+.Key Concept
+====
+OVN is not a replacement for OVS. It is a control plane and management layer that sits on top of OVS. OVS remains the data plane - the component that actually moves packets. OVN tells OVS what to do with those packets.
+====
+
+
+=== The OVS-OVN Relationship
+
+To understand OVN, you first need to be clear about the division of labor between OVS and OVN.
+
+*OVS provides the data plane:*
+
+* Forwarding packets based on OpenFlow rules
+* Kernel-level fast path for packet processing
+* Port management (physical NICs, virtual interfaces, tunnels)
+* Flow matching and action execution
+
+*OVN provides the control plane:*
+
+* Logical network definitions (switches, routers, ports)
+* Automatic generation of OpenFlow rules
+* Distributed L2 and L3 networking
+* Security groups (ACLs) with connection tracking
+* Built-in DHCP, NAT, and load balancing
+* Automatic tunnel management between hypervisors
+
+
+[cols="1,1,1",options="header"]
+|===
+|Layer
+|OVS Role
+|OVN Role
+
+|Data plane
+|Forwards packets according to flow rules
+|Does not touch packets directly
+
+|Control plane
+|Accepts OpenFlow rules from controllers
+|Generates and distributes flow rules
+
+|Management
+|Requires manual programming or external controller
+|Provides built-in network management
+
+|Configuration
+|Low-level (flows, matches, actions)
+|High-level (switches, routers, ACLs)
+
+|===
+
+
+*The highway analogy:* If OVS is the highway system - the physical roads, intersections, and on-ramps - then OVN is the traffic management system: the traffic lights, road signs, GPS navigation, and route planning. The highways can exist without traffic management, but traffic would be chaotic. Traffic management is useless without highways. Together, they create an efficient, well-organized transportation network.
+
+Extending this analogy:
+
+* *Logical switches* are like neighborhoods connected by local roads
+* *Logical routers* are like highway interchanges connecting neighborhoods
+* *ACLs* are like toll booths and checkpoints that control who can enter and exit
+* *DHCP* is like the DMV that assigns license plates (IP addresses) to new vehicles
+* *NAT* is like a post office - it translates between internal and external addresses
+* *Geneve tunnels* are like underground tunnels connecting distant neighborhoods without affecting surface traffic
+
+=== Brief History
+
+OVN was created by the same team behind Open vSwitch. Here is the timeline:
+
+* *2014-2015:* The OVS community recognized that while OVS was excellent as a data plane, every deployment needed either manual flow programming (impractical at scale) or an external SDN controller (added complexity and vendor lock-in). The team began designing OVN as a native virtual networking solution built directly on OVS.
+* *2015:* OVN was first announced and development began in earnest. The initial focus was on L2 virtual networking with basic L3 support.
+* *2016:* OVN reached production-ready status. OpenStack Neutron gained ML2/OVN driver support, allowing OVN to serve as the networking backend for OpenStack.
+* *2017-2018:* OVN matured with features like distributed NAT, load balancing, and improved ACL performance through connection tracking integration. OVN-Kubernetes was developed to bring OVN networking to Kubernetes.
+* *2019:* Red Hat selected OVN as the default networking backend for OpenShift 4.x through the OVN-Kubernetes CNI plugin.
+* *2020:* The OVN project moved to its own repository (ovn-org/ovn), separating from the OVS repository while maintaining tight integration. Red Hat began transitioning RHOSP from ML2/OVS to ML2/OVN.
+* *2021-present:* OVN became the default and recommended networking backend for both Red Hat OpenStack Platform and Red Hat OpenShift Container Platform. Ongoing development focuses on performance, scalability, and feature parity with traditional networking.
+
+=== Why OVN Was Created
+
+Before OVN, using OVS for virtual networking required one of two approaches:
+
+*Approach 1: Manual flow programming*
+
+[source,bash]
+----
+# Without OVN - manually programming flows for every VM pair
+ovs-ofctl add-flow br-int "table=0,in_port=1,dl_dst=00:00:00:00:00:02,actions=output:2"
+ovs-ofctl add-flow br-int "table=0,in_port=2,dl_dst=00:00:00:00:00:01,actions=output:1"
+# Multiply by hundreds of VMs, add routing, security, DHCP, NAT...
+----
+
+*Approach 2: External SDN controller* - adds complexity, vendor dependency, and potential single points of failure.
+
+*OVN solves both problems* by providing a built-in, distributed control plane that:
+
+. *Accepts high-level intent* - You say "create a logical switch with these ports," not "install these 47 flow rules on these 12 hypervisors."
+. *Compiles to low-level flows automatically* - OVN translates your logical network into the exact OpenFlow rules each OVS instance needs.
+. *Distributes configuration efficiently* - Only the relevant flows are sent to each hypervisor.
+. *Handles multi-node coordination* - Tunnel setup, port binding, and cross-node communication are automatic.
+. *Provides built-in network services* - DHCP, NAT, load balancing, and security groups are native.
+
+
+[NOTE]
+.Key Concept
+====
+OVN's core value proposition is that it lets you think in terms of logical networks (what you want) while it handles the physical implementation (how to achieve it). This is the same "desired state vs. actual state" model that Kubernetes uses for compute - OVN applies it to networking.
+====
+
+
+'''
+
+== OVN Architecture Components
+
+=== Architecture Overview
+
+----
+                    Cloud Management System (CMS)
+                    (OpenStack Neutron, OVN-Kubernetes, manual CLI)
+                              |
+                              | Writes high-level config
+                              v
+                 +----------------------------+
+                 |   OVN Northbound Database   |
+                 |         (NB DB)             |
+                 | Logical switches, routers,  |
+                 | ACLs, LBs, NAT, DHCP        |
+                 +----------------------------+
+                              |
+                              | ovn-northd reads NB,
+                              | computes logical flows,
+                              | writes to SB
+                              v
+                 +----------------------------+
+                 |   OVN Southbound Database   |
+                 |         (SB DB)             |
+                 | Logical flows, chassis      |
+                 | bindings, port bindings      |
+                 +----------------------------+
+                    /         |         \
+                   /          |          \
+                  v           v           v
+          +----------+  +----------+  +----------+
+          |  ovn-    |  |  ovn-    |  |  ovn-    |
+          |controller|  |controller|  |controller|
+          | (node 1) |  | (node 2) |  | (node 3) |
+          +----------+  +----------+  +----------+
+               |              |              |
+               v              v              v
+          +----------+  +----------+  +----------+
+          |   OVS    |  |   OVS    |  |   OVS    |
+          | (br-int) |  | (br-int) |  | (br-int) |
+          +----------+  +----------+  +----------+
+               |              |              |
+            VMs/Pods       VMs/Pods       VMs/Pods
+----
+
+Information flows in two directions:
+
+* *Top-down (configuration):* CMS -> NB DB -> ovn-northd -> SB DB -> ovn-controller -> OVS
+* *Bottom-up (status):* OVS -> ovn-controller -> SB DB (chassis registration, port binding status)
+
+=== Central Components
+
+==== OVN Northbound Database (NB DB)
+
+The NB DB stores the *desired state* of the network - what you want the virtual network to look like.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Table
+|Purpose
+|Example Content
+
+|`Logical_Switch`
+|Virtual L2 switch definitions
+|Name, associated ports, load balancers
+
+|`Logical_Switch_Port`
+|Ports on logical switches
+|Port name, MAC address, IP, type, security
+
+|`Logical_Router`
+|Virtual L3 router definitions
+|Name, ports, NAT rules, routes
+
+|`Logical_Router_Port`
+|Ports on logical routers
+|Port name, MAC, network CIDR
+
+|`ACL`
+|Security group rules
+|Direction, priority, match expression, action
+
+|`Load_Balancer`
+|L4 load balancer definitions
+|VIP:port -> backend:port mappings
+
+|`NAT`
+|NAT rules on routers
+|Type (SNAT/DNAT), external IP, logical IP
+
+|`DHCP_Options`
+|DHCP configuration sets
+|CIDR, server_id, server_mac, lease_time, router, dns
+
+|`Address_Set`
+|Named groups of addresses
+|Used in ACL match expressions
+
+|`Port_Group`
+|Named groups of ports
+|Used in ACL match expressions
+
+|===
+
+
+*Who writes to the NB DB:*
+
+* *OpenStack Neutron* - when you create networks, subnets, ports, security groups, routers, floating IPs
+* *OVN-Kubernetes* - when pods are created, services defined, network policies applied, EgressIPs configured
+* *Manual CLI* - using `ovn-nbctl` commands
+
+==== OVN Southbound Database (SB DB)
+
+The SB DB stores the *compiled state* - lower-level instructions combining logical network information with physical infrastructure awareness.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Table
+|Purpose
+|Example Content
+
+|`Chassis`
+|Registered hypervisors/nodes
+|Hostname, encapsulation type, IP
+
+|`Encap`
+|Tunnel encapsulation details
+|Geneve/VXLAN, IP, chassis reference
+
+|`Datapath_Binding`
+|Maps logical datapaths to tunnel keys
+|Tunnel key per logical switch/router
+
+|`Port_Binding`
+|Maps logical ports to physical locations
+|Which chassis hosts which port, tunnel key
+
+|`Logical_Flow`
+|Compiled flow rules in logical terms
+|Table, priority, match, actions (logical names)
+
+|`Multicast_Group`
+|Multicast and broadcast groups
+|Group members for broadcast/unknown unicast
+
+|`MAC_Binding`
+|Learned MAC-to-IP bindings
+|For ARP resolution on logical routers
+
+|===
+
+
+*Key difference:* NB DB speaks in *logical* terms ("there is a switch with these ports"). SB DB speaks in *physical-aware logical* terms ("these flows implement that switch, port X is on chassis A, use tunnel key 5").
+
+==== ovn-northd
+
+ovn-northd is the *compiler* - it watches the NB DB for changes and translates high-level definitions into low-level logical flows in the SB DB.
+
+*How logical flows differ from OpenFlow flows:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|Logical Flows (SB DB)
+|OpenFlow Flows (OVS)
+
+|References
+|Logical port names (`inport=="port1"`)
+|Physical port numbers (`in_port=3`)
+
+|Scope
+|Entire logical network
+|One specific OVS instance
+
+|Tunneling
+|No tunnel awareness
+|Include tunnel match/set rules
+
+|Produced by
+|ovn-northd
+|ovn-controller
+
+|Stored in
+|SB DB
+|OVS flow tables
+
+|===
+
+
+=== Distributed Components
+
+==== ovn-controller
+
+ovn-controller is the *local agent* on every node (chassis). It bridges the central OVN intelligence (SB DB) and the local OVS instance.
+
+*What ovn-controller does:*
+. *Chassis registration* - Registers the node in SB DB with hostname, encapsulation type, tunnel IP
+. *Port binding* - Detects OVS ports with `iface-id` and binds logical ports to this chassis
+. *Reading logical flows* - Reads relevant logical flows from SB DB
+. *Translating to physical OpenFlow flows* - Converts logical port names to physical port numbers, adds tunnel rules for remote ports
+. *Installing flows in OVS* - Connects as an OpenFlow controller to br-int
+. *Tunnel management* - Automatically creates/removes Geneve tunnels to other chassis
+. *Reporting back* - Writes port binding status to SB DB
+
+
+[NOTE]
+.Key Concept
+====
+Every node runs its own ovn-controller, and each independently computes physical OpenFlow flows. There is no central entity programming every OVS instance - the intelligence is distributed. This is fundamental to OVN's scalability.
+====
+
+
+'''
+
+== How OVN Programs OVS
+
+=== The End-to-End Flow
+
+----
+Step 1: CMS writes to NB DB -> "Create port on switch with MAC/IP"
+Step 2: ovn-northd computes logical flows -> writes to SB DB
+Step 3: ovn-controller translates to physical OpenFlow flows -> installs in OVS
+Step 4: OVS forwards packets according to the new flows
+----
+
+=== Logical Flow Pipeline
+
+*Ingress Pipeline (Logical Switch):*
+
+----
+Table 0:    Port Security (verify source MAC/IP)
+Table 1-3:  Pre-ACL, Pre-LB, Pre-Stateful (conntrack setup)
+Table 4-5:  ACL evaluation (security groups)
+Table 6:    QoS markings
+Table 7-8:  Stateful, LB (load balancer DNAT)
+Table 9-11: ARP/ND, DHCP, DNS responders
+Table 12-13: L2 Destination Lookup (MAC -> outport)
+----
+
+*Egress Pipeline (Logical Switch):*
+
+----
+Table 0:    Pre-ACL, Pre-Stateful (egress conntrack)
+Table 1-3:  ACL evaluation (egress security groups)
+Table 4-5:  Stateful (commit conntrack)
+Table 6-8:  Port Security (verify destination MAC)
+-> Deliver locally or encapsulate in Geneve for remote delivery
+----
+
+*Router Pipeline:*
+
+----
+Ingress: Admission -> IP input -> UNSNAT -> DEFRAG -> LB -> DNAT -> IP routing -> ARP resolve -> Gateway redirect
+Egress:  UNDNAT -> SNAT -> Egress loopback -> Delivery
+----
+
+=== From Logical Flows to Physical OpenFlow Flows
+
+Logical flow:
+----
+table=13(ls_in_l2_lkup), priority=50, match=(eth.dst == 00:00:00:00:00:02), actions=(outport = "port2"; output;)
+----
+
+Physical flow (local port):
+----
+table=65, priority=50, match=(metadata=0x1, dl_dst=00:00:00:00:00:02), actions=(set_field:0x2->reg15, resubmit(,66))
+----
+
+Physical flow (remote port - adds tunneling):
+----
+table=67, priority=100, match=(reg15=0x2, metadata=0x1), actions=(set_field:tunnel_id->tun_id, set_field:0x2->tun_metadata0, output:geneve_port)
+----
+
+=== The Role of Geneve Tunnel Metadata
+
+
+[cols="1,1",options="header"]
+|===
+|Metadata
+|Purpose
+
+|*VNI (24-bit)*
+|Identifies the logical datapath (switch or router)
+
+|*TLV: Logical Inport*
+|The logical port the packet entered from
+
+|*TLV: Logical Outport*
+|The destination logical port
+
+|*TLV: Flags*
+|Control bits (allow loopback, etc.)
+
+|===
+
+
+'''
+
+== OVN Logical Network Concepts
+
+=== Logical Switches
+
+A virtual L2 broadcast domain spanning multiple physical nodes. All ports on the same logical switch can communicate at L2.
+
+=== Logical Switch Ports
+
+
+[cols="1,1",options="header"]
+|===
+|Type
+|Purpose
+
+|*VIF* (default)
+|Connects a VM or pod
+
+|*router*
+|Connects to a logical router
+
+|*localnet*
+|Connects to a physical network
+
+|*localport*
+|Accessible from every chassis (metadata service)
+
+|*vtep*
+|Hardware VTEP gateway integration
+
+|===
+
+
+=== Logical Routers
+
+*Distributed Routers:* Routing logic executes on every compute node. East-West traffic is routed locally - no central network node bottleneck.
+
+*Gateway Routers:* Handle North-South traffic (SNAT/DNAT, external connectivity). Run on specific gateway nodes with physical external network access.
+
+=== ACLs (Access Control Lists)
+
+Implement security groups using connection tracking. The `allow-related` action enables stateful firewalling - return traffic is automatically allowed.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Action
+|Connection Tracking
+|Return Traffic
+
+|`allow-related`
+|Yes (ct_commit)
+|Automatically allowed
+
+|`allow-stateless`
+|No
+|Must have explicit rules
+
+|`drop`
+|N/A
+|Silently drops
+
+|`reject`
+|N/A
+|Sends ICMP unreachable / TCP RST
+
+|===
+
+
+=== DHCP
+
+Built-in DHCP responder generates responses directly in the OVS flow pipeline. No external DHCP server needed. Responses are generated locally on the compute node.
+
+=== NAT (Network Address Translation)
+
+* *SNAT:* Translates outbound source IPs (internal -> external)
+* *DNAT:* Translates inbound destination IPs (external -> internal)
+* *dnat_and_snat:* Combined floating IP (both directions)
+* *Distributed NAT:* Runs on the compute node (per-VM external IP)
+* *Centralized NAT:* Runs on gateway chassis (shared external IP)
+
+=== Load Balancers
+
+Built-in L4 load balancing using conntrack DNAT. Distributes traffic to backend servers at kernel line rate. This is how OVN-Kubernetes implements Kubernetes Services.
+
+'''
+
+== OVN High Availability
+
+=== NB/SB Database Clustering
+
+Uses *Raft consensus protocol* (like etcd). Cluster of 3, 5, or 7 nodes. Tolerates `(N-1)/2` failures.
+
+=== ovn-northd HA
+
+Active/standby mode. Multiple instances can run with built-in leader election using the database lock mechanism.
+
+=== Gateway Router HA
+
+Uses *BFD (Bidirectional Forwarding Detection)* for sub-second failure detection. Multiple gateway chassis configured with priorities. Automatic failover when active chassis fails.
+
+=== ovn-controller Resilience
+
+If ovn-controller loses connection to SB DB or crashes, existing OpenFlow flows in OVS remain in place. Data plane continues working during control plane outages.
+
+
+[NOTE]
+.Key Concept
+====
+OVN is designed so that data plane (OVS) continues working even when the control plane is temporarily unavailable. A control plane outage does not cause a data plane outage.
+====
+
+
+'''
+
+== OVN and Geneve
+
+=== Why Geneve Over VXLAN
+
+
+[cols="1,1,1",options="header"]
+|===
+|Feature
+|VXLAN
+|Geneve
+
+|Header metadata
+|Fixed 24-bit VNI only
+|24-bit VNI + variable-length TLV options
+
+|Extensibility
+|Cannot carry additional metadata
+|Arbitrary metadata in TLV options
+
+|OVN logical context
+|Cannot encode logical port IDs
+|Encodes logical inport, outport, flags
+
+|Standardization
+|RFC 7348
+|RFC 8926
+
+|===
+
+
+[WARNING]
+====
+Always use Geneve for OVN unless there is a specific hardware requirement for VXLAN. VXLAN loses important functionality.
+====
+
+
+=== Geneve TLV Options
+
+OVN uses class 0x0102 with four TLV types: logical datapath, logical input port, logical output port, and flags. These map to OVS registers (tun_metadata0, etc.) in the OpenFlow pipeline.
+
+=== Automated Tunnel Setup
+
+Tunnel management is fully automated. ovn-controller creates/removes Geneve tunnels based on chassis registrations and port bindings in the SB DB. You never need to manually create tunnels.
+
+'''
+
+== Summary
+
+
+[cols="1,1",options="header"]
+|===
+|Concept
+|Summary
+
+|*OVN's role*
+|Control plane and management layer on top of OVS
+
+|*NB DB*
+|Stores desired state (logical switches, routers, ACLs, etc.)
+
+|*SB DB*
+|Stores compiled state (logical flows, chassis bindings, port bindings)
+
+|*ovn-northd*
+|Compiles NB DB into SB DB logical flows
+
+|*ovn-controller*
+|Translates SB DB logical flows into OVS OpenFlow flows on each node
+
+|*Logical switches*
+|L2 broadcast domains that can span multiple physical nodes
+
+|*Logical routers*
+|L3 routing, distributed for East-West, gateway for North-South
+
+|*ACLs*
+|Stateful security groups using OVS connection tracking
+
+|*DHCP*
+|Built-in DHCP responder, no external server needed
+
+|*NAT*
+|SNAT/DNAT on routers, distributed or centralized
+
+|*Load balancers*
+|L4 load balancing using conntrack DNAT
+
+|*HA*
+|Raft-clustered databases, active/standby northd, BFD-based gateway failover
+
+|*Geneve*
+|Preferred tunnel type; carries logical metadata in TLV options
+
+|===
+
+
+'''
+
+xref:03-ovs-hands-on.adoc[Previous: Module 03 - OVS in Practice] | xref:05-ovn-hands-on.adoc[Next: Module 05 - OVN Hands-On Lab]
+

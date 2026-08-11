@@ -1,0 +1,134 @@
+= OVS & OVN Deep Dive Workshop
+
+A comprehensive, hands-on workshop designed for Red Hat engineers who need to understand, operate, and troubleshoot Open vSwitch (OVS) and Open Virtual Network (OVN) across the Red Hat product portfolio.
+
+== What This Workshop Covers
+
+This workshop takes you from foundational networking concepts through the internals of OVS and OVN, and into real-world troubleshooting scenarios drawn from Red Hat OpenStack Platform (RHOSP), Red Hat OpenStack Services on OpenShift (RHOSO), and Red Hat OpenShift Container Platform (OCP). Each module builds on the previous one, combining theory with guided labs so that you walk away with practical skills you can apply immediately in customer environments.
+
+By the end of this workshop you will be able to:
+
+* Explain how OVS processes packets through its pipeline and how OVN orchestrates logical networks on top of it.
+* Navigate and interpret OVS flow tables, OVN northbound/southbound databases, and related logs.
+* Troubleshoot real connectivity failures in RHOSP, RHOSO, and OCP environments using a structured methodology.
+* Confidently discuss OVS/OVN architecture with customers and engineering teams.
+
+== Who This Is For
+
+* *Post-sales engineers* supporting Red Hat OpenStack and OpenShift customers.
+* *Support engineers* who need to diagnose networking issues in production.
+* *Solutions architects* who want a deeper understanding of the networking layer in Red Hat products.
+* *Anyone at Red Hat* who interacts with OVS or OVN and wants to move beyond surface-level familiarity.
+
+No prior OVS or OVN experience is required - that is what this workshop provides. However, you should be comfortable with basic Linux command-line skills, fundamental networking concepts, and have a general understanding of what Red Hat OpenStack Platform and/or OpenShift do at a high level.
+
+== Workshop Structure
+
+[cols="1,2,4",options="header"]
+|===
+|Module |Title |Description
+
+|00
+|xref:00-introduction.adoc[Introduction]
+|Workshop objectives, history of OVS and OVN, where they fit in Red Hat products, and how to use this guide.
+
+|01
+|xref:01-networking-fundamentals.adoc[Networking Fundamentals]
+|Refresher on L2/L3 networking, VLANs, overlay protocols (VXLAN, Geneve, GRE), SDN concepts, and Linux networking building blocks.
+
+|02
+|xref:02-ovs-architecture.adoc[OVS Architecture]
+|OVS components (vswitchd, ovsdb-server, kernel datapath), how they interact, and the role of OpenFlow.
+
+|03
+|xref:03-ovs-hands-on.adoc[OVS Hands-On Lab]
+|Creating bridges, ports, and flows with `ovs-vsctl`, `ovs-ofctl`, and `ovs-dpctl`. Understanding flow tables hands-on.
+
+|04
+|xref:04-ovn-architecture.adoc[OVN Architecture]
+|OVN components (northd, ovn-controller, NB/SB databases), the logical/physical mapping, and how OVN programs OVS.
+
+|05
+|xref:05-ovn-hands-on.adoc[OVN Hands-On Lab]
+|Creating logical switches, routers, ACLs, and load balancers using `ovn-nbctl`. Understanding the logical pipeline.
+
+|06
+|xref:06-ovs-vs-ovn.adoc[OVS vs OVN]
+|Side-by-side comparison: when each is used, what OVN adds, and why the industry has moved toward OVN.
+
+|07
+|xref:07-ovs-ovn-in-rhosp.adoc[OVS/OVN in RHOSP]
+|How Neutron integrates with ML2/OVS and ML2/OVN, network topologies, and service architecture.
+
+|08
+|xref:08-ovs-ovn-in-rhoso.adoc[OVS/OVN in RHOSO]
+|OVN networking in RHOSO - architecture differences, operator-managed components, and debugging.
+
+|09
+|xref:09-ovn-in-openshift.adoc[OVN in OpenShift]
+|OVN-Kubernetes CNI architecture, pod networking, services, EgressIP, and NetworkPolicy.
+
+|10
+|xref:10-traffic-flows.adoc[Traffic Flows]
+|End-to-end packet tracing through the OVS/OVN pipeline.
+
+|11
+|xref:11-management-tooling.adoc[Management Tooling]
+|OVS and OVN CLI tools reference and usage patterns.
+
+|12
+|xref:12-troubleshooting.adoc[Troubleshooting]
+|Structured troubleshooting methodology for OVS/OVN issues.
+
+|13
+|xref:13-limitations.adoc[Limitations]
+|Known limitations, caveats, and workarounds.
+
+|14
+|xref:14-references.adoc[References]
+|Links to upstream documentation, RFCs, and additional resources.
+|===
+
+== Troubleshooting Scenarios
+
+Real-world troubleshooting exercises based on production scenarios:
+
+[cols="1,3",options="header"]
+|===
+|Scenario |Description
+
+|xref:ts-01-vm-connectivity.adoc[VM Connectivity]
+|Two VMs on different compute nodes cannot communicate - cross-node east-west failure.
+
+|xref:ts-02-overlay-issues.adoc[Overlay Issues]
+|Geneve/VXLAN tunnel failures and MTU problems.
+
+|xref:ts-03-performance.adoc[Performance]
+|Network throughput degradation and latency issues.
+
+|xref:ts-04-ovn-controller.adoc[OVN Controller]
+|ovn-controller restart, stale flows, and binding issues.
+
+|xref:ts-05-dhcp-failure.adoc[DHCP Failure]
+|VMs or pods failing to obtain IP addresses via DHCP.
+
+|xref:ts-06-floating-ip.adoc[Floating IP]
+|Floating IP not working after association or after migration.
+|===
+
+== Interactive Slides
+
+The xref:slides.adoc[slide deck] provides a visual overview of the workshop content for instructor-led delivery.
+
+== How to Use This Material
+
+*Self-paced study:* Work through the modules sequentially, starting at module 00. Each module references hands-on exercises - complete them as you encounter them.
+
+*Instructor-led workshop:* The slides provide visual content that tracks each module. The instructor walks through the slides while participants follow the matching guide module and execute the lab exercises.
+
+*Reference during troubleshooting:* The troubleshooting scenarios contain quick-reference runbooks. If you are investigating a live issue, go straight to the relevant scenario - it assumes you have already studied the foundational modules.
+
+[NOTE]
+====
+This workshop assumes that RHOSP, RHOSO, and OCP environments are already deployed and accessible. The lab exercises do not cover installation of these platforms - they focus on the networking layer within environments that are up and running.
+====

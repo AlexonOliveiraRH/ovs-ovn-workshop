@@ -1,0 +1,3756 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</title>
+
+  <!-- Reveal.js 5.x from CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/black.css" id="theme">
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/monokai.css">
+  <!-- Mermaid -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+  <style>
+    :root {
+      --rh-red: #EE0000;
+      --rh-dark-red: #A30000;
+      --rh-bg: #151515;
+      --rh-bg-light: #1a1a1a;
+      --rh-text: #e0e0e0;
+      --rh-muted: #999999;
+      --rh-accent-blue: #06c;
+      --rh-accent-teal: #009596;
+      --rh-white: #ffffff;
+    }
+
+    .reveal {
+      font-family: 'Red Hat Display', 'Red Hat Text', 'Overpass', 'Liberation Sans', Arial, sans-serif;
+      font-size: 28px;
+      color: var(--rh-text);
+    }
+
+    .reveal .slides {
+      text-align: left;
+    }
+
+    .reveal .slides section {
+      background-color: var(--rh-bg);
+      overflow-y: auto;
+      max-height: 100%;
+      box-sizing: border-box;
+    }
+
+    .reveal h1 {
+      font-size: 2.2em;
+      color: var(--rh-white);
+      font-weight: 700;
+      text-transform: none;
+      border-bottom: 4px solid var(--rh-red);
+      padding-bottom: 0.2em;
+      margin-bottom: 0.5em;
+    }
+
+    .reveal h2 {
+      font-size: 1.6em;
+      color: var(--rh-white);
+      font-weight: 600;
+      text-transform: none;
+      border-left: 5px solid var(--rh-red);
+      padding-left: 0.4em;
+      margin-bottom: 0.5em;
+    }
+
+    .reveal h3 {
+      font-size: 1.2em;
+      color: var(--rh-red);
+      font-weight: 600;
+      text-transform: none;
+      margin-bottom: 0.4em;
+    }
+
+    .reveal h4 {
+      font-size: 1.0em;
+      color: var(--rh-muted);
+      font-weight: 400;
+      text-transform: none;
+    }
+
+    .reveal ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .reveal ul li {
+      padding-left: 1.2em;
+      position: relative;
+      margin-bottom: 0.35em;
+      line-height: 1.4;
+    }
+
+    .reveal ul li::before {
+      content: '\25B8';
+      color: var(--rh-red);
+      position: absolute;
+      left: 0;
+      font-size: 0.8em;
+    }
+
+    .reveal pre {
+      width: 100%;
+      font-size: 0.55em;
+      box-shadow: none;
+      border-left: 3px solid var(--rh-red);
+      background: #0d0d0d;
+      border-radius: 4px;
+    }
+
+    .reveal code {
+      font-family: 'Red Hat Mono', 'Liberation Mono', 'Consolas', monospace;
+    }
+
+    .reveal .inline-code {
+      background: #0d0d0d;
+      color: var(--rh-red);
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      font-size: 0.85em;
+    }
+
+    .title-slide {
+      text-align: center !important;
+    }
+
+    .title-slide h1 {
+      font-size: 2.4em;
+      border-bottom: none;
+      margin-bottom: 0.1em;
+    }
+
+    .title-slide .subtitle {
+      font-size: 1.1em;
+      color: var(--rh-muted);
+      margin-bottom: 1.5em;
+    }
+
+    .title-slide .rh-logo-text {
+      color: var(--rh-red);
+      font-weight: 700;
+      font-size: 1.2em;
+    }
+
+    .section-title {
+      text-align: center !important;
+    }
+
+    .section-title h1 {
+      font-size: 2.6em;
+      border-bottom: none;
+      color: var(--rh-red);
+    }
+
+    .section-title h4 {
+      font-size: 1.1em;
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.65em;
+    }
+
+    .comparison-table th {
+      background: var(--rh-dark-red);
+      color: var(--rh-white);
+      padding: 0.4em 0.6em;
+      text-align: left;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+
+    .comparison-table td {
+      padding: 0.3em 0.6em;
+      border-bottom: 1px solid #333;
+      vertical-align: middle;
+    }
+
+    .comparison-table tr:nth-child(even) td {
+      background: #1e1e1e;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2em;
+      align-items: stretch;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.8em;
+      align-items: stretch;
+    }
+
+    .box {
+      background: var(--rh-bg-light);
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 0.8em;
+      overflow: visible;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .box-red {
+      border-left: 4px solid var(--rh-red);
+    }
+
+    .box-teal {
+      border-left: 4px solid var(--rh-accent-teal);
+    }
+
+    .box-blue {
+      border-left: 4px solid var(--rh-accent-blue);
+    }
+
+    .highlight-red {
+      color: var(--rh-red);
+      font-weight: 600;
+    }
+
+    .highlight-teal {
+      color: var(--rh-accent-teal);
+      font-weight: 600;
+    }
+
+    .diagram-label {
+      font-size: 0.65em;
+      color: var(--rh-muted);
+      text-align: center;
+      margin-top: 0.3em;
+    }
+
+    .reveal .mermaid {
+      font-size: 0.65em;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: visible !important;
+      width: 100%;
+    }
+
+    .reveal .mermaid svg {
+      max-height: 450px;
+      max-width: 100%;
+      height: auto;
+      overflow: visible !important;
+    }
+
+    .cheat-sheet {
+      font-size: 0.55em;
+    }
+
+    .cheat-sheet td:first-child {
+      font-family: 'Red Hat Mono', monospace;
+      color: var(--rh-red);
+      white-space: nowrap;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 0.15em 0.6em;
+      border-radius: 999px;
+      font-size: 0.7em;
+      font-weight: 600;
+      margin: 0.1em;
+    }
+
+    .pill-red { background: var(--rh-dark-red); color: var(--rh-white); }
+    .pill-teal { background: #005f5f; color: var(--rh-white); }
+    .pill-blue { background: #003d7a; color: var(--rh-white); }
+
+    .flow-arrow {
+      text-align: center;
+      font-size: 1.5em;
+      color: var(--rh-red);
+      margin: 0.2em 0;
+    }
+
+    .reveal .progress {
+      color: var(--rh-red);
+    }
+
+    .reveal .controls button {
+      color: var(--rh-red);
+    }
+
+    /* Print/PDF fixes */
+    @media print {
+      .reveal .slides section {
+        page-break-after: always;
+      }
+    }
+
+    /* Responsive diagram sizing */
+    .reveal .mermaid {
+      overflow: visible;
+    }
+
+    /* Fix text clipping inside Mermaid nodes and subgraphs */
+    .reveal .mermaid svg,
+    .reveal .mermaid svg * {
+      overflow: visible !important;
+    }
+
+    .reveal .mermaid foreignObject {
+      overflow: visible !important;
+    }
+
+    .reveal .mermaid foreignObject > div {
+      overflow: visible !important;
+    }
+
+    /* Ensure slide content doesn't clip */
+    .reveal .slide-content {
+      overflow: visible;
+    }
+
+    /* Fix vertical centering in grid/flex containers */
+    .reveal .box h3 {
+      margin-top: 0;
+    }
+
+    .reveal .box ul {
+      margin-bottom: 0;
+    }
+
+    /* Scale down content on dense slides */
+    .dense-slide {
+      font-size: 0.85em;
+    }
+
+    .dense-slide .mermaid {
+      font-size: 0.55em;
+    }
+
+    .dense-slide .mermaid svg {
+      max-height: 350px;
+    }
+
+    .key-point {
+      background: linear-gradient(135deg, #1a0000, #0d0d0d);
+      border: 1px solid var(--rh-dark-red);
+      border-radius: 8px;
+      padding: 1em;
+      text-align: center;
+      font-size: 1.1em;
+      margin: 0.5em 0;
+    }
+
+    .key-point em {
+      color: var(--rh-red);
+      font-style: normal;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ============================================================ -->
+<!-- SECTION 1: INTRODUCTION                                       -->
+<!-- ============================================================ -->
+
+<!-- Slide 1.1: Title -->
+<section class="title-slide">
+  <p class="rh-logo-text">Red Hat</p>
+  <h1>OVS &amp; OVN Deep Dive</h1>
+  <p class="subtitle">From Fundamentals to Troubleshooting</p>
+  <p style="color: var(--rh-muted); font-size: 0.7em; margin-top: 2em;">
+    A hands-on workshop for Red Hat engineers
+  </p>
+  <aside class="notes">
+    Welcome everyone to this OVS and OVN deep dive workshop. This session is designed
+    to take you from networking fundamentals all the way through advanced troubleshooting
+    in Red Hat product environments. Whether you are a support engineer, consultant, or
+    developer, this will give you the tools and understanding you need.
+  </aside>
+</section>
+
+<!-- Slide 1.2: About This Workshop -->
+<section>
+  <h2>About This Workshop</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Objectives</h3>
+      <ul>
+        <li>Understand OVS architecture and packet processing</li>
+        <li>Understand OVN architecture and flow compilation</li>
+        <li>Navigate OVS/OVN in Red Hat products</li>
+        <li>Troubleshoot real-world networking issues</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Target Audience</h3>
+      <ul>
+        <li>Support engineers (GSS, CEE)</li>
+        <li>Consultants and architects</li>
+        <li>OpenStack / OpenShift administrators</li>
+        <li>Anyone working with SDN at Red Hat</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    This workshop is structured to build knowledge incrementally. We start with
+    networking basics so everyone has a common foundation, then go deep into OVS,
+    then OVN, then see how they integrate with Red Hat products. Finally, we cover
+    troubleshooting patterns and tools. The content is hands-on - you will see real
+    commands and traces throughout.
+  </aside>
+</section>
+
+<!-- Slide 1.3: Agenda -->
+<section>
+  <h2>Agenda</h2>
+  <div class="three-col" style="font-size: 0.8em;">
+    <div>
+      <p><span class="pill pill-red">1</span> Introduction</p>
+      <p><span class="pill pill-red">2</span> Networking Refresher</p>
+      <p><span class="pill pill-red">3</span> OVS Deep Dive</p>
+    </div>
+    <div>
+      <p><span class="pill pill-teal">4</span> OVN Deep Dive</p>
+      <p><span class="pill pill-teal">5</span> OVS vs OVN</p>
+      <p><span class="pill pill-teal">6</span> Red Hat Integration</p>
+    </div>
+    <div>
+      <p><span class="pill pill-blue">7</span> Traffic Flows</p>
+      <p><span class="pill pill-blue">8</span> Tooling</p>
+      <p><span class="pill pill-blue">9</span> Troubleshooting</p>
+      <p><span class="pill pill-blue">10</span> Wrap-up</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Here is the roadmap for today. We have ten sections. Sections 1-3 are the
+    foundation, sections 4-6 are the core deep dive, and sections 7-10 are the
+    practical application. Expect hands-on demos throughout. Feel free to ask
+    questions at any time.
+  </aside>
+</section>
+
+<!-- Slide 1.4: Where OVS/OVN Fit in Red Hat Products -->
+<section>
+  <h2>Where OVS/OVN Fit</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Red Hat Product Portfolio"
+      direction TB
+      RHOSP["RHOSP<br/>(OpenStack)"]
+      RHOSO["RHOSO<br/>(OpenStack Services on OCP)"]
+      OCP["OCP<br/>(OpenShift Container Platform)"]
+      RHEL["RHEL<br/>(Base Platform)"]
+    end
+
+    subgraph "Networking Layer"
+      OVN["OVN<br/>(Network Virtualization)"]
+      OVS["OVS<br/>(Virtual Switch)"]
+    end
+
+    RHOSP --> OVN
+    RHOSO --> OVN
+    OCP --> OVN
+    RHEL --> OVS
+    OVN --> OVS
+
+    style RHOSP fill:#A30000,stroke:#EE0000,color:#fff
+    style RHOSO fill:#A30000,stroke:#EE0000,color:#fff
+    style OCP fill:#A30000,stroke:#EE0000,color:#fff
+    style RHEL fill:#A30000,stroke:#EE0000,color:#fff
+    style OVN fill:#005f5f,stroke:#009596,color:#fff
+    style OVS fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <p class="diagram-label">OVN sits on top of OVS in all major Red Hat networking products</p>
+  <aside class="notes">
+    OVS and OVN are foundational to Red Hat's networking strategy. OVS provides the
+    data plane - the actual packet switching. OVN provides the control plane - the
+    logical network abstractions. In RHOSP, we migrated from ML2/OVS to ML2/OVN.
+    RHOSO uses OVN natively. OpenShift uses OVN-Kubernetes as the default CNI.
+    Even RHEL ships OVS for general-purpose virtual switching.
+  </aside>
+</section>
+
+<!-- Slide 1.5: History Timeline -->
+<section>
+  <h2>A Brief History</h2>
+  <ul>
+    <li class="fragment"><span class="highlight-red">2009</span> - Open vSwitch created at Nicira</li>
+    <li class="fragment"><span class="highlight-red">2012</span> - VMware acquires Nicira</li>
+    <li class="fragment"><span class="highlight-red">2013</span> - OVS becomes a Linux Foundation project</li>
+    <li class="fragment"><span class="highlight-red">2015</span> - OVN announced as OVS subproject</li>
+    <li class="fragment"><span class="highlight-red">2017</span> - Red Hat adopts OVN for OpenStack</li>
+    <li class="fragment"><span class="highlight-red">2019</span> - OVN-Kubernetes becomes OCP default CNI</li>
+    <li class="fragment"><span class="highlight-red">2021</span> - OVN becomes independent project under OVS umbrella</li>
+    <li class="fragment"><span class="highlight-red">2023+</span> - RHOSO uses OVN natively; continued evolution</li>
+  </ul>
+  <aside class="notes">
+    Understanding the history helps contextualize why things are the way they are.
+    OVS started at Nicira as a production-quality virtual switch. When OVN was
+    created in 2015, the goal was to provide a native virtual networking layer on
+    top of OVS, eliminating the need for external controllers for common use cases.
+    Red Hat has been a major contributor to both projects.
+  </aside>
+</section>
+
+<!-- Slide 1.6: Key Terminology -->
+<section>
+  <h2>Key Terminology</h2>
+  <div class="two-col" style="font-size: 0.85em;">
+    <div class="box box-red">
+      <ul>
+        <li><strong>SDN</strong> - Software Defined Networking</li>
+        <li><strong>OVS</strong> - Open vSwitch</li>
+        <li><strong>OVN</strong> - Open Virtual Network</li>
+        <li><strong>OVSDB</strong> - OVS Database Protocol</li>
+        <li><strong>OpenFlow</strong> - Flow programming protocol</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <ul>
+        <li><strong>NB DB</strong> - Northbound Database</li>
+        <li><strong>SB DB</strong> - Southbound Database</li>
+        <li><strong>CMS</strong> - Cloud Management System</li>
+        <li><strong>Geneve</strong> - Generic Network Virtualization Encapsulation</li>
+        <li><strong>CNI</strong> - Container Network Interface</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Before we dive in, let us establish a common vocabulary. These acronyms will
+    come up repeatedly. SDN is the overarching paradigm. OVS is the data plane.
+    OVN is the control/management plane. OVSDB and OpenFlow are the protocols
+    used to manage and program OVS. NB and SB databases are OVN's state stores.
+    CMS refers to the system above OVN - like OpenStack or Kubernetes.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 2: NETWORKING REFRESHER                               -->
+<!-- ============================================================ -->
+
+<!-- Slide 2.0: Section Title -->
+<section class="section-title">
+  <h1>Networking Refresher</h1>
+  <h4>Building a common foundation</h4>
+  <aside class="notes">
+    Let us start with a networking refresher. Even experienced engineers benefit
+    from revisiting the fundamentals, because OVS and OVN operate at specific
+    layers of the stack and understanding where they fit is critical.
+  </aside>
+</section>
+
+<!-- Slide 2.1: L2/L3 Recap -->
+<section>
+  <h2>L2/L3 Recap</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Layer 2 - Data Link</h3>
+      <ul>
+        <li>MAC addresses (48-bit)</li>
+        <li>Ethernet frames</li>
+        <li>Switching (MAC learning)</li>
+        <li>Broadcast domain</li>
+        <li>ARP for MAC discovery</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Layer 3 - Network</h3>
+      <ul>
+        <li>IP addresses (IPv4/IPv6)</li>
+        <li>IP packets</li>
+        <li>Routing (longest prefix match)</li>
+        <li>Subnet boundaries</li>
+        <li>TTL, fragmentation</li>
+      </ul>
+    </div>
+  </div>
+  <div class="key-point fragment">
+    OVS operates at <em>L2-L4</em> | OVN adds <em>logical L2 and L3</em> abstractions
+  </div>
+  <aside class="notes">
+    Layer 2 is about local network delivery using MAC addresses. A switch learns
+    which MAC is on which port and forwards accordingly. Layer 3 is about routing
+    between networks using IP addresses. OVS can match and act on fields from L2
+    through L4. OVN builds logical switches (L2) and logical routers (L3) on top
+    of OVS flows.
+  </aside>
+</section>
+
+<!-- Slide 2.2: Ethernet Frame -->
+<section>
+  <h2>Ethernet Frame Structure</h2>
+  <pre style="text-align: center; font-size: 0.6em; background: #0d0d0d; padding: 1em; border-radius: 6px; border-left: 3px solid var(--rh-red);">
+<span style="color: #EE0000;">|</span> Dst MAC (6B) <span style="color: #EE0000;">|</span> Src MAC (6B) <span style="color: #EE0000;">|</span> 802.1Q (4B) <span style="color: #EE0000;">|</span> EtherType (2B) <span style="color: #EE0000;">|</span> Payload (46-1500B) <span style="color: #EE0000;">|</span> FCS (4B) <span style="color: #EE0000;">|</span>
+                                     <span style="color: #009596;">optional</span>
+                                   <span style="color: #009596;">VLAN tag</span>
+
+  802.1Q Tag breakdown:
+  <span style="color: #EE0000;">|</span> TPID: 0x8100 (2B) <span style="color: #EE0000;">|</span> PCP (3b) <span style="color: #EE0000;">|</span> DEI (1b) <span style="color: #EE0000;">|</span> VLAN ID (12b) <span style="color: #EE0000;">|</span>
+                                                       <span style="color: #009596;">0-4095</span>
+  </pre>
+  <aside class="notes">
+    This is the structure of an Ethernet frame. The key fields for our purposes are
+    the source and destination MAC addresses, the optional 802.1Q VLAN tag (which
+    OVS uses extensively), and the EtherType which identifies the payload protocol.
+    The VLAN ID is 12 bits, giving us 4096 possible VLANs - a limitation that drives
+    the need for overlay technologies.
+  </aside>
+</section>
+
+<!-- Slide 2.3: VLANs Explained -->
+<section>
+  <h2>VLANs Explained</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Physical Switch"
+      P1["Port 1<br/>VLAN 100"]
+      P2["Port 2<br/>VLAN 200"]
+      P3["Port 3<br/>VLAN 100"]
+      T["Trunk Port<br/>All VLANs"]
+    end
+
+    VM1["VM A"] --> P1
+    VM2["VM B"] --> P2
+    VM3["VM C"] --> P3
+    T --> SW2["Upstream Switch"]
+
+    style P1 fill:#A30000,stroke:#EE0000,color:#fff
+    style P3 fill:#A30000,stroke:#EE0000,color:#fff
+    style P2 fill:#005f5f,stroke:#009596,color:#fff
+    style T fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <ul style="font-size: 0.8em;">
+    <li class="fragment"><strong>Access port</strong> - single VLAN, tags/untags frames</li>
+    <li class="fragment"><strong>Trunk port</strong> - carries multiple VLANs, preserves tags</li>
+    <li class="fragment"><strong>Limitation:</strong> only 4094 usable VLANs (12-bit ID)</li>
+  </ul>
+  <aside class="notes">
+    VLANs allow us to segment a physical network into isolated broadcast domains.
+    VM A and VM C are in the same VLAN 100 and can communicate at L2 even though
+    they are on different ports. VM B in VLAN 200 is isolated from them. Trunk ports
+    carry traffic for multiple VLANs between switches. The 4094 VLAN limit is one
+    reason we need overlay technologies in cloud environments.
+  </aside>
+</section>
+
+<!-- Slide 2.4: Why Network Overlays? -->
+<section>
+  <h2>Network Overlays - Why?</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Problems with Physical Networking</h3>
+      <ul>
+        <li>VLAN limit (4094)</li>
+        <li>Spanning tree complexity</li>
+        <li>MAC table exhaustion</li>
+        <li>L2 domain tied to physical topology</li>
+        <li>VM migration across L3 boundaries</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Overlays Solve This</h3>
+      <ul>
+        <li>Millions of logical networks (24-bit VNI)</li>
+        <li>Decouple logical from physical</li>
+        <li>Tunnel over any IP network</li>
+        <li>VM mobility across L3</li>
+        <li>Multi-tenant isolation</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Cloud environments can have thousands of tenants, each needing isolated networks.
+    4094 VLANs is not enough. Physical topology changes require network reconfiguration.
+    Overlay networks solve these problems by encapsulating tenant traffic in tunnels over
+    the existing physical network. The logical topology is completely decoupled from the
+    physical one. This is fundamental to how OVN works.
+  </aside>
+</section>
+
+<!-- Slide 2.5: VXLAN/Geneve Encapsulation -->
+<section>
+  <h2>VXLAN / Geneve Encapsulation</h2>
+  <pre style="text-align: center; font-size: 0.5em; background: #0d0d0d; padding: 1em; border-radius: 6px; border-left: 3px solid var(--rh-red);">
+<span style="color:#EE0000;">Original Frame:</span>
+| Eth Hdr | IP Hdr | TCP/UDP | Payload |
+
+<span style="color:#009596;">After Encapsulation:</span>
+| <span style="color:#06c;">Outer Eth</span> | <span style="color:#06c;">Outer IP</span> | <span style="color:#06c;">Outer UDP</span> | <span style="color:#009596;">VXLAN/Geneve Hdr</span> | <span style="color:#EE0000;">Original Frame</span> |
+  ^              ^             ^                ^
+  Physical       Tunnel        dst:4789(VXLAN)  VNI (24-bit)
+  Network        Endpoints     dst:6081(Geneve) = 16M networks
+  </pre>
+  <div class="two-col fragment" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>VXLAN</h3>
+      <ul>
+        <li>UDP port 4789</li>
+        <li>Fixed 8-byte header</li>
+        <li>24-bit VNI</li>
+        <li>Widely supported</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Geneve (OVN default)</h3>
+      <ul>
+        <li>UDP port 6081</li>
+        <li>Variable-length header with TLV options</li>
+        <li>24-bit VNI</li>
+        <li>Extensible metadata</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Both VXLAN and Geneve encapsulate the original Ethernet frame inside a UDP packet
+    with a tunnel header. The VNI (Virtual Network Identifier) is 24 bits, giving
+    about 16 million logical networks. OVN uses Geneve by default because its
+    variable-length TLV options allow OVN to pass metadata like logical ingress port
+    and datapath information through the tunnel. This metadata is essential for OVN's
+    distributed processing model.
+  </aside>
+</section>
+
+<!-- Slide 2.6: SDN Concepts -->
+<section>
+  <h2>SDN Concepts</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Management Plane"
+      CMS["CMS / Orchestrator<br/>(OpenStack, K8s)"]
+    end
+    subgraph "Control Plane"
+      CTRL["SDN Controller<br/>(OVN, ODL, etc.)"]
+    end
+    subgraph "Data Plane"
+      SW1["Switch 1<br/>(OVS)"]
+      SW2["Switch 2<br/>(OVS)"]
+      SW3["Switch 3<br/>(OVS)"]
+    end
+
+    CMS -->|"API Calls"| CTRL
+    CTRL -->|"Flow Rules"| SW1
+    CTRL -->|"Flow Rules"| SW2
+    CTRL -->|"Flow Rules"| SW3
+
+    style CMS fill:#A30000,stroke:#EE0000,color:#fff
+    style CTRL fill:#005f5f,stroke:#009596,color:#fff
+    style SW1 fill:#003d7a,stroke:#06c,color:#fff
+    style SW2 fill:#003d7a,stroke:#06c,color:#fff
+    style SW3 fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <div class="key-point fragment">
+    SDN separates <em>what to do</em> (control plane) from <em>how to do it</em> (data plane)
+  </div>
+  <aside class="notes">
+    Software Defined Networking separates the network intelligence (control plane)
+    from the packet forwarding (data plane). The control plane decides the forwarding
+    rules; the data plane executes them at line rate. This is exactly what OVS and
+    OVN do - OVN is the controller that computes the rules, OVS is the switch that
+    applies them. The CMS - like OpenStack or Kubernetes - tells OVN what the desired
+    network state should be.
+  </aside>
+</section>
+
+<!-- Slide 2.7: Linux Networking Building Blocks -->
+<section>
+  <h2>Linux Networking Building Blocks</h2>
+  <div class="three-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Namespaces</h3>
+      <ul>
+        <li>Isolated network stacks</li>
+        <li>Own interfaces, routes, iptables</li>
+        <li>Foundation for containers</li>
+      </ul>
+      <pre><code class="language-bash">ip netns add ns1
+ip netns exec ns1 ip a</code></pre>
+    </div>
+    <div class="box box-teal">
+      <h3>veth Pairs</h3>
+      <ul>
+        <li>Virtual ethernet cable</li>
+        <li>Connect namespaces</li>
+        <li>One end in each space</li>
+      </ul>
+      <pre><code class="language-bash">ip link add veth0 \
+  type veth \
+  peer name veth1</code></pre>
+    </div>
+    <div class="box box-blue">
+      <h3>Linux Bridge</h3>
+      <ul>
+        <li>Software L2 switch</li>
+        <li>MAC learning</li>
+        <li>VLAN filtering</li>
+      </ul>
+      <pre><code class="language-bash">ip link add br0 \
+  type bridge
+ip link set eth0 \
+  master br0</code></pre>
+    </div>
+  </div>
+  <aside class="notes">
+    These are the Linux primitives that underpin virtual networking. Network namespaces
+    provide isolation - each namespace has its own interfaces, routing table, and
+    firewall rules. veth pairs are like virtual cables connecting two namespaces.
+    Linux bridges provide L2 switching. OVS replaces the Linux bridge with a much more
+    powerful programmable switch. Understanding these primitives is essential because
+    OVS interfaces with them, and many legacy setups use them directly.
+  </aside>
+</section>
+
+<!-- Slide 2.8: Network Namespaces in Practice -->
+<section>
+  <h2>Namespaces in Practice</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Host"
+      subgraph "ns: red"
+        R_ETH["eth0<br/>10.0.0.1/24"]
+      end
+      subgraph "ns: blue"
+        B_ETH["eth0<br/>10.0.0.2/24"]
+      end
+      BR["OVS Bridge<br/>br-int"]
+      R_ETH --- |"veth"| BR
+      B_ETH --- |"veth"| BR
+    end
+
+    style R_ETH fill:#A30000,stroke:#EE0000,color:#fff
+    style B_ETH fill:#003d7a,stroke:#06c,color:#fff
+    style BR fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <p style="font-size: 0.8em;">
+    Each VM or container gets its own namespace, connected to the OVS bridge via veth pairs.
+    The bridge handles switching and applies flow rules.
+  </p>
+  <aside class="notes">
+    In a typical deployment, each VM or container has its own network namespace.
+    A veth pair connects the namespace to the OVS integration bridge (br-int).
+    OVS then applies flow rules to determine how traffic is forwarded - to another
+    local namespace, through a tunnel to another host, or to the external network.
+    This is the basic plumbing pattern used by both OpenStack and OpenShift.
+  </aside>
+</section>
+
+<!-- Slide 2.9: Putting It All Together -->
+<section>
+  <h2>Putting It All Together</h2>
+  <div class="key-point">
+    <p><em>Physical network</em> provides connectivity between hosts</p>
+    <p style="color: var(--rh-red); font-size: 1.5em;">&darr;</p>
+    <p><em>Overlay tunnels</em> encapsulate tenant traffic over the physical network</p>
+    <p style="color: var(--rh-red); font-size: 1.5em;">&darr;</p>
+    <p><em>OVS</em> switches packets based on flow rules at each host</p>
+    <p style="color: var(--rh-red); font-size: 1.5em;">&darr;</p>
+    <p><em>OVN</em> computes and distributes the flow rules</p>
+    <p style="color: var(--rh-red); font-size: 1.5em;">&darr;</p>
+    <p><em>CMS</em> (OpenStack / K8s) expresses intent via OVN API</p>
+  </div>
+  <aside class="notes">
+    This is the full stack. The CMS at the top expresses intent - "create a network,
+    attach a VM to it." OVN translates that intent into flow rules. OVS executes
+    those rules to forward packets. Overlay tunnels carry the traffic between hosts.
+    And the physical network provides the underlying transport. Each layer has its own
+    tools, its own failure modes, and its own troubleshooting approach. We will cover
+    all of these.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 3: OVS DEEP DIVE                                      -->
+<!-- ============================================================ -->
+
+<!-- Slide 3.0: Section Title -->
+<section class="section-title">
+  <h1>OVS Deep Dive</h1>
+  <h4>The data plane workhorse</h4>
+  <aside class="notes">
+    Now let us get into OVS itself. We will look at its architecture, components,
+    and how it processes packets. This is the foundation everything else builds on.
+  </aside>
+</section>
+
+<!-- Slide 3.1: What is OVS -->
+<section>
+  <h2>What is Open vSwitch?</h2>
+  <ul>
+    <li>Production-quality, multilayer virtual switch</li>
+    <li>Designed for massive network automation</li>
+    <li>Supports standard management interfaces and protocols</li>
+    <li>Licensed under Apache 2.0</li>
+  </ul>
+  <div class="two-col fragment" style="font-size: 0.8em; margin-top: 0.5em;">
+    <div class="box box-red">
+      <h3>Why Not Linux Bridge?</h3>
+      <ul>
+        <li>No OpenFlow support</li>
+        <li>Limited programmability</li>
+        <li>No tunneling (built-in)</li>
+        <li>No fine-grained flow control</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>OVS Advantages</h3>
+      <ul>
+        <li>OpenFlow programmable</li>
+        <li>OVSDB for config management</li>
+        <li>Built-in tunneling (GRE, VXLAN, Geneve)</li>
+        <li>QoS, mirroring, sFlow/IPFIX</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    OVS is not just another bridge - it is a full-featured programmable switch.
+    While Linux bridge does basic L2 forwarding, OVS can match on dozens of packet
+    fields, apply complex actions, tunnel traffic, enforce QoS, and be managed
+    remotely. It is the de facto standard virtual switch for SDN environments.
+  </aside>
+</section>
+
+<!-- Slide 3.2: OVS Architecture -->
+<section>
+  <h2>OVS Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "User Space"
+      OVSDB["ovsdb-server<br/>(Configuration DB)"]
+      VSWITCHD["ovs-vswitchd<br/>(OpenFlow Daemon)"]
+      OVSDB <-->|"OVSDB Protocol"| VSWITCHD
+    end
+    subgraph "Kernel Space"
+      KMOD["OVS Kernel Module<br/>(Fast Path / Datapath)"]
+    end
+
+    VSWITCHD <-->|"Netlink"| KMOD
+    KMOD <-->|"Packets"| NIC["Physical NIC"]
+    KMOD <-->|"Packets"| VIF["VM/Container vNIC"]
+
+    OF["OpenFlow<br/>Controller"] -->|"OpenFlow"| VSWITCHD
+    CLI["ovs-vsctl<br/>ovs-ofctl"] -->|"OVSDB / OF"| OVSDB
+    CLI -->|"OpenFlow"| VSWITCHD
+
+    style OVSDB fill:#A30000,stroke:#EE0000,color:#fff
+    style VSWITCHD fill:#A30000,stroke:#EE0000,color:#fff
+    style KMOD fill:#005f5f,stroke:#009596,color:#fff
+    style OF fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <aside class="notes">
+    This is the core OVS architecture. Three main components: ovsdb-server stores the
+    switch configuration, ovs-vswitchd is the main daemon that processes OpenFlow rules,
+    and the kernel module is the fast-path datapath. When a packet arrives, the kernel
+    module checks its flow cache. On a hit, it processes the packet entirely in kernel
+    space. On a miss, it sends the packet up to ovs-vswitchd in user space, which
+    looks up the OpenFlow tables and installs a new datapath flow in the kernel.
+  </aside>
+</section>
+
+<!-- Slide 3.3: ovsdb-server -->
+<section>
+  <h2>ovsdb-server</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li>Persistent configuration store</li>
+        <li>Uses OVSDB protocol (RFC 7047)</li>
+        <li>JSON-RPC over TCP or Unix socket</li>
+        <li>Stores bridges, ports, interfaces, tunnels</li>
+        <li>Schema-driven (strongly typed)</li>
+        <li>Supports transactions and monitoring</li>
+      </ul>
+    </div>
+    <div>
+      <pre><code class="language-bash"># View the database
+ovsdb-client dump
+
+# Show schema
+ovsdb-client get-schema
+
+# Monitor changes in real time
+ovsdb-client monitor Bridge
+
+# Backup/restore
+ovsdb-client backup > backup.db
+ovsdb-client restore < backup.db</code></pre>
+    </div>
+  </div>
+  <aside class="notes">
+    The ovsdb-server is the brains of the configuration. It stores everything about
+    the switch setup - what bridges exist, what ports they have, what interfaces are
+    connected, tunnel endpoints, QoS settings, and so on. It persists across restarts.
+    The OVSDB protocol allows remote management, which is how OVN and other controllers
+    interact with OVS configuration. The database file is typically at
+    /etc/openvswitch/conf.db.
+  </aside>
+</section>
+
+<!-- Slide 3.4: ovs-vswitchd -->
+<section>
+  <h2>ovs-vswitchd</h2>
+  <ul>
+    <li>Core switching daemon</li>
+    <li>Implements OpenFlow switch logic</li>
+    <li>Manages flow tables (OpenFlow pipeline)</li>
+    <li>Translates OpenFlow to datapath flows</li>
+    <li>Handles flow cache misses from kernel</li>
+    <li>Manages tunnel endpoints</li>
+  </ul>
+  <div class="key-point fragment">
+    ovs-vswitchd is the <em>slow path</em> - handles cache misses and programs the <em>fast path</em> (kernel datapath)
+  </div>
+  <aside class="notes">
+    ovs-vswitchd is the most important component. It implements the full OpenFlow
+    pipeline - multiple tables, priorities, match fields, and actions. When the kernel
+    datapath encounters a packet that does not match any cached flow, it sends it to
+    ovs-vswitchd. The daemon evaluates the OpenFlow tables, determines the actions,
+    sends the packet back with instructions, and installs a datapath flow in the kernel
+    so that subsequent matching packets are handled entirely in kernel space.
+  </aside>
+</section>
+
+<!-- Slide 3.5: OVS Kernel Module -->
+<section>
+  <h2>OVS Kernel Module (Datapath)</h2>
+  <ul>
+    <li>High-performance packet processing in kernel space</li>
+    <li>Exact-match flow cache (megaflow cache)</li>
+    <li>Handles the vast majority of packets (fast path)</li>
+    <li>Supports hardware offload on compatible NICs</li>
+  </ul>
+  <div class="two-col fragment" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Fast Path (Kernel)</h3>
+      <ul>
+        <li>Packet matches cached flow</li>
+        <li>Process entirely in kernel</li>
+        <li>Microsecond latency</li>
+        <li>Millions of pps</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Slow Path (User Space)</h3>
+      <ul>
+        <li>Cache miss - no matching flow</li>
+        <li>Sent to ovs-vswitchd via Netlink</li>
+        <li>OpenFlow table lookup</li>
+        <li>New cache entry installed</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    The kernel module is where performance matters. The megaflow cache stores
+    wildcarded flow entries that can match ranges of traffic. On a cache hit, the
+    packet is processed in kernel space at near wire speed. Only the first packet
+    of a new flow goes to user space. This two-tier architecture gives OVS both
+    the flexibility of OpenFlow and the performance of kernel-level switching.
+  </aside>
+</section>
+
+<!-- Slide 3.6: Packet Processing Pipeline -->
+<section>
+  <h2>Packet Processing Pipeline</h2>
+  <pre class="mermaid">
+  graph LR
+    PKT["Packet<br/>Arrives"] --> KC{"Kernel<br/>Cache Hit?"}
+    KC -->|"Yes"| FAST["Execute Cached<br/>Actions (Fast Path)"]
+    KC -->|"No"| US["Send to<br/>ovs-vswitchd"]
+    US --> OF["OpenFlow<br/>Table Lookup"]
+    OF --> ACT["Determine<br/>Actions"]
+    ACT --> INSTALL["Install Cache<br/>Entry in Kernel"]
+    ACT --> EXEC["Execute Actions<br/>on Packet"]
+
+    style PKT fill:#003d7a,stroke:#06c,color:#fff
+    style KC fill:#A30000,stroke:#EE0000,color:#fff
+    style FAST fill:#005f5f,stroke:#009596,color:#fff
+    style US fill:#A30000,stroke:#EE0000,color:#fff
+    style OF fill:#A30000,stroke:#EE0000,color:#fff
+    style INSTALL fill:#005f5f,stroke:#009596,color:#fff
+    style EXEC fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <p class="diagram-label">First packet of a flow takes the slow path; subsequent packets take the fast path</p>
+  <aside class="notes">
+    This is the core packet processing flow. When a packet arrives at an OVS port,
+    the kernel module checks the megaflow cache. If there is a match, it executes
+    the cached actions immediately - this is the fast path and handles the vast
+    majority of traffic. If there is no match, the packet is sent to user space
+    via Netlink. ovs-vswitchd evaluates the OpenFlow tables, determines the correct
+    actions, executes them on the packet, and installs a new cache entry so future
+    packets take the fast path.
+  </aside>
+</section>
+
+<!-- Slide 3.7: Flow Tables -->
+<section>
+  <h2>OpenFlow Tables</h2>
+  <pre class="mermaid">
+  graph LR
+    P["Packet In"] --> T0["Table 0"]
+    T0 -->|"resubmit"| T1["Table 10"]
+    T1 -->|"resubmit"| T2["Table 20"]
+    T2 -->|"resubmit"| T3["Table 30"]
+    T3 --> OUT["Output / Drop"]
+
+    style P fill:#003d7a,stroke:#06c,color:#fff
+    style T0 fill:#A30000,stroke:#EE0000,color:#fff
+    style T1 fill:#A30000,stroke:#EE0000,color:#fff
+    style T2 fill:#A30000,stroke:#EE0000,color:#fff
+    style T3 fill:#A30000,stroke:#EE0000,color:#fff
+    style OUT fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <ul style="font-size: 0.8em;">
+    <li class="fragment">Each table contains <strong>flow entries</strong> with priority, match, and actions</li>
+    <li class="fragment">Packet is matched against entries in priority order (highest first)</li>
+    <li class="fragment">Actions include: <span class="inline-code">output</span>, <span class="inline-code">drop</span>, <span class="inline-code">mod_dl_dst</span>, <span class="inline-code">resubmit</span>, <span class="inline-code">set_field</span></li>
+    <li class="fragment"><span class="inline-code">resubmit</span> sends packet to another table (pipeline chaining)</li>
+  </ul>
+  <aside class="notes">
+    OpenFlow tables form a pipeline. A packet enters table 0 and is matched against
+    flow entries in priority order. The matching entry's actions are executed. A key
+    action is resubmit, which sends the packet to another table for further processing.
+    This allows building complex multi-stage pipelines. OVN uses about 30+ tables in
+    its pipeline for ingress and egress processing.
+  </aside>
+</section>
+
+<!-- Slide 3.8: OpenFlow Match/Action Examples -->
+<section>
+  <h2>OpenFlow: Match/Action</h2>
+  <pre><code class="language-bash"># Simple L2 forwarding
+ovs-ofctl add-flow br0 "table=0, dl_dst=00:11:22:33:44:55, actions=output:3"
+
+# VLAN tagging
+ovs-ofctl add-flow br0 "table=0, in_port=1, actions=mod_vlan_vid:100,output:2"
+
+# VLAN stripping
+ovs-ofctl add-flow br0 "table=0, in_port=2, dl_vlan=100, actions=strip_vlan,output:1"
+
+# IP-based routing
+ovs-ofctl add-flow br0 "table=0, ip, nw_dst=10.0.1.0/24, \
+  actions=mod_dl_dst:00:aa:bb:cc:dd:ee,output:4"
+
+# Drop by source MAC
+ovs-ofctl add-flow br0 "table=0, dl_src=de:ad:be:ef:00:01, actions=drop"
+
+# Resubmit to next table
+ovs-ofctl add-flow br0 "table=0, ip, actions=resubmit(,10)"</code></pre>
+  <aside class="notes">
+    Here are concrete examples of OpenFlow flows. Each flow has a match part and
+    an action part. You can match on any combination of L2, L3, and L4 fields.
+    Actions can modify headers, output to ports, drop packets, or resubmit to
+    other tables. In practice, OVN generates thousands of these flows automatically.
+    Understanding this syntax is crucial for troubleshooting because you will often
+    need to read OVS flow dumps to diagnose issues.
+  </aside>
+</section>
+
+<!-- Slide 3.9: Reading Flow Dumps -->
+<section>
+  <h2>Reading Flow Dumps</h2>
+  <pre><code class="language-bash"># Dump all OpenFlow flows
+ovs-ofctl dump-flows br-int
+
+# Example output:
+cookie=0xdead, duration=3600s, table=0, n_packets=1000,
+  n_bytes=64000, priority=100,ip,nw_dst=10.0.0.0/24
+  actions=set_field:00:aa:bb:cc:dd:ee->eth_dst,output:5</code></pre>
+  <div style="font-size: 0.75em;">
+    <table class="comparison-table">
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td><code>cookie</code></td><td>Identifier set by controller (OVN uses this)</td></tr>
+      <tr><td><code>table</code></td><td>Which table this flow lives in</td></tr>
+      <tr><td><code>priority</code></td><td>Higher = matched first (0-65535)</td></tr>
+      <tr><td><code>n_packets</code></td><td>Hit counter - invaluable for debugging</td></tr>
+      <tr><td><code>actions</code></td><td>What to do with matching packets</td></tr>
+    </table>
+  </div>
+  <aside class="notes">
+    Learning to read flow dumps is an essential troubleshooting skill. The cookie
+    helps trace which OVN logical flow generated this OpenFlow rule. The n_packets
+    counter tells you whether traffic is actually hitting a flow - if the counter
+    is zero, packets are not reaching that point in the pipeline. The priority
+    determines match order within a table - when troubleshooting, always check if
+    a higher-priority rule is matching first.
+  </aside>
+</section>
+
+<!-- Slide 3.10: OVS Bridge Types -->
+<section>
+  <h2>OVS Bridges in Practice</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>br-int (Integration Bridge)</h3>
+      <ul>
+        <li>Where VMs/containers connect</li>
+        <li>Internal VLAN tagging</li>
+        <li>Security and ACL flows</li>
+        <li>Central to all OVN processing</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>br-ex (External Bridge)</h3>
+      <ul>
+        <li>Connects to physical network</li>
+        <li>Handles provider networks</li>
+        <li>SNAT/DNAT for floating IPs</li>
+        <li>Gateway node traffic</li>
+      </ul>
+    </div>
+  </div>
+  <pre class="fragment"><code class="language-bash"># List bridges
+ovs-vsctl list-br
+
+# Show bridge details
+ovs-vsctl show
+
+# List ports on a bridge
+ovs-vsctl list-ports br-int</code></pre>
+  <aside class="notes">
+    In OVN-based deployments, you will typically see br-int and br-ex. The
+    integration bridge is where all the action happens - every VM and container
+    port connects here, and OVN programs its flow tables. The external bridge
+    connects to the physical network for north-south traffic. On gateway nodes,
+    there is a patch port connecting br-int to br-ex. Understanding which bridge
+    a port belongs to is the first step in packet tracing.
+  </aside>
+</section>
+
+<!-- Slide 3.11: OVS Port Types -->
+<section>
+  <h2>OVS Port Types</h2>
+  <table class="comparison-table">
+    <tr><th>Type</th><th>Description</th><th>Use Case</th></tr>
+    <tr><td>system</td><td>Backed by kernel netdev</td><td>Physical NICs, veth</td></tr>
+    <tr><td>internal</td><td>Virtual interface created by OVS</td><td>Bridge local port</td></tr>
+    <tr><td>patch</td><td>Connects two OVS bridges</td><td>br-int to br-ex</td></tr>
+    <tr><td>vxlan</td><td>VXLAN tunnel endpoint</td><td>Overlay tunnels</td></tr>
+    <tr><td>geneve</td><td>Geneve tunnel endpoint</td><td>OVN tunnels</td></tr>
+    <tr><td>dpdkvhostuser</td><td>DPDK vHost port</td><td>OVS-DPDK to VMs</td></tr>
+  </table>
+  <pre class="fragment"><code class="language-bash"># Show port type and details
+ovs-vsctl -- --columns=name,type list Interface</code></pre>
+  <aside class="notes">
+    Understanding port types helps you quickly identify what is connected to what.
+    System ports correspond to actual kernel interfaces. Internal ports are virtual
+    interfaces that OVS creates. Patch ports are like internal cables between OVS
+    bridges - no kernel interface involved, purely internal to OVS. Tunnel ports
+    create the overlay endpoints. In OVN deployments, you will see Geneve tunnel
+    ports connecting each host to every other host in the cluster.
+  </aside>
+</section>
+
+<!-- Slide 3.12: OVS-DPDK Overview -->
+<section>
+  <h2>OVS-DPDK</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li>Moves entire data plane to user space</li>
+        <li>Uses DPDK poll-mode drivers (PMDs)</li>
+        <li>Bypasses kernel for packet processing</li>
+        <li>Dedicated CPU cores for packet polling</li>
+        <li>Hugepage memory for packet buffers</li>
+      </ul>
+      <div class="key-point fragment" style="font-size: 0.8em;">
+        10-100x throughput improvement for high-performance workloads
+      </div>
+    </div>
+    <div>
+      <pre class="mermaid">
+      graph TB
+        subgraph "Standard OVS"
+          K["Kernel Module<br/>(datapath)"]
+        end
+        subgraph "OVS-DPDK"
+          PMD["PMD Threads<br/>(user-space datapath)"]
+          HP["Hugepages"]
+        end
+
+        NIC["NIC"] --> K
+        NIC --> PMD
+        PMD --> HP
+
+        style K fill:#A30000,stroke:#EE0000,color:#fff
+        style PMD fill:#005f5f,stroke:#009596,color:#fff
+        style HP fill:#003d7a,stroke:#06c,color:#fff
+      </pre>
+    </div>
+  </div>
+  <aside class="notes">
+    OVS-DPDK is for high-performance use cases like NFV. Instead of using the kernel
+    module as the datapath, it uses DPDK poll-mode drivers that run entirely in user
+    space. Dedicated CPU cores continuously poll the NIC for packets, eliminating
+    interrupt overhead. Packets are stored in hugepage memory for efficiency. The
+    trade-off is that you dedicate CPU cores and memory to OVS, and the configuration
+    is more complex. Red Hat supports OVS-DPDK in RHOSP for telco/NFV workloads.
+  </aside>
+</section>
+
+<!-- Slide 3.13: Key OVS Commands -->
+<section>
+  <h2>Essential OVS Commands</h2>
+  <table class="comparison-table cheat-sheet">
+    <tr><th>Command</th><th>Purpose</th></tr>
+    <tr><td>ovs-vsctl show</td><td>Show bridge/port/interface configuration</td></tr>
+    <tr><td>ovs-vsctl list-br</td><td>List all bridges</td></tr>
+    <tr><td>ovs-vsctl list-ports br-int</td><td>List ports on a bridge</td></tr>
+    <tr><td>ovs-ofctl dump-flows br-int</td><td>Dump OpenFlow flows</td></tr>
+    <tr><td>ovs-ofctl dump-ports br-int</td><td>Port statistics</td></tr>
+    <tr><td>ovs-appctl dpif/show</td><td>Show datapath information</td></tr>
+    <tr><td>ovs-appctl ofproto/trace</td><td>Trace packet through pipeline</td></tr>
+    <tr><td>ovs-dpctl dump-flows</td><td>Dump kernel datapath flows</td></tr>
+    <tr><td>ovs-appctl coverage/show</td><td>Performance counters</td></tr>
+  </table>
+  <aside class="notes">
+    These are the commands you will use daily. ovs-vsctl is for configuration.
+    ovs-ofctl is for OpenFlow management. ovs-appctl is for runtime queries and
+    debugging. The most powerful debugging tool is ofproto/trace which simulates
+    a packet through the entire OpenFlow pipeline and shows you exactly which
+    flows match and what actions are taken. We will use this extensively in the
+    troubleshooting section.
+  </aside>
+</section>
+
+<!-- Slide 3.14: ofproto/trace Demo -->
+<section>
+  <h2>Demo: ofproto/trace</h2>
+  <pre><code class="language-bash"># Trace a packet through the OVS pipeline
+ovs-appctl ofproto/trace br-int \
+  in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,\
+  dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,\
+  tp_src=12345,tp_dst=80
+
+# Output shows:
+# - Each table visited
+# - Which flow matched (with priority)
+# - Actions executed
+# - Final disposition (output port or drop)</code></pre>
+  <div class="key-point fragment">
+    <em>ofproto/trace</em> is your best friend for OVS troubleshooting -
+    it shows exactly what happens to a packet without sending real traffic
+  </div>
+  <aside class="notes">
+    Let me walk through an ofproto/trace example. You specify the bridge and the
+    packet fields. OVS simulates the packet through its entire pipeline. The output
+    shows every table the packet visits, which flow entry matches, and what actions
+    are performed. This is non-destructive - no real packet is sent. You can use
+    this to verify that flows are correctly programmed, to diagnose why traffic is
+    being dropped, or to understand the complete path of a packet through OVS.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 4: OVN DEEP DIVE                                      -->
+<!-- ============================================================ -->
+
+<!-- Slide 4.0: Section Title -->
+<section class="section-title">
+  <h1>OVN Deep Dive</h1>
+  <h4>Logical networking at scale</h4>
+  <aside class="notes">
+    Now we move to OVN - the layer that provides logical networking abstractions
+    on top of OVS. OVN is what makes OVS usable at cloud scale without requiring
+    manual flow programming.
+  </aside>
+</section>
+
+<!-- Slide 4.1: What is OVN -->
+<section>
+  <h2>What is OVN?</h2>
+  <ul>
+    <li>Open Virtual Network - network virtualization for OVS</li>
+    <li>Provides logical switches, routers, ACLs, DHCP, NAT, LB</li>
+    <li>Distributed architecture - no single point of failure</li>
+    <li>Native OVS integration (same project community)</li>
+    <li>Replaced external SDN controllers for common use cases</li>
+  </ul>
+  <div class="key-point fragment">
+    OVN translates <em>high-level network intent</em> into <em>low-level OVS flows</em> across all hosts
+  </div>
+  <aside class="notes">
+    OVN was created to provide the common networking services that every cloud
+    needs - switching, routing, security, DHCP - without requiring an external
+    SDN controller. It is tightly integrated with OVS and uses the same database
+    technology. OVN's key innovation is distributed processing - each compute
+    node has an ovn-controller that locally programs OVS flows, so there is no
+    centralized bottleneck for data plane operations.
+  </aside>
+</section>
+
+<!-- Slide 4.2: The Analogy -->
+<section>
+  <h2>The Highway Analogy</h2>
+  <div class="two-col" style="text-align: center;">
+    <div class="box box-red" style="text-align: center;">
+      <h3>OVS = The Highway</h3>
+      <p style="font-size: 2em;">&#128739;</p>
+      <ul style="font-size: 0.85em;">
+        <li>The physical road infrastructure</li>
+        <li>Carries the traffic</li>
+        <li>Has lanes, on-ramps, off-ramps</li>
+        <li>Does not decide routing on its own</li>
+      </ul>
+    </div>
+    <div class="box box-teal" style="text-align: center;">
+      <h3>OVN = Traffic Management</h3>
+      <p style="font-size: 2em;">&#128678;</p>
+      <ul style="font-size: 0.85em;">
+        <li>Traffic lights, signs, lane markings</li>
+        <li>Decides who goes where</li>
+        <li>Enforces rules and policies</li>
+        <li>Adapts to changing conditions</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Think of it this way: OVS is the highway system - it has the infrastructure
+    to move traffic. But without traffic management - lights, signs, lane markings -
+    there would be chaos. OVN is the traffic management system. It determines the
+    rules, programs the signs, and ensures traffic flows correctly. You need both:
+    the highway (OVS) and the management (OVN).
+  </aside>
+</section>
+
+<!-- Slide 4.3: OVN Architecture -->
+<section>
+  <h2>OVN Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    CMS["CMS<br/>(OpenStack / Kubernetes)"] -->|"OVN NB API"| NB["OVN Northbound DB<br/>(Logical Network State)"]
+    NB <-->|"reads NB<br/>writes SB"| NORTHD["ovn-northd<br/>(Logical Flow Compiler)"]
+    NORTHD <-->|"reads/writes"| SB["OVN Southbound DB<br/>(Physical Bindings + Logical Flows)"]
+
+    SB <-->|"reads SB"| C1["ovn-controller<br/>(Compute Node 1)"]
+    SB <-->|"reads SB"| C2["ovn-controller<br/>(Compute Node 2)"]
+    SB <-->|"reads SB"| C3["ovn-controller<br/>(Compute Node N)"]
+
+    C1 --> OVS1["OVS<br/>(br-int)"]
+    C2 --> OVS2["OVS<br/>(br-int)"]
+    C3 --> OVS3["OVS<br/>(br-int)"]
+
+    style CMS fill:#A30000,stroke:#EE0000,color:#fff
+    style NB fill:#A30000,stroke:#EE0000,color:#fff
+    style SB fill:#005f5f,stroke:#009596,color:#fff
+    style NORTHD fill:#A30000,stroke:#EE0000,color:#fff
+    style C1 fill:#003d7a,stroke:#06c,color:#fff
+    style C2 fill:#003d7a,stroke:#06c,color:#fff
+    style C3 fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <aside class="notes">
+    This is the core OVN architecture. The CMS talks to the Northbound database,
+    expressing intent in logical terms. ovn-northd reads the NB DB and compiles
+    logical flows into the Southbound database. Each compute node runs ovn-controller
+    which reads the SB DB and programs the local OVS instance. The NB and SB databases
+    typically run on the control plane nodes. This architecture scales well because
+    the heavy lifting of translating logical flows into OpenFlow is distributed to
+    each node's ovn-controller.
+  </aside>
+</section>
+
+<!-- Slide 4.4: NB DB -->
+<section>
+  <h2>Northbound Database (NB DB)</h2>
+  <div class="two-col">
+    <div>
+      <h3>What It Stores</h3>
+      <ul>
+        <li>Logical Switches (virtual L2 segments)</li>
+        <li>Logical Switch Ports</li>
+        <li>Logical Routers</li>
+        <li>Logical Router Ports</li>
+        <li>ACLs (access control lists)</li>
+        <li>NAT rules</li>
+        <li>Load Balancers</li>
+        <li>DHCP options</li>
+      </ul>
+    </div>
+    <div>
+      <pre><code class="language-bash"># List logical switches
+ovn-nbctl ls-list
+
+# Show logical switch ports
+ovn-nbctl lsp-list &lt;switch&gt;
+
+# List logical routers
+ovn-nbctl lr-list
+
+# Show ACLs
+ovn-nbctl acl-list &lt;switch&gt;
+
+# Full NB DB dump
+ovn-nbctl show</code></pre>
+    </div>
+  </div>
+  <p class="fragment" style="font-size: 0.8em; color: var(--rh-muted);">
+    NB DB speaks the language of the CMS: networks, subnets, ports, security rules
+  </p>
+  <aside class="notes">
+    The Northbound database is the API surface of OVN. It speaks in terms that a
+    cloud management system understands - logical switches are like virtual networks,
+    logical switch ports are where VMs or containers attach, logical routers provide
+    L3 connectivity, ACLs provide security, and so on. The CMS writes to this database
+    and OVN takes care of the rest. When troubleshooting, always start by checking
+    the NB DB to verify the intended configuration is correct.
+  </aside>
+</section>
+
+<!-- Slide 4.5: SB DB -->
+<section>
+  <h2>Southbound Database (SB DB)</h2>
+  <div class="two-col">
+    <div>
+      <h3>What It Stores</h3>
+      <ul>
+        <li>Logical Flows (compiled from NB)</li>
+        <li>Chassis (registered hypervisors)</li>
+        <li>Port Bindings (port-to-chassis mapping)</li>
+        <li>Datapath Bindings</li>
+        <li>MAC Bindings (learned MACs)</li>
+        <li>Encapsulation info</li>
+      </ul>
+    </div>
+    <div>
+      <pre><code class="language-bash"># List chassis
+ovn-sbctl show
+
+# Show logical flows
+ovn-sbctl lflow-list
+
+# Show port bindings
+ovn-sbctl list Port_Binding
+
+# Find where a port lives
+ovn-sbctl find Port_Binding \
+  logical_port=&lt;port-name&gt;</code></pre>
+    </div>
+  </div>
+  <p class="fragment" style="font-size: 0.8em; color: var(--rh-muted);">
+    SB DB is the glue between logical intent and physical reality
+  </p>
+  <aside class="notes">
+    The Southbound database is the critical junction between logical and physical.
+    Logical flows are the compiled form of NB DB state - they describe the forwarding
+    logic in a chassis-independent way. Port bindings tell each ovn-controller where
+    each port physically lives - on which chassis and which OVS port. Chassis records
+    contain the tunnel endpoints. When a port is unbound or bound to the wrong chassis,
+    traffic will not flow correctly. The SB DB is essential for troubleshooting.
+  </aside>
+</section>
+
+<!-- Slide 4.6: ovn-northd -->
+<section>
+  <h2>ovn-northd: The Compiler</h2>
+  <pre class="mermaid">
+  graph LR
+    NB["NB DB<br/>(Logical Intent)"] -->|"reads"| NORTHD["ovn-northd"]
+    NORTHD -->|"writes"| SB["SB DB<br/>(Logical Flows)"]
+
+    style NB fill:#A30000,stroke:#EE0000,color:#fff
+    style NORTHD fill:#005f5f,stroke:#009596,color:#fff
+    style SB fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <ul>
+    <li>Translates NB DB logical model into SB DB logical flows</li>
+    <li>Runs on the central/control plane node(s)</li>
+    <li>Stateless - can be restarted without data loss</li>
+    <li>Supports active-standby HA via OVSDB RAFT clustering</li>
+    <li>Monitors NB changes and recomputes affected logical flows</li>
+  </ul>
+  <div class="key-point fragment">
+    Think of ovn-northd as a <em>compiler</em>: it takes high-level intent and produces low-level instructions
+  </div>
+  <aside class="notes">
+    ovn-northd is the brain of OVN. It continuously watches the NB DB for changes.
+    When something changes - a new port is created, an ACL is added - it recomputes
+    the affected logical flows and writes them to the SB DB. It is stateless in the
+    sense that all its state is derived from the NB DB, so you can restart it safely.
+    In HA setups, multiple instances run but only one is active at a time, using RAFT
+    consensus on the OVSDB cluster for leader election.
+  </aside>
+</section>
+
+<!-- Slide 4.7: ovn-controller -->
+<section>
+  <h2>ovn-controller: The Local Agent</h2>
+  <ul>
+    <li>Runs on <strong>every hypervisor/compute node</strong></li>
+    <li>Connects to the Southbound DB</li>
+    <li>Translates SB logical flows into OVS OpenFlow rules</li>
+    <li>Manages local port bindings</li>
+    <li>Handles tunnel setup to other chassis</li>
+    <li>Reports local state back to SB DB</li>
+  </ul>
+  <div class="two-col fragment" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Inputs</h3>
+      <ul>
+        <li>Logical flows from SB DB</li>
+        <li>Port bindings</li>
+        <li>Chassis information</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Outputs</h3>
+      <ul>
+        <li>OpenFlow rules on br-int</li>
+        <li>Geneve tunnel ports</li>
+        <li>Port binding claims</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    ovn-controller is where logical becomes physical. It runs on every compute node
+    and is the only component that directly programs OVS. It takes the generic logical
+    flows from the SB DB and translates them into specific OpenFlow rules, substituting
+    local port numbers and tunnel IDs. It also creates the Geneve tunnel endpoints to
+    other chassis and claims port bindings when a VM or container starts on its node.
+    If ovn-controller is not running, OVS flows go stale and networking breaks.
+  </aside>
+</section>
+
+<!-- Slide 4.8: Flow Compilation Pipeline -->
+<section>
+  <h2>Flow Compilation Pipeline</h2>
+  <pre class="mermaid">
+  graph LR
+    A["CMS Intent<br/>(create network)"] --> B["NB DB<br/>(logical switch)"]
+    B --> C["ovn-northd<br/>(compile)"]
+    C --> D["SB DB<br/>(logical flows)"]
+    D --> E["ovn-controller<br/>(translate)"]
+    E --> F["OVS OpenFlow<br/>(physical flows)"]
+    F --> G["Kernel Datapath<br/>(cached flows)"]
+
+    style A fill:#A30000,stroke:#EE0000,color:#fff
+    style B fill:#A30000,stroke:#EE0000,color:#fff
+    style C fill:#005f5f,stroke:#009596,color:#fff
+    style D fill:#005f5f,stroke:#009596,color:#fff
+    style E fill:#003d7a,stroke:#06c,color:#fff
+    style F fill:#003d7a,stroke:#06c,color:#fff
+    style G fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <p style="font-size: 0.8em;">Each stage transforms the representation:</p>
+  <ol style="font-size: 0.75em;">
+    <li class="fragment"><strong>CMS</strong>: "Create network with subnet 10.0.0.0/24"</li>
+    <li class="fragment"><strong>NB DB</strong>: Logical switch + DHCP options + router port</li>
+    <li class="fragment"><strong>ovn-northd</strong>: Compile into ~50 logical flow entries</li>
+    <li class="fragment"><strong>SB DB</strong>: Logical flows with match/action in OVN syntax</li>
+    <li class="fragment"><strong>ovn-controller</strong>: Translate to ~100+ OpenFlow rules per node</li>
+    <li class="fragment"><strong>Kernel</strong>: Cache exact-match entries for active flows</li>
+  </ol>
+  <aside class="notes">
+    This is the complete compilation pipeline. Notice how each stage amplifies the
+    configuration - a single CMS API call to create a network results in dozens of
+    logical flows, which result in hundreds of OpenFlow rules across all nodes.
+    When troubleshooting, you may need to trace through this entire pipeline to find
+    where a misconfiguration or missing entry exists. Tools like ovn-trace help by
+    walking the logical flow pipeline, and ofproto/trace walks the OpenFlow pipeline.
+  </aside>
+</section>
+
+<!-- Slide 4.9: Logical Switches -->
+<section>
+  <h2>Logical Switches</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li>Virtual L2 broadcast domains</li>
+        <li>Span multiple physical hosts</li>
+        <li>Isolated from each other</li>
+        <li>Support up to 65535 ports</li>
+        <li>Connected to routers via router ports</li>
+      </ul>
+      <pre><code class="language-bash"># Create a logical switch
+ovn-nbctl ls-add network1
+
+# Add ports
+ovn-nbctl lsp-add network1 port1
+ovn-nbctl lsp-set-addresses port1 \
+  "00:00:00:00:01:01 10.0.0.11"
+
+# Set port security
+ovn-nbctl lsp-set-port-security \
+  port1 "00:00:00:00:01:01 10.0.0.11"</code></pre>
+    </div>
+    <div>
+      <pre class="mermaid">
+      graph TB
+        subgraph "Logical Switch: network1"
+          P1["port1<br/>10.0.0.11"]
+          P2["port2<br/>10.0.0.12"]
+          P3["port3<br/>10.0.0.13"]
+          RP["router-port<br/>10.0.0.1"]
+        end
+
+        P1 --- P2
+        P2 --- P3
+        RP -->|"to router"| LR["Logical Router"]
+
+        style P1 fill:#A30000,stroke:#EE0000,color:#fff
+        style P2 fill:#A30000,stroke:#EE0000,color:#fff
+        style P3 fill:#A30000,stroke:#EE0000,color:#fff
+        style RP fill:#005f5f,stroke:#009596,color:#fff
+        style LR fill:#003d7a,stroke:#06c,color:#fff
+      </pre>
+    </div>
+  </div>
+  <aside class="notes">
+    A logical switch is OVN's equivalent of a virtual network or bridge. Ports on the
+    same logical switch can communicate at L2, regardless of which physical host they
+    are on. OVN handles the encapsulation and tunneling transparently. Port security
+    ensures that a port can only send traffic with its assigned MAC and IP addresses,
+    preventing spoofing. Each logical switch has a router port if L3 routing is needed.
+  </aside>
+</section>
+
+<!-- Slide 4.10: Logical Routers -->
+<section>
+  <h2>Logical Routers</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li>Distributed routing across all nodes</li>
+        <li>No central routing bottleneck</li>
+        <li>Connect logical switches</li>
+        <li>Support static routes and NAT</li>
+      </ul>
+      <pre><code class="language-bash"># Create a logical router
+ovn-nbctl lr-add router1
+
+# Add router port
+ovn-nbctl lrp-add router1 \
+  rtr-port1 00:00:00:00:ff:01 \
+  10.0.0.1/24
+
+# Connect to switch
+ovn-nbctl lsp-add network1 \
+  network1-rtr-port1
+ovn-nbctl lsp-set-type \
+  network1-rtr-port1 router
+ovn-nbctl lsp-set-options \
+  network1-rtr-port1 \
+  router-port=rtr-port1</code></pre>
+    </div>
+    <div>
+      <pre class="mermaid">
+      graph TB
+        LS1["LS: network1<br/>10.0.0.0/24"]
+        LS2["LS: network2<br/>10.0.1.0/24"]
+        LR["LR: router1"]
+        LS1 -->|"10.0.0.1"| LR
+        LS2 -->|"10.0.1.1"| LR
+        LR -->|"default gw"| EXT["External<br/>Network"]
+
+        style LS1 fill:#A30000,stroke:#EE0000,color:#fff
+        style LS2 fill:#A30000,stroke:#EE0000,color:#fff
+        style LR fill:#005f5f,stroke:#009596,color:#fff
+        style EXT fill:#003d7a,stroke:#06c,color:#fff
+      </pre>
+    </div>
+  </div>
+  <aside class="notes">
+    Logical routers provide L3 connectivity between logical switches and to the
+    external world. A critical feature is that routing is distributed - each compute
+    node can perform routing locally without hairpinning traffic through a central
+    router. This dramatically improves east-west performance. For north-south traffic
+    that needs SNAT or gateway access, a gateway router (or gateway chassis) handles
+    the external connectivity.
+  </aside>
+</section>
+
+<!-- Slide 4.11: Distributed vs Gateway Routers -->
+<section>
+  <h2>Distributed vs Gateway Routers</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Distributed Router</h3>
+      <ul>
+        <li>Runs on every compute node</li>
+        <li>Handles east-west routing locally</li>
+        <li>No hairpinning through central node</li>
+        <li>Optimal for inter-subnet VM traffic</li>
+        <li>Cannot perform SNAT (no single egress)</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Gateway Router</h3>
+      <ul>
+        <li>Bound to specific chassis (gateway nodes)</li>
+        <li>Handles north-south traffic</li>
+        <li>Performs SNAT, DNAT</li>
+        <li>Connects to provider/external networks</li>
+        <li>HA via gateway_chassis or HA chassis group</li>
+      </ul>
+    </div>
+  </div>
+  <div class="key-point fragment">
+    Modern OVN uses a single router with <em>distributed + gateway ports</em> -
+    east-west traffic stays distributed, north-south goes through gateway chassis
+  </div>
+  <aside class="notes">
+    In older OVN versions, you had separate distributed and gateway routers. Modern
+    OVN combines both concepts in a single logical router. East-west traffic between
+    subnets is routed locally on the compute node where the source VM runs - this is
+    the distributed part. North-south traffic that needs SNAT or access to external
+    networks is redirected to a gateway chassis - this is the gateway part. The gateway
+    chassis is configured per router port using gateway_chassis options.
+  </aside>
+</section>
+
+<!-- Slide 4.12: ACLs and Security -->
+<section>
+  <h2>ACLs and Security</h2>
+  <div class="two-col">
+    <div>
+      <ul>
+        <li>Applied per logical switch or port group</li>
+        <li>Stateful by default (connection tracking)</li>
+        <li>Match on L2-L4 fields</li>
+        <li>Actions: allow, allow-related, drop, reject</li>
+        <li>Priority-based evaluation</li>
+      </ul>
+      <pre><code class="language-bash"># Allow SSH inbound
+ovn-nbctl acl-add network1 \
+  to-lport 1000 \
+  'outport == "port1" && tcp.dst == 22' \
+  allow-related
+
+# Drop all other inbound
+ovn-nbctl acl-add network1 \
+  to-lport 900 \
+  'outport == "port1"' \
+  drop</code></pre>
+    </div>
+    <div>
+      <div class="box box-red">
+        <h3>Port Security</h3>
+        <p style="font-size: 0.8em;">Prevents MAC/IP spoofing at the port level</p>
+      </div>
+      <div class="box box-teal" style="margin-top: 0.5em;">
+        <h3>Security Groups (via ACLs)</h3>
+        <p style="font-size: 0.8em;">OpenStack security groups map to OVN ACLs with address sets</p>
+      </div>
+      <div class="box box-blue" style="margin-top: 0.5em;">
+        <h3>Network Policies (K8s)</h3>
+        <p style="font-size: 0.8em;">Kubernetes NetworkPolicies map to OVN ACLs via port groups</p>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    OVN ACLs implement security rules using conntrack (connection tracking). The
+    allow-related action is important - it allows a connection and automatically
+    permits related return traffic, similar to iptables ESTABLISHED,RELATED. In
+    OpenStack, security groups are translated to OVN ACLs. In OpenShift,
+    NetworkPolicies are translated to OVN ACLs. When troubleshooting connectivity
+    issues, ACLs are one of the first things to check - use ovn-nbctl acl-list
+    to see what rules exist.
+  </aside>
+</section>
+
+<!-- Slide 4.13: DHCP in OVN -->
+<section>
+  <h2>DHCP, NAT, and Load Balancing</h2>
+  <div class="three-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>DHCP</h3>
+      <ul>
+        <li>Native DHCP responder</li>
+        <li>No external DHCP server needed</li>
+        <li>Configured per logical switch</li>
+        <li>Responds locally on each node</li>
+      </ul>
+      <pre><code class="language-bash">ovn-nbctl set Logical_Switch_Port port1 \
+  dhcpv4_options=&lt;uuid&gt;</code></pre>
+    </div>
+    <div class="box box-teal">
+      <h3>NAT</h3>
+      <ul>
+        <li>SNAT for outbound traffic</li>
+        <li>DNAT for floating IPs</li>
+        <li>Configured on logical router</li>
+        <li>Processed on gateway chassis</li>
+      </ul>
+      <pre><code class="language-bash">ovn-nbctl lr-nat-add router1 \
+  snat 172.16.0.1 10.0.0.0/24
+ovn-nbctl lr-nat-add router1 \
+  dnat_and_snat 172.16.0.10 \
+  10.0.0.11</code></pre>
+    </div>
+    <div class="box box-blue">
+      <h3>Load Balancing</h3>
+      <ul>
+        <li>L4 load balancing (TCP/UDP)</li>
+        <li>VIP to backend mapping</li>
+        <li>Applied to switch or router</li>
+        <li>Used by K8s services</li>
+      </ul>
+      <pre><code class="language-bash">ovn-nbctl lb-add lb1 \
+  10.0.0.100:80 \
+  10.0.0.11:80,10.0.0.12:80</code></pre>
+    </div>
+  </div>
+  <aside class="notes">
+    OVN provides several built-in services. DHCP is handled natively within OVN -
+    the DHCP response is generated locally by ovn-controller on each node, so there
+    is no network dependency on a remote DHCP server. NAT is configured on logical
+    routers - SNAT maps internal IPs to an external IP for outbound traffic, DNAT
+    maps external IPs to internal IPs for inbound (floating IPs in OpenStack).
+    Load balancing provides L4 distribution of traffic to multiple backends, which
+    is how Kubernetes services work in OVN-Kubernetes.
+  </aside>
+</section>
+
+<!-- Slide 4.14: OVN High Availability -->
+<section>
+  <h2>OVN High Availability</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Database HA (RAFT)</h3>
+      <ul>
+        <li>NB and SB DBs use OVSDB RAFT clustering</li>
+        <li>3 or 5 node cluster</li>
+        <li>Automatic leader election</li>
+        <li>Survives minority failures</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Gateway HA</h3>
+      <ul>
+        <li>Multiple gateway chassis per router port</li>
+        <li>BFD-based liveness detection</li>
+        <li>Automatic failover</li>
+        <li>Priority-based selection</li>
+      </ul>
+    </div>
+  </div>
+  <div class="box box-blue fragment" style="font-size: 0.8em;">
+    <h3>ovn-northd HA</h3>
+    <ul>
+      <li>Active-passive with RAFT leader as coordinator</li>
+      <li>Only the active instance processes changes</li>
+      <li>Standby instances ready to take over</li>
+    </ul>
+  </div>
+  <aside class="notes">
+    OVN provides HA at every level. The databases use RAFT consensus clustering -
+    typically 3 nodes, where the cluster continues operating as long as a majority
+    (2 of 3) are healthy. ovn-northd runs in active-standby mode with RAFT-based
+    coordination. Gateway ports have multiple chassis with priorities and BFD-based
+    health checking - if the active gateway node fails, traffic automatically moves
+    to the next priority chassis. In RHOSP and RHOSO, these HA mechanisms are
+    configured out of the box.
+  </aside>
+</section>
+
+<!-- Slide 4.15: OVN Logical Flow Stages -->
+<section>
+  <h2>OVN Logical Flow Pipeline</h2>
+  <div class="two-col" style="font-size: 0.75em;">
+    <div class="box box-red">
+      <h3>Ingress Pipeline</h3>
+      <ol>
+        <li>Port Security (L2 check)</li>
+        <li>Pre-ACL</li>
+        <li>ACL (conntrack, allow/drop)</li>
+        <li>QoS</li>
+        <li>LB (load balancer DNAT)</li>
+        <li>Stateful</li>
+        <li>Pre-Hairpin</li>
+        <li>L2 Lookup (MAC learning)</li>
+        <li>Destination Lookup</li>
+      </ol>
+    </div>
+    <div class="box box-teal">
+      <h3>Egress Pipeline</h3>
+      <ol>
+        <li>Pre-LB</li>
+        <li>Pre-ACL</li>
+        <li>LB</li>
+        <li>ACL (egress security)</li>
+        <li>Stateful</li>
+        <li>Port Security (L2/L3)</li>
+        <li>Delivery</li>
+      </ol>
+    </div>
+  </div>
+  <p class="fragment" style="font-size: 0.8em; color: var(--rh-muted);">
+    Use <span class="inline-code">ovn-sbctl lflow-list</span> to see the logical flows organized by table
+  </p>
+  <aside class="notes">
+    OVN logical flows are organized into an ingress pipeline and an egress pipeline,
+    each with multiple stages. The ingress pipeline processes traffic coming into a
+    logical port - checking port security, applying ACLs with connection tracking,
+    doing load balancer DNAT, and looking up the destination MAC. The egress pipeline
+    runs on the destination side - applying egress ACLs, checking port security again,
+    and delivering the packet. Understanding these stages is crucial for interpreting
+    ovn-trace output.
+  </aside>
+</section>
+
+<!-- Slide 4.16: ovn-trace Demo -->
+<section>
+  <h2>Demo: ovn-trace</h2>
+  <pre><code class="language-bash"># Trace a packet through the OVN logical pipeline
+ovn-trace --detailed network1 \
+  'inport == "port1" &&
+   eth.src == 00:00:00:00:01:01 &&
+   eth.dst == 00:00:00:00:01:02 &&
+   ip4.src == 10.0.0.11 &&
+   ip4.dst == 10.0.0.12 &&
+   ip.ttl == 64 &&
+   tcp.dst == 80'
+
+# Output shows:
+# - Each logical flow table stage
+# - Which logical flow matched
+# - Actions taken
+# - Whether packet was allowed, dropped, or forwarded
+# - Tunnel encapsulation if crossing nodes</code></pre>
+  <div class="key-point fragment">
+    <em>ovn-trace</em> works at the logical level - it shows OVN's decision-making
+    before translation to OpenFlow
+  </div>
+  <aside class="notes">
+    ovn-trace is the OVN equivalent of ofproto/trace but works at the logical level.
+    It walks a packet through OVN's logical flow pipeline, showing exactly which
+    logical flow matches at each stage. This is invaluable for debugging ACL issues,
+    verifying load balancer behavior, and understanding routing decisions. It shows
+    you OVN's logic before it gets compiled into OpenFlow rules. For a full
+    end-to-end trace, use ovn-trace for the logical level and ofproto/trace for
+    the OpenFlow level.
+  </aside>
+</section>
+
+<!-- Slide 4.17: OVN Key Commands -->
+<section>
+  <h2>Essential OVN Commands</h2>
+  <table class="comparison-table cheat-sheet">
+    <tr><th>Command</th><th>Purpose</th></tr>
+    <tr><td>ovn-nbctl show</td><td>Show NB DB logical topology</td></tr>
+    <tr><td>ovn-sbctl show</td><td>Show SB DB chassis and bindings</td></tr>
+    <tr><td>ovn-nbctl ls-list</td><td>List logical switches</td></tr>
+    <tr><td>ovn-nbctl lr-list</td><td>List logical routers</td></tr>
+    <tr><td>ovn-sbctl lflow-list</td><td>Show compiled logical flows</td></tr>
+    <tr><td>ovn-trace</td><td>Trace packet through logical pipeline</td></tr>
+    <tr><td>ovn-nbctl acl-list &lt;sw&gt;</td><td>List ACLs on a switch</td></tr>
+    <tr><td>ovn-sbctl list Port_Binding</td><td>Show port-to-chassis bindings</td></tr>
+    <tr><td>ovn-appctl -t ovn-controller connection-status</td><td>Check controller-to-SB connectivity</td></tr>
+  </table>
+  <aside class="notes">
+    Here is your OVN command cheat sheet. ovn-nbctl works with the Northbound database -
+    logical topology. ovn-sbctl works with the Southbound database - physical bindings
+    and logical flows. ovn-trace traces logical flows. A critical command for
+    troubleshooting is checking ovn-controller connection status - if the controller
+    cannot reach the SB DB, flows will not be updated and networking may fail.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 5: OVS vs OVN COMPARISON                              -->
+<!-- ============================================================ -->
+
+<!-- Slide 5.0: Section Title -->
+<section class="section-title">
+  <h1>OVS vs OVN</h1>
+  <h4>Understanding the relationship</h4>
+  <aside class="notes">
+    Now let us directly compare OVS and OVN to clarify their relationship and
+    when each is appropriate.
+  </aside>
+</section>
+
+<!-- Slide 5.1: Side-by-Side -->
+<section>
+  <h2>OVS vs OVN: Comparison</h2>
+  <table class="comparison-table" style="font-size: 0.65em;">
+    <tr><th>Aspect</th><th>OVS</th><th>OVN</th></tr>
+    <tr><td>Role</td><td>Data plane (virtual switch)</td><td>Control plane + data plane</td></tr>
+    <tr><td>Abstraction Level</td><td>Ports, flows, bridges</td><td>Logical networks, routers, ACLs</td></tr>
+    <tr><td>Programming</td><td>Manual flows or external controller</td><td>Automatic from CMS intent</td></tr>
+    <tr><td>Routing</td><td>Manual flow rules</td><td>Native distributed routing</td></tr>
+    <tr><td>Security</td><td>Manual OpenFlow ACLs</td><td>Stateful ACLs with conntrack</td></tr>
+    <tr><td>DHCP</td><td>External server needed</td><td>Built-in DHCP responder</td></tr>
+    <tr><td>Multi-host</td><td>Tunnel setup + manual flows</td><td>Automatic tunnel mesh + flows</td></tr>
+    <tr><td>Scale</td><td>Per-host only</td><td>Cluster-wide orchestration</td></tr>
+    <tr><td>Dependencies</td><td>Standalone</td><td>Requires OVS underneath</td></tr>
+  </table>
+  <aside class="notes">
+    This table highlights the key differences. OVS is a powerful but low-level tool -
+    you have to program it explicitly. OVN provides higher-level abstractions and
+    automates the flow programming. OVS is per-host; OVN orchestrates across the
+    entire cluster. But remember: OVN does not replace OVS - it requires OVS
+    underneath. OVN is the controller; OVS is the switch.
+  </aside>
+</section>
+
+<!-- Slide 5.2: Architecture Comparison -->
+<section>
+  <h2>Architecture Comparison</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "OVS Only"
+      direction TB
+      EXT_CTRL["External Controller<br/>(manual/custom)"]
+      OVS_A["OVS<br/>Host A"]
+      OVS_B["OVS<br/>Host B"]
+      EXT_CTRL -->|"OpenFlow"| OVS_A
+      EXT_CTRL -->|"OpenFlow"| OVS_B
+    end
+
+    subgraph "OVN + OVS"
+      direction TB
+      CMS2["CMS<br/>(OpenStack/K8s)"]
+      OVN2["OVN<br/>(NB+SB+northd)"]
+      CTRL_A["ovn-controller + OVS<br/>Host A"]
+      CTRL_B["ovn-controller + OVS<br/>Host B"]
+      CMS2 -->|"API"| OVN2
+      OVN2 -->|"OVSDB"| CTRL_A
+      OVN2 -->|"OVSDB"| CTRL_B
+    end
+
+    style EXT_CTRL fill:#A30000,stroke:#EE0000,color:#fff
+    style CMS2 fill:#A30000,stroke:#EE0000,color:#fff
+    style OVN2 fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <aside class="notes">
+    On the left, OVS alone requires an external controller to program flows.
+    Each host is managed independently. On the right, OVN provides the
+    controller functionality natively. The CMS talks to OVN at a high level,
+    and OVN handles all the per-host flow programming automatically.
+  </aside>
+</section>
+
+<!-- Slide 5.3: When to Use Which -->
+<section>
+  <h2>When to Use Which</h2>
+  <div class="two-col">
+    <div class="box box-red">
+      <h3>Use OVS Alone When</h3>
+      <ul>
+        <li>Simple single-host switching</li>
+        <li>Custom SDN controller exists</li>
+        <li>NFV with manual flow programming</li>
+        <li>Integration with non-OVN controllers</li>
+        <li>Learning / experimentation</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Use OVN + OVS When</h3>
+      <ul>
+        <li>Cloud-scale multi-host networking</li>
+        <li>OpenStack or Kubernetes</li>
+        <li>Need logical routing, ACLs, DHCP</li>
+        <li>Multi-tenant isolation needed</li>
+        <li>Automated network provisioning</li>
+      </ul>
+    </div>
+  </div>
+  <div class="key-point fragment">
+    For Red Hat products: <em>always OVN + OVS</em> - this is the supported and strategic direction
+  </div>
+  <aside class="notes">
+    In the Red Hat ecosystem, the answer is almost always OVN plus OVS. All current
+    Red Hat products - RHOSP, RHOSO, OpenShift - use OVN as the networking backend.
+    Standalone OVS is relevant when integrating with third-party SDN controllers or
+    for specialized NFV use cases. If you are building a new deployment on Red Hat
+    products, you will be using OVN.
+  </aside>
+</section>
+
+<!-- Slide 5.4: Migration Path -->
+<section>
+  <h2>Migration: ML2/OVS to ML2/OVN</h2>
+  <ul>
+    <li class="fragment"><strong>Why migrate?</strong> ML2/OVN is the strategic direction; ML2/OVS is maintenance-mode</li>
+    <li class="fragment"><strong>What changes?</strong> Neutron agent architecture, flow programming, DHCP, metadata</li>
+    <li class="fragment"><strong>What stays?</strong> Same OVS underneath, same tenant APIs</li>
+    <li class="fragment"><strong>Tooling:</strong> <span class="inline-code">neutron-ovn-migration-tool</span> for RHOSP</li>
+    <li class="fragment"><strong>Key considerations:</strong></li>
+  </ul>
+  <div class="two-col fragment" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Challenges</h3>
+      <ul>
+        <li>Downtime during migration</li>
+        <li>Feature parity gaps (some edge cases)</li>
+        <li>Operational tooling changes</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Benefits</h3>
+      <ul>
+        <li>Distributed routing (no network node bottleneck)</li>
+        <li>Native DHCP and metadata</li>
+        <li>Simpler architecture</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    The migration from ML2/OVS to ML2/OVN is a significant operational change even
+    though the underlying OVS switch remains. The key architectural change is that
+    OVN replaces the Neutron L2 agent, DHCP agent, and L3 agent with its own
+    distributed implementation. This simplifies the architecture but requires
+    operational teams to learn new tools and troubleshooting techniques. The
+    migration tool automates much of the process but planning is essential.
+  </aside>
+</section>
+
+<!-- Slide 5.5: Performance Considerations -->
+<section>
+  <h2>Performance Considerations</h2>
+  <table class="comparison-table" style="font-size: 0.7em;">
+    <tr><th>Metric</th><th>OVS (standalone)</th><th>OVN + OVS</th></tr>
+    <tr><td>Throughput</td><td>Near line-rate (kernel path)</td><td>Same (OVS data plane)</td></tr>
+    <tr><td>Latency (same node)</td><td>~microseconds</td><td>~microseconds (same path)</td></tr>
+    <tr><td>Latency (cross-node)</td><td>+tunnel overhead</td><td>+tunnel overhead (same)</td></tr>
+    <tr><td>Flow setup</td><td>Fast (direct programming)</td><td>Compilation delay possible</td></tr>
+    <tr><td>Scale limit</td><td>Per-host flow tables</td><td>DB replication + flow count</td></tr>
+    <tr><td>CPU overhead</td><td>Minimal</td><td>ovn-controller + DB sync</td></tr>
+  </table>
+  <div class="key-point fragment">
+    Data plane performance is identical - OVN only adds control plane overhead for
+    <em>flow compilation</em>, not packet processing
+  </div>
+  <aside class="notes">
+    A common misconception is that OVN adds performance overhead. In steady state,
+    the data plane performance is identical because packets still go through the same
+    OVS kernel datapath. OVN only adds overhead during flow compilation and updates -
+    when the network configuration changes, there is a brief period where ovn-northd
+    compiles new logical flows and ovn-controller translates them to OpenFlow. At
+    large scale, the SB DB replication and the number of flows can become bottlenecks,
+    but for most deployments this is not a concern.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 6: INTEGRATION WITH RED HAT PRODUCTS                  -->
+<!-- ============================================================ -->
+
+<!-- Slide 6.0: Section Title -->
+<section class="section-title">
+  <h1>Red Hat Product Integration</h1>
+  <h4>RHOSP, RHOSO, and OpenShift</h4>
+  <aside class="notes">
+    Now let us see how OVS and OVN are deployed in the three major Red Hat products
+    that depend on them. Understanding these deployment architectures is key for
+    effective troubleshooting in production.
+  </aside>
+</section>
+
+<!-- Slide 6.1: RHOSP ML2/OVS Architecture -->
+<section>
+  <h2>RHOSP: ML2/OVS Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Controller Nodes"
+      NAPI["Neutron API"]
+      ML2["ML2 Plugin"]
+      OVS_AGENT_C["neutron-openvswitch-agent"]
+      DHCP["neutron-dhcp-agent"]
+      L3["neutron-l3-agent"]
+    end
+
+    subgraph "Network Node"
+      OVS_AGENT_N["neutron-openvswitch-agent"]
+      DHCP_N["neutron-dhcp-agent"]
+      L3_N["neutron-l3-agent<br/>(qrouter namespace)"]
+      BR_INT_N["br-int"]
+      BR_EX_N["br-ex"]
+    end
+
+    subgraph "Compute Node"
+      OVS_AGENT_CO["neutron-openvswitch-agent"]
+      BR_INT_CO["br-int"]
+      VM["VM"]
+    end
+
+    NAPI --> ML2
+    ML2 -->|"RPC"| OVS_AGENT_N
+    ML2 -->|"RPC"| OVS_AGENT_CO
+    VM --> BR_INT_CO
+    BR_INT_CO -->|"VXLAN tunnel"| BR_INT_N
+
+    style NAPI fill:#A30000,stroke:#EE0000,color:#fff
+    style ML2 fill:#A30000,stroke:#EE0000,color:#fff
+    style L3_N fill:#005f5f,stroke:#009596,color:#fff
+    style DHCP_N fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <p class="diagram-label">Legacy architecture - L3 routing centralized on network node</p>
+  <aside class="notes">
+    In the ML2/OVS architecture, Neutron manages the network through several agents.
+    The openvswitch agent runs on every node and programs OVS flows. The DHCP agent
+    runs in a network namespace and serves DHCP responses. The L3 agent runs on the
+    network node in qrouter namespaces and handles routing, NAT, and floating IPs.
+    The key limitation is that all north-south traffic and cross-subnet traffic must
+    traverse the network node, which can become a bottleneck.
+  </aside>
+</section>
+
+<!-- Slide 6.2: RHOSP ML2/OVN Architecture -->
+<section>
+  <h2>RHOSP: ML2/OVN Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Controller Nodes"
+      NAPI2["Neutron API"]
+      ML2_OVN["ML2/OVN Plugin"]
+      NB2["OVN NB DB (RAFT)"]
+      SB2["OVN SB DB (RAFT)"]
+      NORTHD2["ovn-northd"]
+    end
+
+    subgraph "Compute Node"
+      CTRL2["ovn-controller"]
+      OVS2["OVS (br-int)"]
+      VM2["VM"]
+    end
+
+    subgraph "Networker/Gateway Node"
+      CTRL_GW["ovn-controller"]
+      OVS_GW["OVS (br-int + br-ex)"]
+    end
+
+    NAPI2 --> ML2_OVN
+    ML2_OVN --> NB2
+    NB2 --> NORTHD2
+    NORTHD2 --> SB2
+    SB2 --> CTRL2
+    SB2 --> CTRL_GW
+    CTRL2 --> OVS2
+    VM2 --> OVS2
+    CTRL_GW --> OVS_GW
+
+    style NAPI2 fill:#A30000,stroke:#EE0000,color:#fff
+    style ML2_OVN fill:#A30000,stroke:#EE0000,color:#fff
+    style NB2 fill:#005f5f,stroke:#009596,color:#fff
+    style SB2 fill:#005f5f,stroke:#009596,color:#fff
+    style NORTHD2 fill:#005f5f,stroke:#009596,color:#fff
+    style CTRL2 fill:#003d7a,stroke:#06c,color:#fff
+    style CTRL_GW fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <p class="diagram-label">Modern architecture - distributed routing, native DHCP</p>
+  <aside class="notes">
+    The ML2/OVN architecture is significantly simpler. Neutron talks directly to
+    the OVN NB DB. There are no Neutron agents on compute nodes - only ovn-controller.
+    DHCP is handled natively by OVN on each compute node. Routing is distributed -
+    east-west traffic stays local. Only SNAT/floating IP traffic goes to the gateway
+    nodes. The OVN databases run in a RAFT cluster across the controller nodes for HA.
+    This architecture scales better and eliminates the network node bottleneck.
+  </aside>
+</section>
+
+<!-- Slide 6.3: ML2/OVS vs ML2/OVN -->
+<section>
+  <h2>RHOSP: ML2/OVS vs ML2/OVN</h2>
+  <table class="comparison-table" style="font-size: 0.6em;">
+    <tr><th>Feature</th><th>ML2/OVS</th><th>ML2/OVN</th></tr>
+    <tr><td>Routing</td><td>Centralized (L3 agent)</td><td>Distributed (OVN)</td></tr>
+    <tr><td>DHCP</td><td>neutron-dhcp-agent (namespace)</td><td>Native OVN (per-node)</td></tr>
+    <tr><td>Metadata</td><td>neutron-metadata-agent</td><td>Native OVN metadata</td></tr>
+    <tr><td>Security Groups</td><td>iptables / OVS hybrid</td><td>OVN ACLs (conntrack)</td></tr>
+    <tr><td>Agents per Compute</td><td>neutron-ovs-agent</td><td>ovn-controller only</td></tr>
+    <tr><td>Network Node</td><td>Required (DHCP, L3, metadata)</td><td>Gateway only (SNAT)</td></tr>
+    <tr><td>HA Routers</td><td>VRRP (keepalived)</td><td>Gateway chassis groups</td></tr>
+    <tr><td>Status</td><td>Maintenance mode</td><td>Active development</td></tr>
+  </table>
+  <div class="key-point fragment">
+    ML2/OVN eliminates three Neutron agents and distributes their functionality into OVN
+  </div>
+  <aside class="notes">
+    The comparison makes it clear why the migration is happening. ML2/OVN simplifies
+    the architecture by moving DHCP, metadata, and routing into OVN itself. Fewer
+    agents means fewer things to manage and fewer failure points. Security groups
+    use OVN's native conntrack-based ACLs instead of the complex iptables/OVS hybrid.
+    The network node role is reduced to just gateway traffic. ML2/OVS is now in
+    maintenance mode with no new features being added.
+  </aside>
+</section>
+
+<!-- Slide 6.4: RHOSO Architecture -->
+<section>
+  <h2>RHOSO Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "OpenShift Cluster (Control Plane)"
+      OPERATOR["OpenStack Operators"]
+      NB3["OVN NB DB"]
+      SB3["OVN SB DB"]
+      NORTHD3["ovn-northd"]
+      NAPI3["Neutron API (Pod)"]
+    end
+
+    subgraph "Bare Metal (Data Plane)"
+      EDPM1["EDPM Node 1"]
+      C1B["ovn-controller"]
+      OVS1B["OVS"]
+      VM1B["VMs"]
+
+      EDPM2["EDPM Node 2"]
+      C2B["ovn-controller"]
+      OVS2B["OVS"]
+      VM2B["VMs"]
+    end
+
+    OPERATOR --> NAPI3
+    NAPI3 --> NB3
+    NB3 --> NORTHD3
+    NORTHD3 --> SB3
+    SB3 --> C1B
+    SB3 --> C2B
+    C1B --> OVS1B
+    C2B --> OVS2B
+    VM1B --> OVS1B
+    VM2B --> OVS2B
+
+    style OPERATOR fill:#A30000,stroke:#EE0000,color:#fff
+    style NAPI3 fill:#A30000,stroke:#EE0000,color:#fff
+    style NB3 fill:#005f5f,stroke:#009596,color:#fff
+    style SB3 fill:#005f5f,stroke:#009596,color:#fff
+    style NORTHD3 fill:#005f5f,stroke:#009596,color:#fff
+    style C1B fill:#003d7a,stroke:#06c,color:#fff
+    style C2B fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <aside class="notes">
+    RHOSO - Red Hat OpenStack Services on OpenShift - represents the next generation
+    architecture. The OpenStack control plane runs as pods on an OpenShift cluster,
+    managed by operators. The OVN databases and ovn-northd run in the OpenShift cluster.
+    The data plane runs on bare metal EDPM (External Data Plane Management) nodes,
+    where ovn-controller and OVS handle the actual VM traffic. This separation allows
+    independent scaling and lifecycle management of control and data planes.
+  </aside>
+</section>
+
+<!-- Slide 6.5: RHOSO - OVN Details -->
+<section>
+  <h2>RHOSO: OVN Details</h2>
+  <div class="two-col" style="font-size: 0.85em;">
+    <div class="box box-red">
+      <h3>Control Plane (on OCP)</h3>
+      <ul>
+        <li>OVN NB/SB DBs as StatefulSets</li>
+        <li>ovn-northd as Deployment</li>
+        <li>MetalLB for DB endpoint exposure</li>
+        <li>Managed by openstack-operator</li>
+        <li>Separate from OCP's own OVN</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Data Plane (EDPM nodes)</h3>
+      <ul>
+        <li>ovn-controller connects to OCP-hosted SB DB</li>
+        <li>OVS with br-int, br-ex</li>
+        <li>Geneve tunnels between EDPM nodes</li>
+        <li>Managed by openstack-edpm-ansible</li>
+        <li>Can be separate from OCP worker nodes</li>
+      </ul>
+    </div>
+  </div>
+  <div class="key-point fragment" style="font-size: 0.8em;">
+    Important: RHOSO has <em>two OVN instances</em> - one for OpenShift (OVN-K8s) and one for OpenStack (ML2/OVN)
+  </div>
+  <aside class="notes">
+    A critical point in RHOSO is that there are two separate OVN deployments. The
+    OpenShift cluster has its own OVN-Kubernetes for pod networking. The OpenStack
+    services running on OpenShift use a separate OVN instance for VM networking on
+    the EDPM nodes. These are independent - different databases, different controllers.
+    When troubleshooting, make sure you are looking at the right OVN instance. The
+    OpenStack OVN databases are exposed via MetalLB so that the EDPM nodes can
+    connect to them.
+  </aside>
+</section>
+
+<!-- Slide 6.6: OCP OVN-Kubernetes Architecture -->
+<section>
+  <h2>OCP: OVN-Kubernetes Architecture</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Master/Control Plane Nodes"
+      OVNK_MASTER["ovnkube-master<br/>(nbdb, sbdb, northd)"]
+    end
+
+    subgraph "Worker Node 1"
+      OVNK_NODE1["ovnkube-node<br/>(ovn-controller)"]
+      OVS_W1["OVS (br-int)"]
+      POD1["Pod A"]
+      POD2["Pod B"]
+    end
+
+    subgraph "Worker Node 2"
+      OVNK_NODE2["ovnkube-node<br/>(ovn-controller)"]
+      OVS_W2["OVS (br-int)"]
+      POD3["Pod C"]
+      POD4["Pod D"]
+    end
+
+    OVNK_MASTER -->|"OVSDB"| OVNK_NODE1
+    OVNK_MASTER -->|"OVSDB"| OVNK_NODE2
+    POD1 --> OVS_W1
+    POD2 --> OVS_W1
+    POD3 --> OVS_W2
+    POD4 --> OVS_W2
+    OVNK_NODE1 --> OVS_W1
+    OVNK_NODE2 --> OVS_W2
+
+    style OVNK_MASTER fill:#A30000,stroke:#EE0000,color:#fff
+    style OVNK_NODE1 fill:#005f5f,stroke:#009596,color:#fff
+    style OVNK_NODE2 fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <aside class="notes">
+    In OpenShift, OVN-Kubernetes is the default CNI plugin. The ovnkube-master
+    component runs on control plane nodes and includes the NB DB, SB DB, and
+    ovn-northd. On each worker node, ovnkube-node runs ovn-controller and
+    manages the local OVS instance. Pods connect to OVS br-int through veth pairs.
+    The architecture is similar to OVN in OpenStack but adapted for Kubernetes
+    concepts like services, network policies, and pod networking.
+  </aside>
+</section>
+
+<!-- Slide 6.7: OCP Network Topology -->
+<section>
+  <h2>OCP: Network Topology</h2>
+  <pre class="mermaid">
+  graph TB
+    subgraph "Cluster Router"
+      CR["ovn_cluster_router<br/>(distributed)"]
+    end
+
+    subgraph "Join Switch"
+      JS["join<br/>(connects router tiers)"]
+    end
+
+    subgraph "Gateway Routers"
+      GR1["GR_node1"]
+      GR2["GR_node2"]
+    end
+
+    subgraph "Node Switches"
+      NS1["node1<br/>10.128.0.0/23"]
+      NS2["node2<br/>10.128.2.0/23"]
+    end
+
+    NS1 -->|"router port"| CR
+    NS2 -->|"router port"| CR
+    CR --> JS
+    JS --> GR1
+    JS --> GR2
+    GR1 --> EXT1["External<br/>Network"]
+    GR2 --> EXT2["External<br/>Network"]
+
+    style CR fill:#A30000,stroke:#EE0000,color:#fff
+    style JS fill:#005f5f,stroke:#009596,color:#fff
+    style GR1 fill:#003d7a,stroke:#06c,color:#fff
+    style GR2 fill:#003d7a,stroke:#06c,color:#fff
+    style NS1 fill:#A30000,stroke:#EE0000,color:#fff
+    style NS2 fill:#A30000,stroke:#EE0000,color:#fff
+  </pre>
+  <aside class="notes">
+    OVN-Kubernetes creates a specific logical topology. Each node gets a logical
+    switch with a /23 subnet for its pods. All node switches connect to the
+    ovn_cluster_router, which is distributed across all nodes for east-west routing.
+    The join switch connects the cluster router to per-node gateway routers (GR).
+    Gateway routers handle north-south traffic - SNAT for pod egress and DNAT for
+    NodePort services. This topology enables distributed east-west routing while
+    maintaining controlled north-south paths.
+  </aside>
+</section>
+
+<!-- Slide 6.8: OCP Packet Flow -->
+<section>
+  <h2>OCP: Pod-to-Pod Packet Flow</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Node 1"
+      PA["Pod A<br/>10.128.0.5"] --> OVS_1["OVS br-int"]
+    end
+    subgraph "Logical"
+      OVS_1 --> LS1["Node Switch 1"]
+      LS1 --> CLR["Cluster Router"]
+      CLR --> LS2["Node Switch 2"]
+    end
+    subgraph "Node 2"
+      LS2 --> OVS_2["OVS br-int"]
+      OVS_2 --> PB["Pod B<br/>10.128.2.3"]
+    end
+
+    OVS_1 ---|"Geneve Tunnel"| OVS_2
+
+    style PA fill:#A30000,stroke:#EE0000,color:#fff
+    style PB fill:#003d7a,stroke:#06c,color:#fff
+    style CLR fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <ul style="font-size: 0.75em;">
+    <li class="fragment">Pod A sends to Pod B (different node, different subnet)</li>
+    <li class="fragment">OVS matches on destination IP, performs distributed routing locally</li>
+    <li class="fragment">Packet encapsulated in Geneve, sent to Node 2 via tunnel</li>
+    <li class="fragment">Node 2 decapsulates and delivers to Pod B</li>
+  </ul>
+  <aside class="notes">
+    Let us trace a pod-to-pod packet. Pod A on Node 1 sends a packet to Pod B on
+    Node 2. The packet enters OVS br-int on Node 1. Because routing is distributed,
+    the routing decision happens locally on Node 1 - no need to go to a central
+    router. OVS modifies the MAC addresses (decrements TTL, etc.) and encapsulates
+    the packet in a Geneve tunnel to Node 2. On Node 2, the packet is decapsulated
+    and delivered to Pod B. The logical topology shows it going through switches and
+    a router, but physically it is a direct tunnel between the two nodes.
+  </aside>
+</section>
+
+<!-- Slide 6.9: OCP Key Features -->
+<section>
+  <h2>OCP: OVN-Kubernetes Features</h2>
+  <div class="three-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Core Networking</h3>
+      <ul>
+        <li>Pod networking (CNI)</li>
+        <li>Service load balancing</li>
+        <li>NetworkPolicy</li>
+        <li>DNS (CoreDNS)</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Advanced Features</h3>
+      <ul>
+        <li>EgressIP</li>
+        <li>EgressFirewall</li>
+        <li>EgressQoS</li>
+        <li>Multi-homing (secondary networks)</li>
+      </ul>
+    </div>
+    <div class="box box-blue">
+      <h3>Operations</h3>
+      <ul>
+        <li>IPsec encryption</li>
+        <li>Hybrid overlay (Windows)</li>
+        <li>Hardware offload</li>
+        <li>Observability (flow export)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    OVN-Kubernetes provides a rich feature set. Core networking includes pod
+    connectivity, Kubernetes service load balancing via OVN load balancers, and
+    NetworkPolicy enforcement via OVN ACLs. Advanced features include EgressIP
+    for assigning specific exit IPs to namespaces, EgressFirewall for controlling
+    which external destinations pods can reach, and multi-homing for pods that
+    need multiple network interfaces. Operations features include IPsec tunnel
+    encryption and hardware offload for high-performance scenarios.
+  </aside>
+</section>
+
+<!-- Slide 6.10: Cross-Product Comparison -->
+<section>
+  <h2>Cross-Product Comparison</h2>
+  <table class="comparison-table" style="font-size: 0.6em;">
+    <tr><th>Aspect</th><th>RHOSP (ML2/OVN)</th><th>RHOSO</th><th>OCP (OVN-K8s)</th></tr>
+    <tr><td>Workloads</td><td>VMs</td><td>VMs</td><td>Containers (Pods)</td></tr>
+    <tr><td>Control Plane</td><td>Bare metal/VMs</td><td>OCP pods</td><td>OCP pods</td></tr>
+    <tr><td>Data Plane</td><td>Bare metal</td><td>EDPM bare metal</td><td>OCP worker nodes</td></tr>
+    <tr><td>OVN DB Location</td><td>Controller nodes</td><td>OCP cluster (pods)</td><td>Master nodes</td></tr>
+    <tr><td>Tunnel Type</td><td>Geneve</td><td>Geneve</td><td>Geneve</td></tr>
+    <tr><td>Security Model</td><td>Security Groups</td><td>Security Groups</td><td>NetworkPolicy</td></tr>
+    <tr><td>CMS Integration</td><td>Neutron ML2</td><td>Neutron ML2</td><td>ovnkube-master</td></tr>
+  </table>
+  <aside class="notes">
+    Despite different products and workload types, the underlying OVN architecture
+    is remarkably consistent. All three use Geneve tunnels, all three have the same
+    OVN component stack, and all three provide distributed routing. The differences
+    are in how the CMS integrates with OVN and where the control plane components
+    run. This consistency means that OVN troubleshooting skills transfer across
+    products - once you understand OVN, you can troubleshoot networking in any of
+    these platforms.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 7: TRAFFIC FLOWS                                      -->
+<!-- ============================================================ -->
+
+<!-- Slide 7.0: Section Title -->
+<section class="section-title">
+  <h1>Traffic Flows</h1>
+  <h4>Understanding how packets traverse the network</h4>
+  <aside class="notes">
+    Now let us trace the actual packet flows through the network for different
+    scenarios. Understanding these flows is essential for troubleshooting because
+    when connectivity breaks, you need to know which path the packet should take
+    and where it might be getting dropped.
+  </aside>
+</section>
+
+<!-- Slide 7.1: East-West Same Node -->
+<section>
+  <h2>East-West: Same Node</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Compute Node"
+      VM1["VM1<br/>10.0.0.11"] -->|"1. Packet out"| BR["OVS br-int"]
+      BR -->|"2. Ingress pipeline"| LS["Logical Switch<br/>Processing"]
+      LS -->|"3. MAC lookup"| BR
+      BR -->|"4. Egress pipeline"| VM2["VM2<br/>10.0.0.12"]
+    end
+
+    style VM1 fill:#A30000,stroke:#EE0000,color:#fff
+    style VM2 fill:#003d7a,stroke:#06c,color:#fff
+    style BR fill:#005f5f,stroke:#009596,color:#fff
+    style LS fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <ol style="font-size: 0.8em;">
+    <li class="fragment">VM1 sends packet - enters OVS br-int via its port</li>
+    <li class="fragment">Ingress pipeline: port security, ACL check, conntrack</li>
+    <li class="fragment">L2 lookup: destination MAC found on local port</li>
+    <li class="fragment">Egress pipeline: ACL check, port security, output to VM2</li>
+  </ol>
+  <div class="key-point fragment" style="font-size: 0.8em;">
+    Same-node traffic never leaves br-int - purely local OVS processing
+  </div>
+  <aside class="notes">
+    The simplest flow. Both VMs are on the same compute node and same logical switch.
+    The packet enters OVS, goes through the ingress pipeline (port security, ACLs),
+    gets a MAC lookup that resolves to a local port, goes through the egress pipeline
+    (more ACLs, port security), and is delivered directly to the destination VM.
+    No tunneling, no routing, no leaving the host. This is the fastest path.
+  </aside>
+</section>
+
+<!-- Slide 7.2: East-West Different Nodes -->
+<section>
+  <h2>East-West: Different Nodes</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Compute Node 1"
+      VM1B["VM1<br/>10.0.0.11"] --> BR1["OVS br-int"]
+    end
+
+    BR1 -->|"Geneve Tunnel<br/>(VNI + metadata)"| BR2
+
+    subgraph "Compute Node 2"
+      BR2["OVS br-int"] --> VM2B["VM2<br/>10.0.0.12"]
+    end
+
+    style VM1B fill:#A30000,stroke:#EE0000,color:#fff
+    style VM2B fill:#003d7a,stroke:#06c,color:#fff
+    style BR1 fill:#005f5f,stroke:#009596,color:#fff
+    style BR2 fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <ol style="font-size: 0.8em;">
+    <li class="fragment">VM1 sends packet - enters OVS br-int on Node 1</li>
+    <li class="fragment">Ingress pipeline runs on Node 1 (port security, ACLs)</li>
+    <li class="fragment">L2 lookup: destination MAC on remote chassis</li>
+    <li class="fragment">Encapsulate in Geneve with logical metadata (datapath, port IDs)</li>
+    <li class="fragment">Node 2 decapsulates, runs egress pipeline, delivers to VM2</li>
+  </ol>
+  <aside class="notes">
+    When VMs are on different nodes, the packet must be tunneled. The key difference
+    is at the L2 lookup stage - the destination MAC is found to be on a remote chassis.
+    OVN knows this from the port bindings in the SB DB. The packet is encapsulated
+    in Geneve with metadata including the logical datapath and logical output port.
+    On the receiving node, ovn-controller uses this metadata to continue the pipeline
+    from the egress stage. This split processing is a fundamental OVN design pattern.
+  </aside>
+</section>
+
+<!-- Slide 7.3: East-West Cross-Subnet -->
+<section>
+  <h2>East-West: Cross-Subnet (Distributed Routing)</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Compute Node 1"
+      VM1C["VM1<br/>10.0.0.11<br/>net1"] --> BR1C["OVS br-int<br/>(route locally)"]
+    end
+
+    BR1C -->|"Geneve Tunnel<br/>(routed packet)"| BR2C
+
+    subgraph "Compute Node 2"
+      BR2C["OVS br-int"] --> VM2C["VM2<br/>10.0.1.22<br/>net2"]
+    end
+
+    style VM1C fill:#A30000,stroke:#EE0000,color:#fff
+    style VM2C fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <ul style="font-size: 0.8em;">
+    <li class="fragment">VM1 (net1) sends to VM2 (net2) - different subnets</li>
+    <li class="fragment">VM1 sends to its gateway MAC (logical router)</li>
+    <li class="fragment">OVS on Node 1 performs <strong>distributed routing</strong> locally:
+      <ul style="font-size: 0.9em;">
+        <li>Decrements TTL</li>
+        <li>Rewrites source MAC to router port MAC</li>
+        <li>Rewrites destination MAC to VM2 MAC</li>
+      </ul>
+    </li>
+    <li class="fragment">Tunnels routed packet to Node 2 for delivery</li>
+  </ul>
+  <aside class="notes">
+    This is where distributed routing shines. VM1 on net1 sends to VM2 on net2.
+    With centralized routing (ML2/OVS), this packet would have to go to the network
+    node for routing, then back to the compute node. With OVN distributed routing,
+    the routing happens locally on Node 1. OVS rewrites the MAC headers as if a
+    physical router processed the packet, then tunnels it directly to Node 2.
+    No extra hops, no network node bottleneck.
+  </aside>
+</section>
+
+<!-- Slide 7.4: North-South with SNAT -->
+<section>
+  <h2>North-South: SNAT (Outbound)</h2>
+  <pre class="mermaid">
+  graph LR
+    subgraph "Compute Node"
+      VM_NS["VM<br/>10.0.0.11"] --> BR_NS["OVS br-int"]
+    end
+
+    BR_NS -->|"Geneve"| GW_BR
+
+    subgraph "Gateway Node"
+      GW_BR["OVS br-int"] -->|"SNAT<br/>10.0.0.11 -> 172.16.0.1"| GW_EX["OVS br-ex"]
+      GW_EX --> EXT_NET["External<br/>Network"]
+    end
+
+    style VM_NS fill:#A30000,stroke:#EE0000,color:#fff
+    style GW_BR fill:#005f5f,stroke:#009596,color:#fff
+    style GW_EX fill:#003d7a,stroke:#06c,color:#fff
+    style EXT_NET fill:#333,stroke:#666,color:#fff
+  </pre>
+  <ol style="font-size: 0.8em;">
+    <li class="fragment">VM sends to external destination</li>
+    <li class="fragment">Distributed routing on compute node determines: needs SNAT</li>
+    <li class="fragment">Packet redirected to gateway chassis via Geneve tunnel</li>
+    <li class="fragment">Gateway performs SNAT (translates source to external IP)</li>
+    <li class="fragment">Packet exits via br-ex to external network</li>
+  </ol>
+  <aside class="notes">
+    North-south traffic with SNAT requires a gateway chassis because SNAT needs a
+    consistent egress point. The compute node does the routing lookup and determines
+    the packet needs SNAT. It redirects the packet via Geneve tunnel to the
+    designated gateway chassis. The gateway node performs the SNAT, translating the
+    VM's private IP to the external IP, and sends the packet out through br-ex.
+    Return traffic follows the reverse path - the gateway does the reverse NAT and
+    tunnels the packet back to the compute node.
+  </aside>
+</section>
+
+<!-- Slide 7.5: North-South with DNAT -->
+<section>
+  <h2>North-South: DNAT / Floating IP (Inbound)</h2>
+  <pre class="mermaid">
+  graph RL
+    EXT["External<br/>Client"] --> GW_EX2["OVS br-ex"]
+
+    subgraph "Gateway Node"
+      GW_EX2 -->|"DNAT<br/>172.16.0.10 -> 10.0.0.11"| GW_BR2["OVS br-int"]
+    end
+
+    GW_BR2 -->|"Geneve"| COMP_BR
+
+    subgraph "Compute Node"
+      COMP_BR["OVS br-int"] --> VM_FIP["VM<br/>10.0.0.11<br/>FIP: 172.16.0.10"]
+    end
+
+    style EXT fill:#333,stroke:#666,color:#fff
+    style GW_EX2 fill:#003d7a,stroke:#06c,color:#fff
+    style GW_BR2 fill:#005f5f,stroke:#009596,color:#fff
+    style VM_FIP fill:#A30000,stroke:#EE0000,color:#fff
+  </pre>
+  <ol style="font-size: 0.8em;">
+    <li class="fragment">External client sends to floating IP 172.16.0.10</li>
+    <li class="fragment">Packet arrives at gateway node via br-ex</li>
+    <li class="fragment">DNAT translates destination to VM's internal IP 10.0.0.11</li>
+    <li class="fragment">Gateway tunnels the packet to the compute node hosting the VM</li>
+    <li class="fragment">Compute node delivers to VM</li>
+  </ol>
+  <aside class="notes">
+    Floating IPs work through DNAT on the gateway node. An external client sends to
+    the floating IP. The packet arrives at the gateway node's br-ex. OVS performs
+    DNAT, translating the destination to the VM's private IP, and also SNAT on the
+    return path. The translated packet is tunneled to the compute node for delivery.
+    When troubleshooting floating IP issues, check: Is the floating IP correctly
+    configured in OVN NB DB? Is the DNAT rule present in the gateway OVS flows?
+    Is the gateway chassis reachable?
+  </aside>
+</section>
+
+<!-- Slide 7.6: Service Load Balancing -->
+<section>
+  <h2>Service Load Balancing (K8s)</h2>
+  <pre class="mermaid">
+  graph LR
+    CLIENT["Client Pod<br/>10.128.0.5"] --> OVS_LB["OVS br-int<br/>(LB DNAT)"]
+    OVS_LB -->|"10.128.2.3"| BE1["Backend Pod 1"]
+    OVS_LB -->|"10.128.0.8"| BE2["Backend Pod 2"]
+    OVS_LB -->|"10.128.4.6"| BE3["Backend Pod 3"]
+
+    style CLIENT fill:#A30000,stroke:#EE0000,color:#fff
+    style OVS_LB fill:#005f5f,stroke:#009596,color:#fff
+    style BE1 fill:#003d7a,stroke:#06c,color:#fff
+    style BE2 fill:#003d7a,stroke:#06c,color:#fff
+    style BE3 fill:#003d7a,stroke:#06c,color:#fff
+  </pre>
+  <ul style="font-size: 0.8em;">
+    <li class="fragment">K8s Service ClusterIP: 10.96.0.100:80</li>
+    <li class="fragment">Client sends to ClusterIP - OVN LB intercepts</li>
+    <li class="fragment">DNAT selects a backend pod (round-robin or random)</li>
+    <li class="fragment">Connection tracking ensures session affinity</li>
+    <li class="fragment">Return traffic is reverse-NATed transparently</li>
+  </ul>
+  <aside class="notes">
+    In OpenShift, Kubernetes Services are implemented by OVN load balancers. When
+    a pod sends traffic to a ClusterIP, OVS on the local node intercepts it and
+    performs DNAT to select one of the backend pods. Conntrack ensures that all
+    packets in the same connection go to the same backend. This is done entirely
+    in the OVS data plane - no kube-proxy needed. For NodePort and LoadBalancer
+    services, the gateway router handles external traffic and distributes it to
+    backends.
+  </aside>
+</section>
+
+<!-- Slide 7.7: Tracing Tools Comparison -->
+<section>
+  <h2>Tracing Tools Comparison</h2>
+  <table class="comparison-table" style="font-size: 0.65em;">
+    <tr><th>Tool</th><th>Level</th><th>Shows</th><th>When to Use</th></tr>
+    <tr><td><code>ovn-trace</code></td><td>Logical</td><td>OVN logical flow decisions</td><td>Verify OVN intent and ACLs</td></tr>
+    <tr><td><code>ovs-appctl ofproto/trace</code></td><td>OpenFlow</td><td>OVS OpenFlow pipeline</td><td>Verify actual flow programming</td></tr>
+    <tr><td><code>ovn-detrace</code></td><td>Both</td><td>Maps OpenFlow cookies to logical flows</td><td>Correlate OF flows with OVN logic</td></tr>
+    <tr><td><code>ovs-dpctl dump-flows</code></td><td>Datapath</td><td>Kernel cached flows</td><td>See what kernel actually processes</td></tr>
+    <tr><td><code>tcpdump</code></td><td>Wire</td><td>Actual packets on interface</td><td>Verify packets arrive/leave</td></tr>
+  </table>
+  <div class="key-point fragment" style="font-size: 0.8em;">
+    Troubleshooting strategy: start with <em>ovn-trace</em> (logical) &rarr; <em>ofproto/trace</em> (OpenFlow) &rarr; <em>tcpdump</em> (wire)
+  </div>
+  <aside class="notes">
+    Each tracing tool operates at a different level. Start at the top with ovn-trace
+    to verify that OVN's logical pipeline produces the expected result. If that looks
+    correct, move to ofproto/trace to verify the OpenFlow translation is correct.
+    If that also looks correct, use tcpdump to check whether packets are actually
+    arriving at the expected interfaces. ovn-detrace is useful for mapping between
+    levels - it annotates OpenFlow cookies with the corresponding OVN logical flow
+    information.
+  </aside>
+</section>
+
+<!-- Slide 7.8: End-to-End Trace Example -->
+<section>
+  <h2>End-to-End Trace Example</h2>
+  <pre><code class="language-bash"># Step 1: Logical trace (OVN level)
+ovn-trace --detailed ls1 \
+  'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && \
+   eth.dst==fa:16:3e:dd:ee:ff && ip4.src==10.0.0.11 && \
+   ip4.dst==10.0.0.12'
+
+# Step 2: OpenFlow trace (OVS level)
+ovs-appctl ofproto/trace br-int \
+  in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,\
+  dl_type=0x0800,nw_src=10.0.0.11,nw_dst=10.0.0.12
+
+# Step 3: Check actual traffic (wire level)
+tcpdump -i tap-port1 -nn icmp
+tcpdump -i genev_sys_6081 -nn  # check tunnel traffic</code></pre>
+  <aside class="notes">
+    This is the three-step trace methodology in practice. First, ovn-trace confirms
+    that OVN's logical pipeline would allow and correctly route the packet. Second,
+    ofproto/trace confirms that the OpenFlow rules on the local OVS actually implement
+    the expected behavior. Third, tcpdump on the relevant interfaces confirms that
+    packets are actually flowing. If step 1 shows the right result but step 2 does
+    not, the problem is in ovn-controller's translation. If step 2 is correct but
+    step 3 shows no traffic, the problem is upstream of OVS.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 8: MANAGEMENT & TOOLING                               -->
+<!-- ============================================================ -->
+
+<!-- Slide 8.0: Section Title -->
+<section class="section-title">
+  <h1>Management &amp; Tooling</h1>
+  <h4>Your daily toolkit</h4>
+  <aside class="notes">
+    Let us now organize all the tools we have seen and add a few more. This
+    section is designed to be a practical reference you can come back to.
+  </aside>
+</section>
+
+<!-- Slide 8.1: OVS Tools Overview -->
+<section>
+  <h2>OVS Tools Overview</h2>
+  <div class="two-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Configuration Tools</h3>
+      <ul>
+        <li><strong>ovs-vsctl</strong> - bridge/port/interface management</li>
+        <li><strong>ovs-ofctl</strong> - OpenFlow flow management</li>
+        <li><strong>ovsdb-client</strong> - raw database access</li>
+        <li><strong>ovsdb-tool</strong> - database maintenance</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Runtime / Debug Tools</h3>
+      <ul>
+        <li><strong>ovs-appctl</strong> - runtime commands to daemons</li>
+        <li><strong>ovs-dpctl</strong> - datapath management</li>
+        <li><strong>ovs-pcap</strong> - packet capture parsing</li>
+        <li><strong>ovs-tcpdump</strong> - OVS-aware packet capture</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    OVS provides a comprehensive set of CLI tools. The configuration tools work with
+    the OVSDB and OpenFlow protocols. The runtime tools interact with running daemons.
+    ovs-appctl is particularly powerful because it can send commands to ovs-vswitchd
+    at runtime for debugging. ovs-tcpdump is handy because it can capture traffic on
+    OVS internal ports that are not visible as kernel interfaces.
+  </aside>
+</section>
+
+<!-- Slide 8.2: OVN Tools Overview -->
+<section>
+  <h2>OVN Tools Overview</h2>
+  <div class="two-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>NB DB Tools</h3>
+      <ul>
+        <li><strong>ovn-nbctl</strong> - logical topology management</li>
+        <li><strong>ovn-nb ovsdb-client</strong> - raw NB DB access</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>SB DB Tools</h3>
+      <ul>
+        <li><strong>ovn-sbctl</strong> - chassis, bindings, logical flows</li>
+        <li><strong>ovn-sb ovsdb-client</strong> - raw SB DB access</li>
+      </ul>
+    </div>
+  </div>
+  <div class="two-col" style="font-size: 0.8em; margin-top: 0.5em;">
+    <div class="box box-blue">
+      <h3>Tracing &amp; Debug</h3>
+      <ul>
+        <li><strong>ovn-trace</strong> - logical flow tracing</li>
+        <li><strong>ovn-detrace</strong> - OF-to-logical mapping</li>
+        <li><strong>ovn-appctl</strong> - runtime debug commands</li>
+      </ul>
+    </div>
+    <div class="box" style="border-left: 4px solid #666;">
+      <h3>Product-Specific</h3>
+      <ul>
+        <li><strong>oc debug</strong> - OCP node access</li>
+        <li><strong>oc rsh</strong> - enter OVN pods</li>
+        <li><strong>sosreport</strong> - collect OVS/OVN state</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    OVN tools mirror the OVS pattern. ovn-nbctl and ovn-sbctl are the primary
+    interfaces. ovn-trace and ovn-detrace are the debugging workhorses. In product
+    contexts, you often need to use product-specific tools to access OVN. In OpenShift,
+    use oc debug to get a shell on a node, or oc rsh to enter the OVN pods. In RHOSP,
+    you might need to enter containers or use podman exec. sosreport plugins collect
+    all OVS and OVN state for offline analysis.
+  </aside>
+</section>
+
+<!-- Slide 8.3: The Troubleshooting Toolkit -->
+<section>
+  <h2>The Troubleshooting Toolkit</h2>
+  <pre class="mermaid">
+  graph TB
+    PROBLEM["Problem<br/>Reported"] --> VERIFY["Verify Connectivity<br/>(ping, curl)"]
+    VERIFY --> LOGICAL["Check Logical Config<br/>(ovn-nbctl, ovn-sbctl)"]
+    LOGICAL --> TRACE["Trace Packet Path<br/>(ovn-trace, ofproto/trace)"]
+    TRACE --> FLOWS["Inspect Flows<br/>(dump-flows, dpctl)"]
+    FLOWS --> WIRE["Check Wire<br/>(tcpdump, pcap)"]
+    WIRE --> RESOLVE["Root Cause &<br/>Resolution"]
+
+    style PROBLEM fill:#A30000,stroke:#EE0000,color:#fff
+    style VERIFY fill:#A30000,stroke:#EE0000,color:#fff
+    style LOGICAL fill:#005f5f,stroke:#009596,color:#fff
+    style TRACE fill:#005f5f,stroke:#009596,color:#fff
+    style FLOWS fill:#003d7a,stroke:#06c,color:#fff
+    style WIRE fill:#003d7a,stroke:#06c,color:#fff
+    style RESOLVE fill:#005f5f,stroke:#009596,color:#fff
+  </pre>
+  <aside class="notes">
+    This is the structured troubleshooting approach. Start by verifying the problem -
+    can you reproduce it? Then check the logical configuration to make sure the
+    intent is correct. Trace the packet path through the logical and OpenFlow
+    pipelines. Inspect the actual flow entries and counters. Finally, use packet
+    capture to verify what is on the wire. Each step narrows down where the problem
+    lies. Do not skip steps - many issues are misconfigurations that show up at the
+    logical level.
+  </aside>
+</section>
+
+<!-- Slide 8.4: Cheat Sheet -->
+<section>
+  <h2>Commands Cheat Sheet</h2>
+  <div style="font-size: 0.55em;">
+    <table class="comparison-table cheat-sheet">
+      <tr><th colspan="2">Quick Diagnostics</th></tr>
+      <tr><td>ovs-vsctl show</td><td>Full OVS config overview</td></tr>
+      <tr><td>ovn-nbctl show</td><td>Full logical topology</td></tr>
+      <tr><td>ovn-sbctl show</td><td>Chassis and port bindings</td></tr>
+      <tr><td>ovn-appctl -t ovn-controller connection-status</td><td>Controller connectivity</td></tr>
+      <tr><th colspan="2">Flow Analysis</th></tr>
+      <tr><td>ovs-ofctl dump-flows br-int | wc -l</td><td>Flow count (health check)</td></tr>
+      <tr><td>ovs-ofctl dump-flows br-int table=0</td><td>Flows in specific table</td></tr>
+      <tr><td>ovn-sbctl lflow-list &lt;datapath&gt;</td><td>Logical flows for a switch/router</td></tr>
+      <tr><th colspan="2">Tracing</th></tr>
+      <tr><td>ovn-trace &lt;switch&gt; '&lt;match&gt;'</td><td>Logical pipeline trace</td></tr>
+      <tr><td>ovs-appctl ofproto/trace br-int &lt;flow&gt;</td><td>OpenFlow pipeline trace</td></tr>
+      <tr><td>tcpdump -i &lt;iface&gt; -nn</td><td>Wire-level packet capture</td></tr>
+    </table>
+  </div>
+  <aside class="notes">
+    Keep this cheat sheet handy. These are the commands you will use most frequently.
+    The quick diagnostics give you a fast health check. The flow analysis commands
+    help you understand what is programmed. The tracing commands let you simulate
+    and follow packet paths. In production environments, running these commands
+    inside containers may require special access - in OpenShift, use oc debug node
+    and run crictl or nsenter to access OVS tooling.
+  </aside>
+</section>
+
+<!-- Slide 8.5: Monitoring and Logging -->
+<section>
+  <h2>Monitoring and Logging</h2>
+  <div class="two-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Key Logs</h3>
+      <ul>
+        <li><code>/var/log/openvswitch/ovs-vswitchd.log</code></li>
+        <li><code>/var/log/ovn/ovn-controller.log</code></li>
+        <li><code>/var/log/ovn/ovn-northd.log</code></li>
+        <li><code>/var/log/ovn/ovsdb-server-nb.log</code></li>
+        <li><code>/var/log/ovn/ovsdb-server-sb.log</code></li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Key Metrics</h3>
+      <ul>
+        <li>Flow count per bridge</li>
+        <li>Datapath cache hit/miss ratio</li>
+        <li>ovn-controller recompute time</li>
+        <li>DB cluster status (RAFT)</li>
+        <li>Tunnel connectivity (BFD)</li>
+      </ul>
+    </div>
+  </div>
+  <pre class="fragment"><code class="language-bash"># Increase log verbosity temporarily
+ovs-appctl vlog/set dbg
+ovn-appctl -t ovn-controller vlog/set dbg
+
+# Check DB cluster status
+ovs-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound</code></pre>
+  <aside class="notes">
+    Logging is essential for troubleshooting issues that are intermittent or time-
+    dependent. OVS and OVN logs can be temporarily increased in verbosity without
+    restarting any services. The RAFT cluster status command is critical for
+    diagnosing database availability issues - it shows you the cluster leader,
+    followers, and any disconnected members. BFD status tells you about tunnel
+    health between chassis.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 9: TROUBLESHOOTING                                    -->
+<!-- ============================================================ -->
+
+<!-- Slide 9.0: Section Title -->
+<section class="section-title">
+  <h1>Troubleshooting</h1>
+  <h4>Real-world scenarios and solutions</h4>
+  <aside class="notes">
+    Let us put everything together with real-world troubleshooting scenarios.
+    These are based on common support cases and production issues.
+  </aside>
+</section>
+
+<!-- Slide 9.1: Troubleshooting Methodology -->
+<section>
+  <h2>Troubleshooting Methodology</h2>
+  <ol>
+    <li class="fragment"><strong>Define the problem</strong> - what exactly is broken? Scope?</li>
+    <li class="fragment"><strong>Check the obvious</strong> - services running? DB connectivity?</li>
+    <li class="fragment"><strong>Verify logical config</strong> - is the intent correct in NB DB?</li>
+    <li class="fragment"><strong>Check bindings</strong> - are ports bound to the right chassis?</li>
+    <li class="fragment"><strong>Trace the path</strong> - where does the packet get dropped?</li>
+    <li class="fragment"><strong>Check physical</strong> - tunnels up? MTU correct? Firewall?</li>
+    <li class="fragment"><strong>Correlate logs</strong> - errors in OVS/OVN/CMS logs?</li>
+  </ol>
+  <aside class="notes">
+    Always follow a structured approach. Random debugging wastes time. Start by
+    clearly defining the problem - is it all traffic or specific flows? All VMs or
+    one VM? Then check the basics - are services running, can ovn-controller reach
+    the SB DB? Then work through the stack methodically. Many issues are
+    misconfigurations in the NB DB or incorrect port bindings. Others are physical
+    issues like MTU mismatches on the underlay network that cause tunnel packet
+    fragmentation.
+  </aside>
+</section>
+
+<!-- Slide 9.2: Scenario 1 - VM Cannot Reach External Network -->
+<section>
+  <h2>Scenario 1: VM Cannot Reach External Network</h2>
+  <div style="font-size: 0.8em;">
+    <div class="box box-red" style="margin-bottom: 0.5em;">
+      <h3>Symptom</h3>
+      <p>VM can ping other VMs on the same subnet but cannot reach the external network</p>
+    </div>
+    <div class="fragment">
+      <h3>Investigation Steps</h3>
+      <ol>
+        <li>Check if floating IP / SNAT is configured:
+          <pre><code class="language-bash">ovn-nbctl lr-nat-list &lt;router&gt;</code></pre>
+        </li>
+        <li>Check gateway chassis assignment:
+          <pre><code class="language-bash">ovn-nbctl lrp-get-gateway-chassis &lt;router-port&gt;</code></pre>
+        </li>
+        <li>Check gateway chassis is reachable:
+          <pre><code class="language-bash">ovn-sbctl list Chassis | grep -A5 &lt;gateway-hostname&gt;</code></pre>
+        </li>
+        <li>Trace the path:
+          <pre><code class="language-bash">ovn-trace --detailed &lt;switch&gt; '...'</code></pre>
+        </li>
+      </ol>
+    </div>
+  </div>
+  <aside class="notes">
+    This is one of the most common support cases. The VM can communicate locally
+    but not externally. The checklist: First, is there a SNAT rule or floating IP?
+    Without NAT, the VM has no way to reach the external network. Second, is a
+    gateway chassis assigned? Without it, there is nowhere to perform the NAT.
+    Third, is the gateway chassis actually reachable? Check BFD status and tunnel
+    connectivity. Fourth, trace the packet to see where it gets dropped. Common
+    root causes: missing NAT rule, no gateway chassis, gateway node unreachable,
+    br-ex misconfiguration on the gateway node.
+  </aside>
+</section>
+
+<!-- Slide 9.3: Scenario 2 - Intermittent Connectivity -->
+<section>
+  <h2>Scenario 2: Intermittent Pod Connectivity</h2>
+  <div style="font-size: 0.8em;">
+    <div class="box box-teal" style="margin-bottom: 0.5em;">
+      <h3>Symptom</h3>
+      <p>Pods intermittently lose connectivity to services; some requests timeout</p>
+    </div>
+    <div class="fragment">
+      <h3>Investigation Steps</h3>
+      <ol>
+        <li>Check ovn-controller status on affected nodes:
+          <pre><code class="language-bash">ovn-appctl -t ovn-controller connection-status
+ovn-appctl -t ovn-controller coverage/show</code></pre>
+        </li>
+        <li>Check for SB DB replication lag:
+          <pre><code class="language-bash">ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound</code></pre>
+        </li>
+        <li>Check OVS flow count and datapath stats:
+          <pre><code class="language-bash">ovs-ofctl dump-flows br-int | wc -l
+ovs-appctl coverage/show | grep -i flow</code></pre>
+        </li>
+        <li>Check for conntrack table exhaustion:
+          <pre><code class="language-bash">conntrack -C   # current count
+cat /proc/sys/net/netfilter/nf_conntrack_max</code></pre>
+        </li>
+      </ol>
+    </div>
+  </div>
+  <aside class="notes">
+    Intermittent issues are harder to diagnose. Common causes include ovn-controller
+    losing its connection to the SB DB, causing flows to become stale. SB DB
+    replication lag can cause inconsistent state across nodes. High flow counts can
+    exhaust OVS table space or slow down recomputation. Conntrack table exhaustion
+    causes new connections to be dropped. Start by checking component health and
+    connectivity, then look at resource utilization.
+  </aside>
+</section>
+
+<!-- Slide 9.4: Scenario 3 - Security Group Not Working -->
+<section>
+  <h2>Scenario 3: Security Group Rules Not Applied</h2>
+  <div style="font-size: 0.8em;">
+    <div class="box box-blue" style="margin-bottom: 0.5em;">
+      <h3>Symptom</h3>
+      <p>A new security group rule is not taking effect - traffic still blocked/allowed</p>
+    </div>
+    <div class="fragment">
+      <h3>Investigation Steps</h3>
+      <ol>
+        <li>Verify rule exists in NB DB:
+          <pre><code class="language-bash">ovn-nbctl acl-list &lt;switch&gt;
+ovn-nbctl list ACL</code></pre>
+        </li>
+        <li>Check if logical flows are generated:
+          <pre><code class="language-bash">ovn-sbctl lflow-list &lt;switch&gt; | grep "acl"</code></pre>
+        </li>
+        <li>Trace with OVN:
+          <pre><code class="language-bash">ovn-trace --detailed &lt;switch&gt; '...'</code></pre>
+        </li>
+        <li>Check conntrack state (stale entries may persist):
+          <pre><code class="language-bash">conntrack -L | grep &lt;ip&gt;</code></pre>
+        </li>
+      </ol>
+    </div>
+  </div>
+  <aside class="notes">
+    Security group issues often involve conntrack. OVN ACLs are stateful - they use
+    connection tracking. If you add a rule to block traffic but there is already an
+    established conntrack entry, the existing connection may continue until it times
+    out. To immediately enforce, you may need to flush the conntrack entry. Also
+    check the priority of ACLs - a higher-priority allow rule may be overriding your
+    new deny rule. Use ovn-trace to see exactly which ACL rule matches.
+  </aside>
+</section>
+
+<!-- Slide 9.5: Common Issues Quick Reference -->
+<section>
+  <h2>Common Issues Quick Reference</h2>
+  <div style="font-size: 0.6em;">
+    <table class="comparison-table">
+      <tr><th>Issue</th><th>Likely Cause</th><th>Quick Check</th></tr>
+      <tr><td>All networking down on node</td><td>ovn-controller not running</td><td><code>systemctl status ovn-controller</code></td></tr>
+      <tr><td>VM cannot get DHCP</td><td>Port not in NB DB or wrong DHCP options</td><td><code>ovn-nbctl list DHCP_Options</code></td></tr>
+      <tr><td>Cross-node traffic fails</td><td>Geneve tunnel down / MTU issue</td><td><code>ovs-vsctl show</code> (check tunnel ports)</td></tr>
+      <tr><td>Floating IP not working</td><td>Missing NAT rule or gateway chassis</td><td><code>ovn-nbctl lr-nat-list</code></td></tr>
+      <tr><td>Slow ovn-controller</td><td>Too many flows / DB replication lag</td><td><code>ovn-appctl -t ovn-controller coverage/show</code></td></tr>
+      <tr><td>Port not reachable</td><td>Port unbound in SB DB</td><td><code>ovn-sbctl find Port_Binding logical_port=X</code></td></tr>
+      <tr><td>Stale flows after config change</td><td>ovn-controller recomputation pending</td><td><code>ovn-appctl -t ovn-controller recompute</code></td></tr>
+    </table>
+  </div>
+  <aside class="notes">
+    This quick reference covers the most common issues. Most of them can be diagnosed
+    with a single command. The most important thing is to know which component is
+    responsible for what: if the port is missing from NB DB, the CMS is at fault.
+    If it is in NB but missing from SB logical flows, ovn-northd may have a problem.
+    If logical flows exist but OpenFlow rules are wrong, ovn-controller needs
+    investigation. If OpenFlow looks correct but traffic does not flow, check the
+    physical network.
+  </aside>
+</section>
+
+<!-- Slide 9.6: MTU Considerations -->
+<section>
+  <h2>MTU: A Frequent Troublemaker</h2>
+  <ul>
+    <li class="fragment">Standard Ethernet MTU: <strong>1500 bytes</strong></li>
+    <li class="fragment">Geneve encapsulation overhead: <strong>~58 bytes</strong></li>
+    <li class="fragment">Inner MTU must be: <strong>1500 - 58 = 1442 bytes</strong> (or raise outer)</li>
+  </ul>
+  <div class="two-col fragment" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>Symptoms of MTU Issues</h3>
+      <ul>
+        <li>Ping works, HTTP fails</li>
+        <li>SSH connects, SCP hangs</li>
+        <li>Small packets OK, large ones drop</li>
+        <li>Path MTU Discovery (PMTUD) failures</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Solutions</h3>
+      <ul>
+        <li>Set jumbo frames (9000) on physical</li>
+        <li>Or reduce VM/pod MTU to 1442</li>
+        <li>Verify: <code>ip link show</code> on all hops</li>
+        <li>Test: <code>ping -M do -s 1400 &lt;dest&gt;</code></li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    MTU issues are one of the most common and most frustrating networking problems
+    in overlay networks. The Geneve header adds about 58 bytes of overhead. If the
+    physical network MTU is 1500, then the maximum inner packet size is 1442 bytes.
+    Larger packets either get fragmented (adding overhead and reducing performance)
+    or get dropped if DF (Don't Fragment) is set. The classic symptom is that ping
+    works (small packets) but applications fail or hang (large packets). Either
+    increase the physical network MTU to 9000 (jumbo frames) or ensure all VMs and
+    pods have their MTU set to 1442.
+  </aside>
+</section>
+
+<!-- Slide 9.7: Product-Specific Tips -->
+<section>
+  <h2>Product-Specific Troubleshooting</h2>
+  <div class="three-col" style="font-size: 0.7em;">
+    <div class="box box-red">
+      <h3>RHOSP</h3>
+      <ul>
+        <li>Check container status:<br/><code>podman ps</code></li>
+        <li>Enter OVN container:<br/><code>podman exec -it ovn_controller bash</code></li>
+        <li>Neutron debug:<br/><code>openstack network agent list</code></li>
+        <li>sosreport with networking plugin</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>RHOSO</h3>
+      <ul>
+        <li>Control plane pods:<br/><code>oc get pods -n openstack</code></li>
+        <li>EDPM node access:<br/><code>ssh edpm-compute-0</code></li>
+        <li>Check OVN DB exposure:<br/><code>oc get svc -n openstack | grep ovn</code></li>
+        <li>Two OVN instances - check the right one</li>
+      </ul>
+    </div>
+    <div class="box box-blue">
+      <h3>OCP</h3>
+      <ul>
+        <li>OVN pods:<br/><code>oc get pods -n openshift-ovn-kubernetes</code></li>
+        <li>Node debug:<br/><code>oc debug node/&lt;name&gt;</code></li>
+        <li>OVN NB shell:<br/><code>oc rsh -n openshift-ovn-kubernetes ovnkube-node-xxx</code></li>
+        <li><code>oc adm must-gather</code></li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Each product has its own way to access OVS and OVN tooling. In RHOSP, services
+    run in podman containers - you need to exec into them. In RHOSO, the OVN control
+    plane runs in OCP pods and the data plane on EDPM nodes - you need to know which
+    to check. In OCP, the OVN components run in pods in the openshift-ovn-kubernetes
+    namespace. The must-gather tool collects comprehensive diagnostic data including
+    OVS flows, OVN state, and logs. Always collect must-gather or sosreport before
+    making changes.
+  </aside>
+</section>
+
+<!-- Slide 9.8: Where to Get Help -->
+<section>
+  <h2>Where to Get Help</h2>
+  <div class="two-col" style="font-size: 0.85em;">
+    <div class="box box-red">
+      <h3>Internal Resources</h3>
+      <ul>
+        <li>Red Hat Knowledge Base (access.redhat.com)</li>
+        <li>Internal wiki and Mojo pages</li>
+        <li>#ovn and #networking IRC/Slack channels</li>
+        <li>Engineering contacts for escalation</li>
+        <li>sosreport analysis tools</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>Upstream Resources</h3>
+      <ul>
+        <li>OVS docs: docs.openvswitch.org</li>
+        <li>OVN architecture: man ovn-architecture</li>
+        <li>ovs-discuss mailing list</li>
+        <li>GitHub: github.com/ovn-org/ovn</li>
+        <li>OVS/OVN man pages (comprehensive)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Do not struggle in isolation. Red Hat has extensive internal knowledge bases and
+    active community channels for OVS and OVN. The upstream documentation is excellent -
+    the man pages for ovn-architecture, ovn-nbctl, and ovn-sbctl are comprehensive
+    references. When opening a support case, always include must-gather or sosreport
+    data, the output of ovn-nbctl show and ovn-sbctl show, relevant logs, and a
+    clear description of the problem including what changed before it started.
+  </aside>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- SECTION 10: LIMITATIONS & WRAP-UP                             -->
+<!-- ============================================================ -->
+
+<!-- Slide 10.0: Section Title -->
+<section class="section-title">
+  <h1>Limitations &amp; Wrap-up</h1>
+  <h4>What to watch out for and next steps</h4>
+  <aside class="notes">
+    Let us close with the important limitations to be aware of, key takeaways,
+    and resources for continued learning.
+  </aside>
+</section>
+
+<!-- Slide 10.1: OVS Limitations -->
+<section>
+  <h2>OVS Limitations</h2>
+  <ul>
+    <li class="fragment"><strong>Flow table size</strong> - very large flow counts impact revalidation time</li>
+    <li class="fragment"><strong>First packet latency</strong> - cache miss requires userspace processing</li>
+    <li class="fragment"><strong>Kernel module dependency</strong> - must match kernel version</li>
+    <li class="fragment"><strong>No native L3 routing</strong> - requires external controller or OVN</li>
+    <li class="fragment"><strong>DPDK complexity</strong> - CPU pinning, hugepages, PMD tuning</li>
+    <li class="fragment"><strong>Limited hardware offload support</strong> - vendor-specific, partial coverage</li>
+  </ul>
+  <aside class="notes">
+    OVS is powerful but has limitations. Very large flow tables (tens of thousands)
+    can cause slow revalidation cycles. The first packet of a new flow always takes
+    the slow path through userspace. The kernel module must be compatible with the
+    running kernel, which can complicate upgrades. OVS-DPDK provides high performance
+    but at the cost of significant configuration complexity. Hardware offload is
+    improving but still limited to specific NIC vendors and specific match/action
+    combinations.
+  </aside>
+</section>
+
+<!-- Slide 10.2: OVN Limitations -->
+<section>
+  <h2>OVN Limitations</h2>
+  <ul>
+    <li class="fragment"><strong>Scale ceiling</strong> - SB DB replication becomes bottleneck at very large scale</li>
+    <li class="fragment"><strong>Recomputation time</strong> - large topology changes can cause flow churn</li>
+    <li class="fragment"><strong>No L7 features</strong> - no application-layer inspection or policy</li>
+    <li class="fragment"><strong>Limited load balancing</strong> - L4 only, basic algorithms (no health checks)</li>
+    <li class="fragment"><strong>RAFT cluster sensitivity</strong> - requires stable low-latency interconnect</li>
+    <li class="fragment"><strong>Debugging complexity</strong> - multiple abstraction layers to trace through</li>
+  </ul>
+  <aside class="notes">
+    OVN's scale ceiling is primarily the Southbound database. In very large
+    deployments (thousands of nodes, hundreds of thousands of ports), the SB DB
+    replication and ovn-controller recomputation can become slow. OVN operates at
+    L2-L4 only - if you need L7 policies, you need additional components. The load
+    balancer is basic compared to dedicated solutions. RAFT clustering requires
+    reliable, low-latency network between the cluster members - running the cluster
+    across high-latency links can cause instability.
+  </aside>
+</section>
+
+<!-- Slide 10.3: Scale Considerations -->
+<section>
+  <h2>Scale Considerations</h2>
+  <table class="comparison-table" style="font-size: 0.65em;">
+    <tr><th>Parameter</th><th>Typical Range</th><th>Concern Area</th></tr>
+    <tr><td>Compute nodes</td><td>Up to ~500</td><td>SB DB size and replication</td></tr>
+    <tr><td>Logical ports</td><td>Up to ~10K-100K</td><td>Flow count, recomputation time</td></tr>
+    <tr><td>ACLs/security rules</td><td>Hundreds per switch</td><td>Flow table explosion</td></tr>
+    <tr><td>Logical switches</td><td>Thousands</td><td>northd compilation time</td></tr>
+    <tr><td>OVS flows per node</td><td>Thousands to tens of thousands</td><td>Revalidation and memory</td></tr>
+    <tr><td>RAFT DB size</td><td>Watch if > 100MB</td><td>Leader election, compaction</td></tr>
+  </table>
+  <div class="key-point fragment" style="font-size: 0.8em;">
+    Monitor <em>ovn-controller recompute</em> time and <em>SB DB size</em> as primary scale indicators
+  </div>
+  <aside class="notes">
+    These are approximate guidelines - actual limits depend on hardware, workload
+    patterns, and configuration complexity. The two most important metrics to watch
+    are ovn-controller recomputation time (how long it takes to translate all logical
+    flows to OpenFlow after a change) and SB DB size (which affects replication
+    latency). If recomputation exceeds a few seconds, you may see transient
+    connectivity issues during configuration changes. Regular DB compaction and
+    monitoring these metrics is essential at scale.
+  </aside>
+</section>
+
+<!-- Slide 10.4: Performance Tuning -->
+<section>
+  <h2>Performance Tuning Tips</h2>
+  <div class="two-col" style="font-size: 0.8em;">
+    <div class="box box-red">
+      <h3>OVS Tuning</h3>
+      <ul>
+        <li>Increase handler and revalidator threads</li>
+        <li>Tune megaflow cache size</li>
+        <li>Enable DPDK for high throughput</li>
+        <li>CPU isolation for PMD threads</li>
+        <li>Jumbo frames on physical network</li>
+      </ul>
+    </div>
+    <div class="box box-teal">
+      <h3>OVN Tuning</h3>
+      <ul>
+        <li>Minimize ACL count (use port groups)</li>
+        <li>DB compaction schedule</li>
+        <li>Monitor ovn-controller CPU usage</li>
+        <li>Tune inactivity_probe on DB connections</li>
+        <li>Consider incremental processing (default in newer versions)</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    For OVS, the main tuning levers are thread counts, cache sizes, and optionally
+    DPDK. For OVN, the focus is on reducing flow count (port groups help consolidate
+    ACLs), keeping the database compact, and ensuring ovn-controller has enough CPU
+    for timely recomputation. Newer OVN versions have incremental processing which
+    significantly reduces recomputation time by only updating the affected flows
+    rather than recomputing everything.
+  </aside>
+</section>
+
+<!-- Slide 10.5: Key Takeaways -->
+<section>
+  <h2>Key Takeaways</h2>
+  <ol style="font-size: 0.9em;">
+    <li class="fragment"><strong>OVS is the data plane</strong> - the highway that carries packets</li>
+    <li class="fragment"><strong>OVN is the control plane</strong> - the traffic management system</li>
+    <li class="fragment"><strong>They work together</strong> - OVN programs OVS, never replace each other</li>
+    <li class="fragment"><strong>Distributed architecture</strong> - routing and switching happen locally on each node</li>
+    <li class="fragment"><strong>Troubleshoot top-down</strong> - logical config &rarr; flows &rarr; wire</li>
+    <li class="fragment"><strong>Tools are your friends</strong> - ovn-trace, ofproto/trace, tcpdump</li>
+    <li class="fragment"><strong>It is the same OVN</strong> - skills transfer across RHOSP, RHOSO, and OCP</li>
+  </ol>
+  <aside class="notes">
+    If you remember nothing else from this workshop, remember these seven points.
+    OVS and OVN are complementary - OVN provides the brains, OVS provides the muscle.
+    The distributed architecture is what makes it scale. Always troubleshoot from the
+    top (logical intent) down to the bottom (physical packets). And the skills you
+    build transfer across all Red Hat products that use OVN.
+  </aside>
+</section>
+
+<!-- Slide 10.6: Resources -->
+<section>
+  <h2>Resources &amp; References</h2>
+  <div class="two-col" style="font-size: 0.8em;">
+    <div>
+      <h3>Documentation</h3>
+      <ul>
+        <li><a href="https://docs.openvswitch.org" style="color: var(--rh-red);">docs.openvswitch.org</a></li>
+        <li><a href="https://www.ovn.org/en/" style="color: var(--rh-red);">ovn.org</a></li>
+        <li><code>man ovn-architecture</code> (essential reading)</li>
+        <li><code>man ovn-nbctl</code>, <code>man ovn-sbctl</code></li>
+        <li>Red Hat OpenStack Platform docs</li>
+        <li>OpenShift Container Platform docs</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Community &amp; Learning</h3>
+      <ul>
+        <li>OVS GitHub: github.com/openvswitch/ovs</li>
+        <li>OVN GitHub: github.com/ovn-org/ovn</li>
+        <li>OVS Conference recordings (YouTube)</li>
+        <li>Red Hat Summit presentations</li>
+        <li>Internal training and enablement sessions</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    These resources will help you continue learning. The ovn-architecture man page
+    is the single most important reference - it explains the entire OVN design in
+    detail. The upstream documentation is actively maintained and comprehensive.
+    Conference talks from the OVS Conference provide great insights into new features
+    and real-world deployment experiences.
+  </aside>
+</section>
+
+<!-- Slide 10.7: Q&A -->
+<section class="title-slide">
+  <h1 style="border-bottom: none;">Questions &amp; Discussion</h1>
+  <p style="font-size: 1.5em; margin: 1em 0;">&#128172;</p>
+  <p style="color: var(--rh-muted);">Thank you for attending this workshop!</p>
+  <div style="margin-top: 2em; font-size: 0.7em; color: var(--rh-muted);">
+    <p>Workshop materials and lab guides available in the repository</p>
+  </div>
+  <aside class="notes">
+    Open the floor for questions. Encourage discussion about specific use cases
+    or challenges the audience faces. Remind them about the lab exercises available
+    in the repository for hands-on practice.
+  </aside>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<!-- Reveal.js 5.x -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/notes/notes.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5/plugin/zoom/zoom.js"></script>
+
+<script>
+  // Initialize Mermaid with dark theme
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#A30000',
+      primaryTextColor: '#e0e0e0',
+      primaryBorderColor: '#EE0000',
+      lineColor: '#EE0000',
+      secondaryColor: '#005f5f',
+      tertiaryColor: '#003d7a',
+      background: '#151515',
+      mainBkg: '#1a1a1a',
+      nodeBorder: '#333',
+      clusterBkg: '#1a1a1a',
+      clusterBorder: '#333',
+      titleColor: '#ffffff',
+      edgeLabelBackground: '#151515'
+    },
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: false,
+      curve: 'basis',
+      nodeSpacing: 50,
+      rankSpacing: 50,
+      padding: 25,
+      wrappingWidth: 300
+    },
+    themeVariables: {
+      fontSize: '15px'
+    },
+    securityLevel: 'loose'
+  });
+
+  // Initialize Reveal.js
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    showSlideNumber: 'all',
+    transition: 'slide',
+    transitionSpeed: 'default',
+    backgroundTransition: 'fade',
+    center: true,
+    width: 1280,
+    height: 720,
+    margin: 0.08,
+    minScale: 0.2,
+    maxScale: 1.5,
+    plugins: [RevealNotes, RevealHighlight, RevealZoom],
+    // PDF export settings
+    pdfSeparateFragments: false,
+    pdfMaxPagesPerSlide: 1
+  });
+
+  // Render Mermaid diagrams after Reveal.js is ready
+  Reveal.on('ready', async () => {
+    const mermaidDivs = document.querySelectorAll('.mermaid');
+    for (let i = 0; i < mermaidDivs.length; i++) {
+      const element = mermaidDivs[i];
+      const graphDefinition = element.textContent;
+      const { svg } = await mermaid.render('mermaid-' + i, graphDefinition);
+      element.innerHTML = svg;
+    }
+  });
+
+  // Re-render mermaid on slide change (for lazy loading)
+  Reveal.on('slidechanged', async (event) => {
+    const mermaidDivs = event.currentSlide.querySelectorAll('.mermaid:not([data-processed])');
+    for (let i = 0; i < mermaidDivs.length; i++) {
+      const element = mermaidDivs[i];
+      if (!element.querySelector('svg')) {
+        const graphDefinition = element.textContent;
+        const id = 'mermaid-slide-' + event.indexh + '-' + i;
+        try {
+          const { svg } = await mermaid.render(id, graphDefinition);
+          element.innerHTML = svg;
+        } catch (e) {
+          console.warn('Mermaid render error:', e);
+        }
+      }
+    }
+  });
+</script>
+
+</body>
+</html>

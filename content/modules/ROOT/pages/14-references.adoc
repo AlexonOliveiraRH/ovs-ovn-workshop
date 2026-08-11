@@ -1,0 +1,2026 @@
+= Module 14: References and Further Reading
+
+== Overview
+
+No workshop can cover everything. OVS and OVN are actively developed projects with deep technical surfaces - the kernel datapath alone has hundreds of tunable parameters, and OVN's logical flow pipeline grows with every release. This module collects the most important references, learning resources, and community channels so you can continue building expertise long after this workshop ends.
+
+The references are organized by type: official documentation first, then man pages you will use daily, conference talks that explain design decisions you will not find in any man page, blog posts that walk through real-world problems, troubleshooting resources for when things break in production, training and certification paths, tools that make your life easier, community contribution guides, and finally a glossary of every term used throughout this workshop.
+
+
+[NOTE]
+.Key Concept
+====
+The upstream documentation for OVS and OVN is the single source of truth. Red Hat product documentation layers enterprise context on top, but when you need to understand how a feature actually works at the code level, upstream docs and man pages are where you go.
+====
+
+
+'''
+
+== 1. Official Documentation
+
+=== Open vSwitch (OVS)
+
+
+[cols="1,1,1",options="header"]
+|===
+|Resource
+|URL
+|Description
+
+|Official Documentation
+|https://docs.openvswitch.org/en/latest/
+|Comprehensive documentation including installation, configuration, and deep dives into internals
+
+|GitHub Repository
+|https://github.com/openvswitch/ovs
+|Source code, commit history, and issue tracker
+
+|Design Documents
+|https://docs.openvswitch.org/en/latest/internals/
+|Architecture documents explaining the design decisions behind OVS
+
+|OVS Tutorials
+|https://docs.openvswitch.org/en/latest/tutorials/
+|Step-by-step tutorials for learning OVS from scratch
+
+|OVSDB RFC (RFC 7047)
+|https://datatracker.ietf.org/doc/html/rfc7047
+|The IETF standard that defines the OVSDB management protocol
+
+|OVS DPDK Documentation
+|https://docs.openvswitch.org/en/latest/intro/install/dpdk/
+|How to build and configure OVS with DPDK support
+
+|FAQ
+|https://docs.openvswitch.org/en/latest/faq/
+|Frequently asked questions - often the fastest way to find an answer
+
+|===
+
+
+[NOTE]
+====
+The OVS documentation is generated from reStructuredText files inside the `Documentation/` directory of the OVS repository. If you find an error, you can submit a patch to fix it directly.
+====
+
+
+*Key documentation pages you will use most often:*
+
+----
+docs.openvswitch.org/en/latest/
+  +-- faq/                          # Start here for common questions
+  +-- howto/                        # How-to guides for specific tasks
+  +-- tutorials/
+  |     +-- ovs-advanced.rst        # The "OVS Advanced Features" tutorial
+  |     +-- ovs-conntrack.rst       # Conntrack integration tutorial
+  +-- ref/                          # Reference pages (man pages in HTML)
+  +-- topics/
+  |     +-- dpdk/                   # DPDK-related topics
+  |     +-- testing.rst             # How to run the OVS test suite
+  +-- internals/
+        +-- contributing/           # How to contribute patches
+        +-- committer-grant-policy  # How committers are chosen
+----
+
+=== OVN (Open Virtual Network)
+
+
+[cols="1,1,1",options="header"]
+|===
+|Resource
+|URL
+|Description
+
+|Official Documentation
+|https://docs.ovn.org/en/latest/
+|OVN documentation including architecture, tutorials, and reference
+
+|GitHub Repository
+|https://github.com/ovn-org/ovn
+|Source code and issue tracker (OVN split from OVS repo in 2020)
+
+|Architecture Document
+|https://docs.ovn.org/en/latest/ref/ovn-architecture.7.html
+|The foundational document explaining OVN's design
+
+|OVN Sandbox Tutorial
+|https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html
+|Hands-on tutorial using the ovn-sandbox script
+
+|OVN OpenStack Tutorial
+|https://docs.ovn.org/en/latest/tutorials/ovn-openstack.html
+|How OVN integrates with OpenStack Neutron
+
+|OVN RBAC
+|https://docs.ovn.org/en/latest/topics/role-based-access-control.html
+|Role-based access control for OVN databases
+
+|OVN Interconnection
+|https://docs.ovn.org/en/latest/tutorials/ovn-interconnection.html
+|Multi-site OVN with OVN-IC
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+OVN was originally developed inside the OVS repository. In 2020, it was split into its own repository at `github.com/ovn-org/ovn`. When searching for historical commits or design discussions, you may need to check both repositories.
+====
+
+
+=== RHOSP (Red Hat OpenStack Platform)
+
+Red Hat OpenStack Platform documentation is versioned. The two most relevant versions for current deployments are 16.2 (Train-based, traditional deployment) and 17.1 (Wallaby-based, with director and framework for adopting RHOSO).
+
+*RHOSP 17.1 (Current)*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Product Documentation Hub
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1
+
+|Networking Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/
+
+|Network Functions Virtualization Planning and Configuration Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/network_functions_virtualization_planning_and_configuration_guide/
+
+|Deploying RHOSP with Director
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/deploying_red_hat_openstack_platform_17.1/
+
+|Operations Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/maintaining_red_hat_openstack_platform/
+
+|Configuring OVN
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/ovn-open-virtual-network_config-ovn
+
+|===
+
+
+*RHOSP 16.2 (Extended Life Cycle)*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Product Documentation Hub
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2
+
+|Networking Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/
+
+|NFV Planning and Configuration Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/network_functions_virtualization_planning_and_configuration_guide/
+
+|Deploying an Overcloud with Containerized Red Hat Ceph
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/deploying_an_overcloud_with_containerized_red_hat_ceph/
+
+|Migrating to ML2/OVN
+|https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/migrating-ml2ovs-to-ml2ovn_config-ovn
+
+|===
+
+
+[NOTE]
+====
+RHOSP 16.2 uses the Train release of OpenStack. RHOSP 17.1 uses the Wallaby release. The networking guide for each version covers the specific ML2 plugin options available for that release - OVS (ML2/OVS) and OVN (ML2/OVN).
+====
+
+
+=== RHOSO (Red Hat OpenStack Services on OpenShift)
+
+RHOSO represents the next generation of Red Hat's OpenStack offering, running OpenStack control plane services as containers on OpenShift.
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Product Documentation Hub
+|https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0
+
+|Deployment Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/deploying_red_hat_openstack_services_on_openshift/
+
+|Networking Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_networking_services/
+
+|Architecture Guide
+|https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/architecture/
+
+|Data Plane Configuration
+|https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_the_data_plane/
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+In RHOSO, OVN runs on the data plane nodes (edpm nodes) while the OVN northbound and southbound databases run as pods on the OpenShift control plane. The networking guide covers how to configure both sides.
+====
+
+
+=== OCP (Red Hat OpenShift Container Platform)
+
+OpenShift uses OVN-Kubernetes as its default CNI plugin since version 4.12. The networking documentation covers OVN-Kubernetes configuration, troubleshooting, and advanced features.
+
+*OpenShift 4.17+*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Networking Documentation
+|https://docs.openshift.com/container-platform/4.17/networking/about-networking.html
+
+|OVN-Kubernetes Overview
+|https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html
+
+|OVN-Kubernetes Configuration
+|https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-ovn-kubernetes.html
+
+|Network Policy
+|https://docs.openshift.com/container-platform/4.17/networking/network_policy/about-network-policy.html
+
+|EgressFirewall
+|https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-egress-firewall-ovn.html
+
+|===
+
+
+*OpenShift 4.16*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Networking Documentation
+|https://docs.openshift.com/container-platform/4.16/networking/about-networking.html
+
+|OVN-Kubernetes Overview
+|https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html
+
+|Migrating from OpenShift SDN
+|https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/migrate-from-openshift-sdn.html
+
+|===
+
+
+*OpenShift 4.15*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Networking Documentation
+|https://docs.openshift.com/container-platform/4.15/networking/about-networking.html
+
+|OVN-Kubernetes Overview
+|https://docs.openshift.com/container-platform/4.15/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html
+
+|===
+
+
+*OpenShift 4.14*
+
+
+[cols="1,1",options="header"]
+|===
+|Resource
+|URL
+
+|Networking Documentation
+|https://docs.openshift.com/container-platform/4.14/networking/about-networking.html
+
+|OVN-Kubernetes Overview
+|https://docs.openshift.com/container-platform/4.14/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html
+
+|===
+
+
+[NOTE]
+====
+OpenShift 4.12 introduced OVN-Kubernetes as the default CNI plugin, replacing OpenShift SDN. OpenShift SDN was fully removed in OCP 4.17 - clusters running OCP 4.17+ always use OVN-Kubernetes. If you are working with a cluster on OCP 4.14-4.16 that was upgraded from an earlier version, it may still be running OpenShift SDN and will need to migrate before upgrading to 4.17+.
+====
+
+
+=== Red Hat Knowledgebase
+
+The Red Hat Knowledgebase (https://access.redhat.com/search/) is the most important resource for troubleshooting production issues. Here is how to search it effectively:
+
+*Effective search strategies:*
+
+----
+Search by component:
+  "OVN" "ovn-controller" crash
+  "OVS" "ovs-vswitchd" high CPU
+  "neutron" "ML2/OVN" port binding
+
+Search by error message (quote the exact message):
+  "Unreasonably long 123456ms poll interval"
+  "Error: cannot create a+bridge named br-int"
+  "Resource not found"
+
+Search by Red Hat version:
+  RHOSP 17.1 OVN database cluster
+  OpenShift 4.16 OVN-Kubernetes EgressIP
+
+Filter results:
+  - Use "Solutions" type for actionable fixes
+  - Use "Articles" type for explanations and best practices
+  - Filter by product and version for relevance
+----
+
+
+[NOTE]
+.Key Concept
+====
+When you open a support case, always search the Knowledgebase first. About 60% of cases have an existing solution. Include the KB article number in your case if you found something relevant but it did not fully resolve the issue.
+====
+
+
+'''
+
+== 2. Essential Man Pages
+
+Man pages are the most reliable reference for command syntax and options. They are maintained alongside the source code and are always accurate for the installed version.
+
+=== OVS Management Commands
+
+
+[cols="1,1,1",options="header"]
+|===
+|Man Page
+|Section
+|Description
+
+|`ovs-vsctl(8)`
+|8
+|The primary tool for configuring OVS bridges, ports, and interfaces. Communicates with ovsdb-server to modify the Open_vSwitch database.
+
+|`ovs-ofctl(8)`
+|8
+|Manage OpenFlow entries in OVS bridges. Use this to dump, add, modify, and delete flow rules. Essential for debugging packet forwarding.
+
+|`ovs-appctl(8)`
+|8
+|Send commands to running OVS daemons (ovs-vswitchd, ovsdb-server). Use this for runtime debugging, coverage counters, and memory reports.
+
+|`ovs-dpctl(8)`
+|8
+|Manage OVS datapaths. Inspect and manage kernel datapath flows. Useful for understanding what the kernel fast path is doing.
+
+|`ovs-vswitchd(8)`
+|8
+|The OVS daemon man page. Documents startup options, logging, and runtime behavior of the switch daemon.
+
+|`ovs-vswitchd.conf.db(5)`
+|5
+|*The schema reference.* Describes every table, column, and value in the Open_vSwitch database. This is the definitive reference for what ovs-vsctl can configure.
+
+|===
+
+
+=== OVSDB Commands
+
+
+[cols="1,1,1",options="header"]
+|===
+|Man Page
+|Section
+|Description
+
+|`ovsdb-server(1)`
+|1
+|The OVSDB database server daemon. Documents clustering, active-backup configuration, SSL, and all server options.
+
+|`ovsdb-client(1)`
+|1
+|Client for querying and monitoring OVSDB servers. Useful for watching database changes in real time with the `monitor` command.
+
+|`ovsdb-tool(1)`
+|1
+|Offline tool for OVSDB database files. Use this to create, compact, query, and convert database files without a running server.
+
+|===
+
+
+=== OVN Management Commands
+
+
+[cols="1,1,1",options="header"]
+|===
+|Man Page
+|Section
+|Description
+
+|`ovn-nbctl(8)`
+|8
+|Manage the OVN Northbound database. Create and configure logical switches, routers, ports, ACLs, NAT rules, and load balancers.
+
+|`ovn-sbctl(8)`
+|8
+|Manage the OVN Southbound database. Inspect chassis registrations, port bindings, MAC bindings, and logical flows. Mostly used for inspection rather than configuration.
+
+|`ovn-trace(8)`
+|8
+|Trace a packet through OVN logical flows. The single most important debugging tool for OVN - simulates packet processing without sending real traffic.
+
+|`ovn-detrace(1)`
+|1
+|Convert OVS OpenFlow traces into OVN logical flow context. Bridges the gap between physical OpenFlow rules and OVN logical flows.
+
+|===
+
+
+=== OVN Daemons
+
+
+[cols="1,1,1",options="header"]
+|===
+|Man Page
+|Section
+|Description
+
+|`ovn-northd(8)`
+|8
+|The OVN central daemon that translates northbound database contents into southbound database logical flows. Documents all options and the translation process.
+
+|`ovn-controller(8)`
+|8
+|The OVN local controller running on each hypervisor. Translates southbound logical flows into OpenFlow rules for the local OVS instance.
+
+|`ovn-ic(8)`
+|8
+|The OVN Interconnection Controller for multi-site deployments. Manages route exchange between OVN availability zones.
+
+|===
+
+
+=== OVN Database Schemas
+
+
+[cols="1,1,1",options="header"]
+|===
+|Man Page
+|Section
+|Description
+
+|`ovn-nb(5)`
+|5
+|*Northbound database schema reference.* Documents every table and column in the NB DB - logical switches, routers, ACLs, NAT, load balancers, etc.
+
+|`ovn-sb(5)`
+|5
+|*Southbound database schema reference.* Documents every table and column in the SB DB - chassis, port bindings, logical flows, MAC bindings, etc.
+
+|===
+
+
+=== How to Access Man Pages
+
+*On a standard RHEL/CentOS system:*
+
+[source,bash]
+----
+# View the man page directly
+man ovs-vsctl
+
+# View a specific section
+man 5 ovs-vswitchd.conf.db
+
+# Search for man pages related to OVS
+man -k ovs
+
+# Search for man pages related to OVN
+man -k ovn
+----
+
+*In containerized environments (RHOSP, RHOSO):*
+
+[source,bash]
+----
+# RHOSP 17.1 - access man pages inside the OVS container
+sudo podman exec -it ovs_vswitchd man ovs-vsctl
+
+# RHOSP 17.1 - access man pages inside the OVN container
+sudo podman exec -it ovn_controller man ovn-controller
+
+# RHOSO - access man pages on an edpm node
+ssh edpm-compute-0
+sudo podman exec -it ovn_controller man ovn-controller
+----
+
+*In OpenShift (OVN-Kubernetes):*
+
+[source,bash]
+----
+# Find the ovnkube-node pod
+oc get pods -n openshift-ovn-kubernetes -l app=ovnkube-node
+
+# Access man pages inside the container
+oc exec -n openshift-ovn-kubernetes <pod-name> -c ovn-controller -- man ovn-controller
+
+# Alternative: use oc debug to get a shell on a node
+oc debug node/<node-name>
+chroot /host
+man ovs-vsctl
+----
+
+
+[NOTE]
+====
+If man pages are not installed in the container, you can access the same content online at https://docs.openvswitch.org/en/latest/ref/ and https://docs.ovn.org/en/latest/ref/. The online versions match the upstream releases, so verify the version matches what is deployed.
+====
+
+
+'''
+
+== 3. Conference Talks
+
+Conference talks are invaluable because they explain the *why* behind design decisions, cover real-world deployment experiences, and often reveal tips that never make it into documentation. The following are organized by conference and sorted with the newest first.
+
+=== OVS Conference (OVSCon)
+
+OVSCon is the annual conference dedicated to Open vSwitch and OVN. Talks are typically recorded and slides are published. Archives are available at https://www.ovscon.org/.
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Year
+|Title
+|Speaker(s)
+|What You Will Learn
+
+|2023
+|OVN Scaling Improvements
+|Han Zhou, Dumitru Ceara
+|How OVN was re-architected to handle 1000+ node clusters. Covers incremental processing, parallel northd, and database optimizations. Essential viewing for large deployments.
+
+|2023
+|OVN-Kubernetes: What's New
+|Nadia Pinaeva, Surya Seetharaman
+|Latest features in OVN-Kubernetes including Admin Network Policy, multi-homing improvements, and performance enhancements.
+
+|2022
+|Debugging OVN: A Practical Guide
+|Dumitru Ceara
+|Step-by-step walkthrough of debugging OVN issues using ovn-trace, ovn-detrace, and database inspection. Directly applicable to support cases.
+
+|2022
+|OVN Interconnection: Connecting Multiple OVN Deployments
+|Han Zhou
+|Deep dive into OVN-IC architecture, route exchange, and multi-site networking. Covers the transit switch model and deployment patterns.
+
+|2021
+|OVS Hardware Offload - Current State and Future
+|Roi Dayan
+|How OVS flow offload works with SmartNICs and DPUs. Covers TC flower offload, connection tracking offload, and vendor-specific implementations.
+
+|2021
+|OVN at Scale: Lessons from Production
+|Mark Michelson
+|Real-world experience running OVN at scale. Covers database sizing, northd performance, and what breaks first as you add nodes.
+
+|2020
+|OVN as a Kubernetes Network Plugin
+|Tim Rozet
+|How OVN-Kubernetes was designed and how it maps Kubernetes networking concepts to OVN logical constructs.
+
+|2020
+|The State of OVS DPDK
+|Kevin Traynor, Ian Stokes
+|Performance benchmarks, configuration best practices, and known issues with OVS-DPDK. Covers PMD thread management and memory allocation.
+
+|2019
+|OpenFlow Connection Tracking in OVS
+|Joe Stringer
+|The definitive talk on how connection tracking was integrated into OVS. Explains the design, the ct() action, and how zones work.
+
+|2019
+|OVN - Gateway High Availability
+|Maciej Jozefczyk
+|How gateway HA works in OVN, including BFD monitoring, chassis priorities, and failover behavior. Critical for understanding north-south traffic resilience.
+
+|===
+
+
+=== OpenStack Summit / Open Infrastructure Summit
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Year
+|Title
+|Speaker(s)
+|What You Will Learn
+
+|2023
+|Migrating Large-Scale Deployments from ML2/OVS to ML2/OVN
+|Miguel Lavalle, Brian Haley
+|Lessons learned from migrating production OpenStack deployments. Covers the migration tool, common pitfalls, rollback procedures, and what to validate.
+
+|2022
+|OVN Performance: From 100 to 1000 Nodes
+|Daniel Alvarez, Numan Siddique
+|Performance improvements that enabled OVN to scale to 1000-node OpenStack deployments. Covers profiling, bottleneck identification, and the fixes applied.
+
+|2021
+|Neutron OVN - Feature Parity and Beyond
+|Brian Haley, Lucas Alvares Gomes
+|Status of ML2/OVN feature parity with ML2/OVS and new capabilities that OVN enables. Useful for understanding what changed and what is still different.
+
+|2020
+|Debugging Neutron and OVN
+|Terry Wilson, Jakub Libosvar
+|How to debug networking issues in OpenStack when using OVN. Covers the full debugging workflow from Neutron API to OVN to OVS.
+
+|2019
+|OVN: Moving Beyond ML2/OVS
+|Russell Bryant, Numan Siddique
+|The original case for migrating to OVN. Explains what OVN provides that ML2/OVS agents cannot and the architectural advantages.
+
+|2019
+|NFV with OVN - Running VNFs on OVN-based Networks
+|Miguel Lavalle
+|How network functions virtualization workloads run on OVN, including SR-IOV integration, hardware offload, and performance considerations.
+
+|===
+
+
+=== KubeCon / CloudNativeCon
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Year
+|Title
+|Speaker(s)
+|What You Will Learn
+
+|2023
+|Deep Dive into OVN-Kubernetes CNI
+|Surya Seetharaman, Nadia Pinaeva
+|Architecture of OVN-Kubernetes, how it maps K8s resources to OVN objects, and new features in recent releases.
+
+|2023
+|Kubernetes Network Policy: The Good, The Bad, and The Future
+|Tim Hockin, Abhishek Raut
+|How Network Policy is implemented in OVN-Kubernetes, the Admin Network Policy API, and what is coming next.
+
+|2022
+|Multi-Cluster Networking with OVN
+|Tomas Sedovic
+|How to connect multiple Kubernetes clusters using OVN Interconnection. Covers Submariner alternatives and the OVN-IC approach.
+
+|2022
+|Troubleshooting Kubernetes Networking
+|Laura Lorenz
+|Practical techniques for debugging network issues in Kubernetes clusters running OVN-Kubernetes. Covers tcpdump, ovn-trace, and ovnkube-trace.
+
+|2021
+|Container Networking Interface (CNI) Deep Dive
+|Casey Davenport
+|How CNI plugins work, the CNI specification, and how OVN-Kubernetes implements the CNI interface. Foundational talk for understanding the integration layer.
+
+|===
+
+
+=== Red Hat Summit
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Year
+|Title
+|Speaker(s)
+|What You Will Learn
+
+|2023
+|What's New in OpenShift Networking
+|Surya Seetharaman, Doug Smith
+|Overview of OVN-Kubernetes features in OpenShift 4.13/4.14, including EgressService, Admin Network Policy, and multi-network support.
+
+|2023
+|OpenStack Services on OpenShift - Architecture Deep Dive
+|Giulio Fidente, Luigi Toscano
+|How RHOSO works, how it integrates with OpenShift, and the networking architecture spanning both platforms.
+
+|2022
+|Migrating OpenStack Networking from ML2/OVS to ML2/OVN
+|Jakub Libosvar
+|A Red Hat perspective on the migration, including supportability considerations, timing recommendations, and customer experiences.
+
+|2021
+|Advanced OpenShift Networking with OVN
+|Ben Pfaff, Dan Williams
+|How OVN-Kubernetes provides advanced networking features like EgressIP, EgressFirewall, and NetworkPolicy in OpenShift.
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+Conference talk recordings are often the best way to understand complex features because the speakers are usually the developers who built them. Check YouTube channels for "OVS Conference", "OpenStack Foundation", and "CNCF" for recordings.
+====
+
+
+'''
+
+== 4. Blog Posts and Technical Articles
+
+=== OVS Internals and Architecture
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|OVS Deep Dive Series (Parts 1-6)
+|Arthur Chiao
+|arthurchiao.art
+|Comprehensive deep dive into OVS architecture, datapath processing, flow caching, and megaflow implementation. One of the best resources for understanding how OVS processes packets.
+
+|The OVS Flow Cache
+|Ben Pfaff
+|docs.openvswitch.org
+|How the OVS flow cache works, including the microflow cache (EMC), megaflow cache (SMC/dpcls), and the upcall path to userspace. Essential for performance tuning.
+
+|Understanding OVS Datapath Flows
+|Red Hat
+|developers.redhat.com
+|How to read and interpret kernel datapath flows, what the fields mean, and how they relate to OpenFlow rules.
+
+|OVS and the Linux Bridge - A Comparison
+|Thomas Graf
+|therandomsecurityguy.com
+|When to use OVS vs. the Linux bridge, and how their forwarding models differ. Useful for explaining the choice to customers.
+
+|===
+
+
+=== OVN Deep Dives
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|OVN - Scalable Virtual Networking for OpenStack
+|Russell Bryant
+|blog.russellbryant.net
+|The original blog series introducing OVN architecture and its OpenStack integration. Written by one of the lead developers. Still relevant for understanding the fundamentals.
+
+|OVN Logical Flows and OpenFlow Pipeline
+|Numan Siddique
+|numans.blog
+|Detailed walkthrough of how OVN logical flows are translated to OpenFlow rules. Shows the complete pipeline from NB DB to OVS flows.
+
+|OVN Architecture - A Deep Dive
+|Dumitru Ceara
+|developers.redhat.com
+|Explanation of OVN's components, databases, and how they interact. Covers the controller loop and incremental processing engine.
+
+|OVN Load Balancer Deep Dive
+|Mark Michelson
+|developers.redhat.com
+|How OVN implements load balancing, including DNAT-based load balancing, health checks, and hairpin traffic handling.
+
+|Understanding OVN ACLs
+|Russell Bryant
+|blog.russellbryant.net
+|How OVN Access Control Lists work, how they map to security groups in OpenStack, and how they are translated to OpenFlow rules with connection tracking.
+
+|===
+
+
+=== Migration Guides (ML2/OVS to ML2/OVN)
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|Migration from ML2/OVS to ML2/OVN in RHOSP 16.2
+|Red Hat
+|access.redhat.com
+|Official Red Hat solution article covering the migration process step by step. Includes pre-checks, the migration command, and post-migration validation.
+
+|Neutron ML2/OVS to ML2/OVN Migration: What You Need to Know
+|Miguel Lavalle
+|developers.redhat.com
+|Detailed explanation of what changes during migration, what features are equivalent, and what behavioral differences to expect.
+
+|OVS to OVN Migration - A Field Report
+|Assaf Muller
+|assafmuller.com
+|Real-world migration experiences including issues encountered, how they were resolved, and recommendations for planning.
+
+|===
+
+
+=== Performance Tuning
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|Tuning OVS for Performance
+|Red Hat
+|access.redhat.com
+|Red Hat's guide to tuning OVS for high-performance workloads. Covers kernel parameters, flow cache sizing, and CPU affinity.
+
+|OVS-DPDK Performance Tuning Guide
+|Red Hat
+|docs.redhat.com
+|How to configure OVS-DPDK for maximum throughput. Covers hugepages, CPU pinning, PMD thread configuration, and NIC queue configuration.
+
+|OVN Performance at Scale
+|Dumitru Ceara
+|developers.redhat.com
+|How to configure OVN for large deployments. Covers database compaction, northd parallelization, and monitoring for performance issues.
+
+|Network Performance Tuning for OpenStack
+|Red Hat
+|access.redhat.com
+|End-to-end guide covering BIOS settings, kernel parameters, OVS configuration, and guest optimization for maximum network performance.
+
+|===
+
+
+=== DPDK with OVS
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|Getting Started with OVS-DPDK
+|Red Hat
+|developers.redhat.com
+|Introduction to OVS-DPDK, including when to use it, how to configure it, and baseline performance expectations.
+
+|OVS-DPDK: PMD Thread Management
+|Kevin Traynor
+|developers.redhat.com
+|Deep dive into Poll Mode Driver threads, how to configure them, how to monitor their utilization, and how to troubleshoot performance issues.
+
+|DPDK and vhost-user: How It Works
+|Maxime Coquelin
+|developers.redhat.com
+|How the vhost-user protocol connects VMs to OVS-DPDK. Covers the shared memory architecture and the control plane protocol.
+
+|===
+
+
+=== OVN-Kubernetes Articles
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Title
+|Author
+|Source
+|Description
+
+|OVN-Kubernetes Architecture
+|Red Hat
+|developers.redhat.com
+|How OVN-Kubernetes translates Kubernetes resources into OVN logical constructs. Covers pods, services, network policies, and egress resources.
+
+|Debugging OVN-Kubernetes with ovnkube-trace
+|Surya Seetharaman
+|developers.redhat.com
+|How to use the ovnkube-trace tool to trace packets through the OVN-Kubernetes logical network. Includes practical examples.
+
+|EgressIP in OVN-Kubernetes
+|Nadia Pinaeva
+|cloud.redhat.com
+|How EgressIP works in OVN-Kubernetes, how to configure it, and how it differs from the OpenShift SDN implementation.
+
+|NetworkPolicy Deep Dive in OVN-Kubernetes
+|Surya Seetharaman
+|cloud.redhat.com
+|How Kubernetes NetworkPolicy objects are translated to OVN ACLs and how to troubleshoot policy issues.
+
+|===
+
+
+[NOTE]
+====
+Blog posts are point-in-time snapshots. Always verify information against the documentation for the specific version you are running. A blog post from 2020 may describe behavior that has since changed.
+====
+
+
+'''
+
+== 5. Troubleshooting Resources
+
+=== Red Hat Knowledgebase
+
+The Knowledgebase at https://access.redhat.com/ is where you find solutions, articles, and errata for Red Hat products. Here is how to get the most out of it.
+
+*Navigating the Knowledgebase:*
+
+----
+1. Start with the search bar at the top
+2. Use the filters on the left:
+   - Product: "Red Hat OpenStack Platform" or "Red Hat OpenShift Container Platform"
+   - Version: Select the specific version
+   - Content Type: "Solutions" for actionable fixes, "Articles" for background
+   - Status: "Verified" solutions have been confirmed by Red Hat
+3. Read the "Environment" section first - it tells you if the solution applies to your setup
+4. Check the "Resolution" section for the fix
+5. Check the "Root Cause" section to understand why the issue occurred
+----
+
+*Key Knowledgebase solution articles for OVS/OVN:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Topic
+|Search Query
+|Description
+
+|OVS crash
+|`ovs-vswitchd crash RHOSP`
+|Solutions for OVS daemon crashes, including core dump analysis and known bugs
+
+|OVN database issues
+|`OVN northbound database raft`
+|Solutions for OVN database cluster issues, split-brain, and leader election problems
+
+|Port binding failures
+|`OVN port binding failed`
+|Why ports fail to bind and how to diagnose the binding process
+
+|Metadata service
+|`OVN metadata agent 169.254.169.254`
+|Issues with the OVN metadata agent not responding
+
+|Performance issues
+|`OVS high CPU ovs-vswitchd`
+|Diagnosing high CPU usage in OVS daemons, including flow revalidation storms
+
+|DPDK issues
+|`OVS DPDK hugepages PMD`
+|Problems with DPDK initialization, hugepage allocation, and PMD configuration
+
+|Migration issues
+|`ML2/OVS ML2/OVN migration`
+|Issues encountered during migration from ML2/OVS to ML2/OVN
+
+|OpenShift networking
+|`OVN-Kubernetes pod connectivity`
+|Pod networking issues in OpenShift with OVN-Kubernetes
+
+|===
+
+
+[WARNING]
+====
+When searching the Knowledgebase, do not rely solely on the title. Two solutions can have similar titles but apply to completely different versions or scenarios. Always read the "Environment" section to confirm applicability.
+====
+
+
+=== Bugzilla / JIRA
+
+*Red Hat Bugzilla (https://bugzilla.redhat.com/):*
+
+Red Hat Bugzilla tracks bugs for Red Hat products. You can search it even without a Red Hat account.
+
+----
+Effective Bugzilla searches:
+
+Product: "Red Hat OpenStack" or "Red Hat OpenShift Container Platform"
+Component: "python-networking-ovn", "openvswitch", "ovn", "ovn-kubernetes"
+Status: Leave open to see both resolved and unresolved bugs
+Keywords: Use the error message or symptom
+
+Example search URL:
+https://bugzilla.redhat.com/buglist.cgi?product=Red%20Hat%20OpenStack&component=openvswitch&query_format=advanced
+
+Tips:
+- Look at CLOSED/ERRATA bugs - these have been fixed and the errata tells you which build contains the fix
+- Check the "Fixed In Version" field to know when a fix is available
+- Read the comments - they often contain workarounds even before the fix is released
+----
+
+*JIRA (https://issues.redhat.com/):*
+
+Some newer Red Hat projects use JIRA instead of Bugzilla.
+
+----
+Useful JIRA queries:
+
+Project: OCPBUGS (OpenShift bugs)
+Component: Networking / ovn-kubernetes
+Text search: Use the error message or symptom
+
+Example:
+  project = OCPBUGS AND component = Networking AND text ~ "EgressIP"
+----
+
+
+[NOTE]
+====
+When filing a bug, always include: the product and version, steps to reproduce, expected behavior, actual behavior, relevant logs (sosreport or must-gather), and any workaround you have found.
+====
+
+
+=== Community Channels
+
+*Mailing Lists:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Mailing List
+|URL
+|Purpose
+
+|ovs-discuss
+|https://mail.openvswitch.org/mailman/listinfo/ovs-discuss
+|General discussion about OVS usage, configuration, and troubleshooting
+
+|ovs-dev
+|https://mail.openvswitch.org/mailman/listinfo/ovs-dev
+|Development discussion, patch reviews, and design proposals
+
+|ovn-discuss (via ovs-discuss)
+|https://mail.openvswitch.org/mailman/listinfo/ovs-discuss
+|OVN usage and troubleshooting questions (shared with ovs-discuss)
+
+|===
+
+
+*IRC / Matrix Channels:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Channel
+|Network
+|Purpose
+
+|#openvswitch
+|irc.libera.chat / Matrix
+|General OVS and OVN discussion. Developers and users are active here.
+
+|#openstack-neutron
+|OFTC / Matrix
+|OpenStack Neutron discussion, including OVN integration
+
+|#ovn-kubernetes
+|Kubernetes Slack
+|OVN-Kubernetes specific discussion
+
+|===
+
+
+*Mailing list etiquette:*
+
+----
+1. Search the archives first - your question may already be answered
+2. Use a descriptive subject line
+3. Include: OVS/OVN version, OS version, relevant configuration, and the exact error message
+4. For patches, use git-send-email (see the Contributing section)
+5. Reply inline, not top-posting
+6. Be patient - maintainers may be in different time zones
+----
+
+=== Upstream Bug Trackers
+
+
+[cols="1,1,1",options="header"]
+|===
+|Project
+|Bug Tracker
+|URL
+
+|Open vSwitch
+|GitHub Issues
+|https://github.com/openvswitch/ovs/issues
+
+|OVN
+|GitHub Issues
+|https://github.com/ovn-org/ovn/issues
+
+|OVN-Kubernetes
+|GitHub Issues
+|https://github.com/ovn-org/ovn-kubernetes/issues
+
+|Neutron (ML2/OVN)
+|Launchpad
+|https://bugs.launchpad.net/neutron
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+When you find a bug in a Red Hat product, always file it through Red Hat Bugzilla or JIRA first, even if it turns out to be an upstream issue. The Red Hat engineering team will engage upstream if needed and ensure the fix is backported to the product.
+====
+
+
+'''
+
+== 6. Training and Certification
+
+=== Red Hat Official Training Courses
+
+Red Hat offers instructor-led and self-paced courses that cover networking concepts relevant to OVS and OVN. The following courses are the most relevant.
+
+*OpenStack Track:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Course Code
+|Title
+|What You Will Learn
+
+|CL110
+|Red Hat OpenStack Administration I: Core Operations for Domain Operators
+|Foundational OpenStack concepts including basic Neutron networking, creating networks and routers, and managing security groups. Good starting point if you are new to OpenStack.
+
+|CL210
+|Red Hat OpenStack Administration II: Infrastructure Configuration for Cloud Administrators
+|Deeper dive into OpenStack infrastructure including network configuration with OVN, Neutron agents, and advanced networking features. Covers ML2/OVN configuration in RHOSP.
+
+|CL310
+|Red Hat OpenStack Administration III: Networking and NFV
+|Advanced networking topics including SR-IOV, DPDK, NFV workloads, and complex network architectures. This is where you learn about high-performance networking with OVS-DPDK and OVN.
+
+|===
+
+
+[NOTE]
+====
+Course availability and content change over time. Check https://www.redhat.com/en/services/training-and-certification for the latest course catalog and availability.
+====
+
+
+*OpenShift Track:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Course Code
+|Title
+|What You Will Learn
+
+|DO280
+|Red Hat OpenShift Administration II: Operating a Production Kubernetes Cluster
+|Core OpenShift administration including cluster networking with OVN-Kubernetes, network policies, ingress, and troubleshooting. The primary course for OpenShift administrators.
+
+|DO380
+|Red Hat OpenShift Administration III: Scaling Kubernetes Deployments in the Enterprise
+|Advanced OpenShift administration covering multi-cluster networking, advanced OVN-Kubernetes features, performance tuning, and complex networking scenarios.
+
+|DO370
+|Enterprise Kubernetes Storage with Red Hat OpenShift Data Foundation
+|While focused on storage, this course covers network-related topics for storage traffic including OVN network configuration for Ceph and storage network isolation.
+
+|===
+
+
+*Supplementary Courses:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Course Code
+|Title
+|What You Will Learn
+
+|RH294
+|Red Hat Enterprise Linux Automation with Ansible
+|Ansible automation skills that you will use for managing OVS/OVN at scale. Covers playbook development, roles, and collections.
+
+|RH358
+|Red Hat Services Management and Automation
+|Linux networking fundamentals including firewall management, DNS, and DHCP. Useful background for understanding the Linux networking stack under OVS.
+
+|===
+
+
+=== Red Hat Certification Path
+
+The certification path relevant to OVS/OVN expertise:
+
+----
+Foundation:
+  RHCSA (EX200) - Red Hat Certified System Administrator
+    Validates Linux fundamentals - prerequisite for everything else
+
+System Administration:
+  RHCE (EX294) - Red Hat Certified Engineer
+    Validates Ansible automation skills
+
+OpenStack Specialization:
+  Red Hat Certified Specialist in OpenStack Administration (EX210)
+    Validates ability to deploy and manage OpenStack infrastructure
+    Includes networking concepts with OVN
+
+  Red Hat Certified Specialist in Advanced OpenStack Administration (EX310)
+    Validates advanced OpenStack skills including NFV and complex networking
+
+OpenShift Specialization:
+  Red Hat Certified Specialist in OpenShift Administration (EX280)
+    Validates ability to manage OpenShift clusters
+    Includes OVN-Kubernetes networking
+
+  Red Hat Certified OpenShift Administrator (EX380)
+    Validates advanced OpenShift administration
+    Includes advanced networking and multi-cluster management
+----
+
+
+[NOTE]
+.Key Concept
+====
+Certifications validate your knowledge, but hands-on lab practice is what builds real skill. Use the labs from this workshop, set up your own development environment, and practice the debugging workflows on real clusters.
+====
+
+
+=== Self-Paced Learning Options
+
+
+[cols="1,1,1",options="header"]
+|===
+|Resource
+|URL
+|Description
+
+|Red Hat Learning Subscription
+|https://www.redhat.com/en/services/training/learning-subscription
+|Access to all Red Hat training courses, labs, and exams
+
+|Red Hat Developer Program
+|https://developers.redhat.com/
+|Free developer tools, tutorials, and access to Red Hat products for development
+
+|Red Hat Interactive Labs
+|https://www.redhat.com/en/interactive-labs
+|Free browser-based labs for hands-on practice
+
+|Upstream OVN Sandbox
+|https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html
+|Free hands-on OVN environment using the ovn-sandbox script
+
+|Killercoda / Katacoda
+|https://killercoda.com/
+|Interactive Kubernetes and OpenShift scenarios, some covering networking
+
+|===
+
+
+'''
+
+== 7. Tools and Utilities
+
+=== Debugging Scripts and One-Liners
+
+The following commands and scripts are useful for quick debugging in production. Keep them in your toolkit.
+
+*OVS Debugging One-Liners:*
+
+[source,bash]
+----
+# Show all bridges and their ports in a compact format
+sudo ovs-vsctl show | grep -E '(Bridge|Port|Interface|type:)'
+
+# List all OpenFlow rules with packet/byte counters (shows active flows)
+sudo ovs-ofctl dump-flows br-int --no-stats=false | sort -t',' -k1 -n
+
+# Watch for flow table changes in real time
+sudo ovs-ofctl monitor br-int watch:
+
+# Show datapath flows with statistics (kernel fast-path entries)
+sudo ovs-dpctl dump-flows
+
+# Show coverage counters (useful for identifying hot paths)
+sudo ovs-appctl coverage/show
+
+# Show memory usage of ovs-vswitchd
+sudo ovs-appctl memory/show
+
+# Check for unreasonably long poll intervals (performance issue indicator)
+sudo journalctl -u ovs-vswitchd --since "1 hour ago" | grep "Unreasonably long"
+
+# Show connection tracking entries
+sudo ovs-appctl dpctl/dump-conntrack
+
+# Show the number of flows per table
+sudo ovs-ofctl dump-flows br-int | awk -F'table=' '{print $2}' | awk -F',' '{print $1}' | sort -n | uniq -c | sort -rn
+----
+
+*OVN Debugging One-Liners:*
+
+[source,bash]
+----
+# Show OVN cluster status (run on a controller node)
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+
+# Show all logical switches and their ports
+sudo ovn-nbctl show
+
+# Show all chassis registrations
+sudo ovn-sbctl show
+
+# List port bindings and their chassis assignment
+sudo ovn-sbctl list Port_Binding | grep -E '(logical_port|chassis|type)'
+
+# Show logical flows for a specific logical switch
+sudo ovn-sbctl lflow-list <switch-name>
+
+# Trace a packet through OVN
+sudo ovn-trace <switch-name> 'inport=="<port>" && eth.src==<mac> && eth.dst==<mac> && ip4.src==<src-ip> && ip4.dst==<dst-ip>'
+
+# Show OVN connection status on a compute node
+sudo ovn-appctl -t ovn-controller connection-status
+
+# Check if ovn-controller is connected to the Southbound DB
+sudo ovs-vsctl get open_vswitch . external_ids:ovn-remote
+
+# Show the OVN version on this node
+sudo ovn-controller --version
+----
+
+*Combined OVS/OVN debugging script:*
+
+[source,bash]
+----
+#!/bin/bash
+# quick-diag.sh - Quick OVS/OVN diagnostic script
+# Usage: sudo bash quick-diag.sh
+
+echo "=== OVS Version ==="
+ovs-vsctl --version | head -1
+
+echo ""
+echo "=== OVN Version ==="
+ovn-controller --version 2>/dev/null || echo "OVN controller not installed"
+
+echo ""
+echo "=== OVS Bridges ==="
+ovs-vsctl list-br
+
+echo ""
+echo "=== OVS Daemon Status ==="
+systemctl is-active ovs-vswitchd ovsdb-server 2>/dev/null || \
+  pidof ovs-vswitchd ovsdb-server
+
+echo ""
+echo "=== OVN Controller Status ==="
+ovn-appctl -t ovn-controller connection-status 2>/dev/null || \
+  echo "OVN controller not running"
+
+echo ""
+echo "=== OpenFlow Flow Count per Table ==="
+ovs-ofctl dump-flows br-int 2>/dev/null | \
+  awk -F'table=' '{print $2}' | awk -F',' '{print $1}' | \
+  sort -n | uniq -c | sort -rn
+
+echo ""
+echo "=== Datapath Flow Count ==="
+ovs-dpctl dump-flows 2>/dev/null | wc -l
+
+echo ""
+echo "=== Recent Errors (last 30 min) ==="
+journalctl -u ovs-vswitchd -u ovsdb-server -u ovn-controller \
+  --since "30 min ago" -p err --no-pager 2>/dev/null | tail -20
+----
+
+=== Monitoring
+
+*Prometheus Exporters:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Exporter
+|Repository
+|Description
+
+|ovs_exporter
+|https://github.com/digitalocean/ovs_exporter
+|Prometheus exporter for OVS metrics. Exposes bridge, port, interface, and flow statistics.
+
+|ovn-kubernetes metrics
+|Built into ovnkube-node
+|OVN-Kubernetes exposes Prometheus metrics natively. Available at `:29103/metrics` on each node.
+
+|Custom OVS/OVN metrics
+|N/A
+|You can build custom exporters using `ovs-vsctl`, `ovs-ofctl`, and `ovn-sbctl` commands wrapped in a script.
+
+|===
+
+
+*Key metrics to monitor:*
+
+----
+OVS Metrics:
+  - ovs_vswitchd CPU and memory usage
+  - Flow count per bridge (ovs-ofctl dump-flows | wc -l)
+  - Datapath flow count (ovs-dpctl dump-flows | wc -l)
+  - Interface RX/TX errors and drops
+  - Coverage counters (flow_mod, packet_in, upcall)
+  - Poll loop duration (watch for "Unreasonably long" messages)
+
+OVN Metrics:
+  - Database size (NB DB and SB DB file size)
+  - Cluster status (leader, followers, connectivity)
+  - Port binding count and unbound ports
+  - Logical flow count
+  - ovn-controller connection status
+  - northd loop duration
+
+OVN-Kubernetes Metrics (OpenShift):
+  - ovnkube_controller_pod_creation_latency_seconds
+  - ovnkube_controller_sync_duration_seconds
+  - ovnkube_node_cni_request_duration_seconds
+  - ovnkube_controller_network_programming_duration_seconds
+----
+
+*Grafana Dashboards:*
+
+Pre-built Grafana dashboards are available for OVS and OVN monitoring:
+
+----
+- OVS Overview Dashboard: Bridge count, flow counts, port statistics, error rates
+- OVN Cluster Dashboard: DB size, cluster health, leader status, replication lag
+- OVN-Kubernetes Dashboard: Pod networking latency, CNI request duration, sync times
+
+In OpenShift, the built-in monitoring stack (Prometheus + Grafana) collects OVN-Kubernetes
+metrics automatically. You can create dashboards in the OpenShift console under
+Observe -> Dashboards.
+----
+
+=== Ansible Collections
+
+
+[cols="1,1",options="header"]
+|===
+|Collection
+|Description
+
+|`openstack.cloud`
+|Ansible modules for managing OpenStack resources including networks, subnets, routers, and security groups. Use for automating Neutron/OVN operations via the OpenStack API.
+
+|`community.general`
+|Includes the `openvswitch_bridge`, `openvswitch_port`, and `openvswitch_db` modules for managing OVS directly via Ansible.
+
+|`osp.edpm`
+|Ansible collection for managing RHOSO data plane nodes (edpm). Includes roles for configuring OVS and OVN on compute nodes.
+
+|`redhat.openstack_operations`
+|Operational tasks for Red Hat OpenStack including health checks, log collection, and diagnostic tasks.
+
+|===
+
+
+*Example: Using Ansible to check OVS bridge configuration across all compute nodes:*
+
+[source,bash]
+----
+# Create a simple playbook to check OVS on all computes
+ansible computes -m shell -a "ovs-vsctl show" -b
+
+# Or using the openvswitch module
+ansible computes -m openvswitch_db \
+  -a "table=Open_vSwitch record=. col=ovs_version" -b
+----
+
+=== sosreport Plugins
+
+The `sos` tool (formerly `sosreport`) collects diagnostic information for Red Hat support cases. It includes plugins specifically for OVS and OVN.
+
+*What the OVS plugin collects:*
+
+----
+Plugin: openvswitch
+  - ovs-vsctl show
+  - ovs-vsctl list-br (and details for each bridge)
+  - ovs-ofctl dump-flows (for each bridge)
+  - ovs-dpctl dump-flows
+  - ovs-appctl coverage/show
+  - ovs-appctl memory/show
+  - ovsdb-client dump
+  - OVS configuration files (/etc/openvswitch/, /etc/sysconfig/openvswitch)
+  - OVS log files (/var/log/openvswitch/)
+  - Systemd unit status
+----
+
+*What the OVN plugin collects:*
+
+----
+Plugin: ovn_central, ovn_host
+  - ovn-nbctl show
+  - ovn-sbctl show
+  - ovn-nbctl list (for key tables)
+  - ovn-sbctl list (for key tables)
+  - ovn-sbctl lflow-list
+  - OVN database cluster status
+  - OVN configuration files
+  - OVN log files (/var/log/ovn/)
+  - Systemd unit status
+----
+
+*Running sosreport with specific plugins:*
+
+[source,bash]
+----
+# Collect only OVS and OVN data (faster than full sosreport)
+sudo sos report -o openvswitch,ovn_central,ovn_host
+
+# Collect with networking plugins as well
+sudo sos report -o openvswitch,ovn_central,ovn_host,networking
+
+# In a containerized environment (RHOSP)
+sudo sos report -o openvswitch,ovn_central,ovn_host,container_log
+----
+
+
+[NOTE]
+.Key Concept
+====
+Always attach a sosreport when opening a Red Hat support case for OVS/OVN issues. The support engineer will need this data to diagnose the problem, and providing it upfront can significantly reduce time to resolution.
+====
+
+
+=== must-gather (OpenShift)
+
+The `must-gather` tool collects diagnostic information from an OpenShift cluster. The networking must-gather collects OVN-Kubernetes specific data.
+
+[source,bash]
+----
+# Collect general cluster diagnostics
+oc adm must-gather
+
+# Collect networking-specific diagnostics (includes OVN data)
+oc adm must-gather --image=registry.redhat.io/openshift4/ose-must-gather-rhel9:latest \
+  -- /usr/bin/gather_network_logs
+
+# Collect both general and networking data
+oc adm must-gather \
+  --image=registry.redhat.io/openshift4/ose-must-gather-rhel9:latest \
+  -- /usr/bin/gather_network_logs &
+oc adm must-gather &
+wait
+----
+
+*What the networking must-gather collects:*
+
+----
+- OVN NB and SB database dumps
+- OVN-Kubernetes pod logs (ovnkube-controller, ovnkube-node, ovn-controller)
+- OVS bridge configuration and flows from every node
+- iptables/nftables rules
+- Network configuration (ip addr, ip route, ip rule)
+- NetworkPolicy, EgressFirewall, EgressIP resources
+- Cluster network configuration
+- Node network status
+----
+
+=== OVN-Kubernetes Tools
+
+*ovnkube-trace:*
+
+`ovnkube-trace` is a tool that traces packets through the OVN-Kubernetes logical network. It is the Kubernetes-aware equivalent of `ovn-trace`.
+
+[source,bash]
+----
+# Install ovnkube-trace (from the network-tools image or build from source)
+# https://github.com/ovn-org/ovn-kubernetes/tree/master/go-controller/cmd/ovnkube-trace
+
+# Trace traffic between two pods
+ovnkube-trace \
+  --src pod-a \
+  --src-namespace default \
+  --dst pod-b \
+  --dst-namespace default \
+  --dst-port 8080 \
+  --tcp
+
+# Trace traffic from a pod to an external destination
+ovnkube-trace \
+  --src pod-a \
+  --src-namespace default \
+  --dst-ip 8.8.8.8 \
+  --dst-port 443 \
+  --tcp
+----
+
+*network-tools image:*
+
+The `network-tools` container image provides a set of networking tools for debugging inside an OpenShift cluster.
+
+[source,bash]
+----
+# Run a network-tools pod on a specific node for debugging
+oc debug node/<node-name> --image=registry.redhat.io/openshift4/network-tools-rhel9
+
+# Inside the debug pod, you have access to:
+# - tcpdump, nmap, netcat, curl
+# - ovs-vsctl, ovs-ofctl, ovs-appctl
+# - ovn-nbctl, ovn-sbctl, ovn-trace
+# - ip, ss, conntrack
+----
+
+
+[NOTE]
+====
+The `network-tools` image is maintained by Red Hat specifically for OpenShift networking troubleshooting. It includes versions of OVS and OVN tools that match what is deployed on the cluster nodes.
+====
+
+
+'''
+
+== 8. Community and Contribution
+
+=== How to Contribute to OVS Upstream
+
+Contributing to OVS is done via email using `git send-email`. The project does not use GitHub pull requests for code contributions (though issues are tracked on GitHub).
+
+*Setting up your environment:*
+
+[source,bash]
+----
+# Clone the repository
+git clone https://github.com/openvswitch/ovs.git
+cd ovs
+
+# Configure git for sending patches
+git config sendemail.to ovs-dev@openvswitch.org
+git config sendemail.smtpserver smtp.example.com
+git config sendemail.smtpserverport 587
+git config sendemail.smtpencryption tls
+git config sendemail.smtpuser you@example.com
+
+# Build OVS from source
+./boot.sh
+./configure
+make -j$(nproc)
+----
+
+*Submitting a patch:*
+
+[source,bash]
+----
+# Create a branch for your change
+git checkout -b fix-something
+
+# Make your changes and commit
+git add <files>
+git commit -s   # -s adds Signed-off-by
+
+# Send the patch to the mailing list
+git send-email --to=ovs-dev@openvswitch.org HEAD~1
+
+# For a patch series
+git send-email --to=ovs-dev@openvswitch.org --cover-letter HEAD~3
+----
+
+*Patch formatting requirements:*
+
+----
+1. Subject line: Start with the component name followed by a colon
+   Example: "ofproto: Fix flow deletion with wildcards"
+   Example: "ovn-controller: Handle missing chassis gracefully"
+
+2. Commit message body:
+   - Explain what the patch does and why
+   - Reference any related bugs or discussions
+   - Keep lines under 72 characters
+
+3. Sign-off: Every patch must include a Signed-off-by line
+   Signed-off-by: Your Name <your.email@example.com>
+
+4. Testing: Mention what tests you ran
+   - make check (unit tests)
+   - make check-system-userspace (system tests in userspace)
+
+5. Updates: When submitting a revised patch, include version information
+   Subject: [PATCH v2] ofproto: Fix flow deletion with wildcards
+   Add a changelog below the "---" line in the commit message
+----
+
+=== How to Contribute to OVN Upstream
+
+OVN follows the same contribution process as OVS since it was originally part of the same project.
+
+[source,bash]
+----
+# Clone OVN
+git clone https://github.com/ovn-org/ovn.git
+cd ovn
+
+# OVN depends on OVS - you need the OVS source tree
+git clone https://github.com/openvswitch/ovs.git
+
+# Build OVN
+cd ovn
+./boot.sh
+./configure --with-ovs-source=../ovs
+make -j$(nproc)
+
+# Run the test suite
+make check TESTSUITEFLAGS="-j$(nproc)"
+
+# Send patches to the mailing list
+git send-email --to=ovs-dev@openvswitch.org HEAD~1
+----
+
+
+[NOTE]
+====
+OVN patches go to the same `ovs-dev@openvswitch.org` mailing list as OVS patches. Prefix your patch subjects with `ovn-` to distinguish them from OVS patches.
+====
+
+
+=== Code Review Process
+
+----
+1. Submit your patch to the mailing list
+2. Automated CI will test your patch (results posted to the mailing list)
+3. Community members review your patch:
+   - Reviewed-by: Reviewer approves the patch
+   - Acked-by: Reviewer acknowledges the patch is correct
+   - Nacked-by: Reviewer objects to the patch (must be addressed)
+   - Comment: Reviewer has questions or suggestions
+4. Address review comments by sending a revised patch (v2, v3, etc.)
+5. A committer merges the patch when it has sufficient reviews
+
+Typical review cycle: 1-2 weeks for straightforward patches.
+Complex patches may take multiple revision cycles.
+----
+
+=== How to Report Bugs Effectively
+
+Whether reporting upstream or to Red Hat, an effective bug report dramatically speeds up resolution.
+
+----
+A good bug report includes:
+
+1. Environment:
+   - OVS version (ovs-vsctl --version)
+   - OVN version (ovn-controller --version)
+   - OS version (cat /etc/redhat-release)
+   - Kernel version (uname -r)
+   - Product version (RHOSP 17.1, OpenShift 4.16, etc.)
+
+2. Problem description:
+   - What you expected to happen
+   - What actually happened
+   - When it started (date/time, after an upgrade, etc.)
+
+3. Steps to reproduce:
+   - Exact commands or API calls
+   - Configuration files (sanitized of credentials)
+   - Network topology
+
+4. Diagnostic data:
+   - sosreport (RHOSP/RHEL) or must-gather (OpenShift)
+   - Relevant log snippets
+   - ovs-vsctl show output
+   - ovn-nbctl show / ovn-sbctl show output
+   - Flow dumps if relevant
+
+5. Impact:
+   - How many systems/tenants are affected
+   - Is there a workaround
+   - Is the issue intermittent or consistent
+----
+
+
+[NOTE]
+.Key Concept
+====
+The fastest way to get a bug fixed is to provide a minimal reproducer. If you can reduce the issue to a simple test case (for example, "create two VMs on different computes, send traffic between them, observe packet loss"), the developer can reproduce and fix it much faster than working from logs alone.
+====
+
+
+'''
+
+== 9. Glossary
+
+This glossary defines every essential term used throughout this workshop. Terms are listed alphabetically. Refer back to this section whenever you encounter an unfamiliar term.
+
+
+[cols="1,1",options="header"]
+|===
+|Term
+|Definition
+
+|*ACL (Access Control List)*
+|An OVN construct that filters traffic on logical switch ports. ACLs are applied to ingress or egress traffic and support connection tracking for stateful filtering. In OpenStack, security groups are translated into OVN ACLs.
+
+|*BFD (Bidirectional Forwarding Detection)*
+|A lightweight protocol used by OVN to detect link failures between chassis. BFD runs over the Geneve tunnels and enables fast failover of gateway chassis when a link goes down. Operates at sub-second detection intervals.
+
+|*Bridge*
+|An OVS construct that acts as a virtual Ethernet switch. A bridge has ports, processes traffic using OpenFlow rules, and can forward, drop, or modify packets. The most important bridge in OVS/OVN deployments is `br-int` (the integration bridge).
+
+|*Chassis*
+|An OVN term for a physical or virtual host running `ovn-controller`. Each chassis registers itself in the OVN Southbound database and is identified by a unique name. Chassis can be compute nodes, gateway nodes, or network nodes.
+
+|*Cluster (OVN/Raft)*
+|A group of three or more OVN database servers (northbound or southbound) running the Raft consensus protocol for high availability. The cluster elects a leader that handles all writes, while followers replicate the data.
+
+|*Conntrack (Connection Tracking)*
+|A mechanism in the Linux kernel (and OVS) that tracks the state of network connections (new, established, related, invalid). OVN uses conntrack to implement stateful ACLs and NAT. Conntrack zones isolate tracking domains.
+
+|*Datapath*
+|The component of OVS that performs the actual packet forwarding. The kernel datapath uses kernel modules for fast forwarding. The userspace datapath (used with DPDK) runs entirely in user space for even higher performance.
+
+|*DHCP*
+|Dynamic Host Configuration Protocol. OVN includes a native DHCP responder that handles DHCP requests directly in the logical pipeline without requiring an external DHCP server or agent. Configured via DHCP_Options in the NB DB.
+
+|*DPDK (Data Plane Development Kit)*
+|A set of libraries and drivers for fast packet processing in user space, bypassing the kernel network stack. OVS can use DPDK for its datapath, achieving significantly higher throughput and lower latency than the kernel datapath.
+
+|*Encapsulation*
+|The process of wrapping a packet inside another packet for transport across a physical network. OVN uses Geneve encapsulation by default to carry logical network traffic between chassis. The encapsulation header carries metadata including the logical datapath and logical port identifiers.
+
+|*Flow*
+|A set of match criteria and actions that define how a packet should be processed. In OVS, flows are OpenFlow rules installed in bridge flow tables. Flows match on packet headers and specify actions like output, drop, modify, or send to controller.
+
+|*Gateway Chassis*
+|A chassis designated to handle north-south traffic (traffic entering or leaving the OVN logical network). Gateway chassis host the logical router gateway ports and perform SNAT/DNAT. Multiple gateway chassis can be configured for high availability.
+
+|*Geneve (Generic Network Virtualization Encapsulation)*
+|The tunneling protocol used by OVN for overlay traffic between chassis. Geneve is preferred over VXLAN because it supports variable-length metadata in TLV (Type-Length-Value) format, which OVN uses to carry logical flow information. Defined in RFC 8926.
+
+|*Logical Datapath*
+|An OVN abstraction representing a logical switch or logical router in the Southbound database. Each logical datapath has a unique tunnel key used in Geneve encapsulation to identify which logical network a packet belongs to.
+
+|*Logical Flow*
+|A flow rule in the OVN Southbound database that represents processing logic for a logical datapath. Logical flows are generated by `ovn-northd` and consumed by `ovn-controller`, which translates them into OpenFlow rules for the local OVS instance.
+
+|*Logical Port*
+|A port on an OVN logical switch or logical router. Logical ports are virtual constructs that can be bound to physical ports on chassis. Types include VIF (virtual interface), localnet (connection to a physical network), router (connection to a logical router), and others.
+
+|*Logical Router*
+|An OVN abstraction for Layer 3 routing between logical switches. Logical routers support static routes, NAT, load balancing, and gateway functionality. They can be distributed (processing on every chassis) or centralized (processing on a gateway chassis).
+
+|*Logical Switch*
+|An OVN abstraction for a Layer 2 broadcast domain. Logical switches connect logical ports and provide switching, DHCP, ARP handling, and ACL enforcement. Each logical switch is isolated from others unless connected through a logical router.
+
+|*Match*
+|The criteria portion of a flow rule that determines which packets the flow applies to. Matches can specify values for any packet header field (MAC addresses, IP addresses, TCP/UDP ports, VLAN tags, etc.) and support wildcards and masks.
+
+|*Megaflow*
+|An OVS optimization that combines multiple microflows (exact-match flows) into a single wildcard flow in the kernel datapath cache. Megaflows reduce the number of cache entries needed and the frequency of upcalls to the userspace daemon. The megaflow cache is also called the datapath classifier (dpcls).
+
+|*NAT (Network Address Translation)*
+|The process of modifying source or destination IP addresses as packets traverse a router. OVN supports both SNAT (source NAT, for outbound traffic) and DNAT (destination NAT, for inbound traffic such as floating IPs).
+
+|*Northbound Database (NB DB)*
+|The OVN database that stores the logical network configuration as defined by the cloud management system (OpenStack Neutron, Kubernetes, etc.). Contains tables for logical switches, routers, ports, ACLs, NAT rules, and load balancers. This is the "desired state" database.
+
+|*OpenFlow*
+|The protocol used to program the forwarding behavior of OVS bridges. OpenFlow defines match-action rules organized in numbered tables. OVS supports OpenFlow versions up to 1.5. OVN generates OpenFlow rules automatically; you rarely need to write them manually.
+
+|*OVN Controller*
+|The local daemon (`ovn-controller`) running on each chassis (hypervisor/node). It connects to the OVN Southbound database, receives logical flows, translates them into OpenFlow rules, and installs them in the local OVS instance. It also manages tunnel endpoints and port bindings.
+
+|*OVN Northd*
+|The central daemon (`ovn-northd`) that translates the high-level logical network configuration from the Northbound database into low-level logical flows in the Southbound database. It runs the "compilation" step of OVN's pipeline.
+
+|*OVS (Open vSwitch)*
+|A production-quality, multilayer virtual switch. OVS provides the data plane for OVN and is used to forward packets using OpenFlow rules. It supports kernel and userspace (DPDK) datapaths, VLAN tagging, tunneling, QoS, and connection tracking.
+
+|*OVSDB*
+|The database protocol and server used by OVS and OVN to store configuration and state. OVSDB is defined in RFC 7047 and supports transactions, monitoring, and clustering (via Raft). The OVS database (`conf.db`) and OVN databases (NB DB, SB DB) all use OVSDB.
+
+|*Physical Flow*
+|An OpenFlow rule installed in the local OVS instance on a specific chassis. Physical flows are the result of `ovn-controller` translating logical flows into concrete forwarding rules that reference physical ports, tunnel endpoints, and real MAC/IP addresses.
+
+|*Pipeline (Ingress/Egress)*
+|The ordered sequence of logical flow tables that a packet traverses in OVN. The ingress pipeline processes packets entering a logical port; the egress pipeline processes packets leaving a logical port. Each pipeline consists of numbered tables with specific functions (ACL, LB, routing, etc.).
+
+|*PMD (Poll Mode Driver)*
+|A DPDK concept where dedicated CPU cores continuously poll network interfaces for packets, eliminating interrupt overhead. In OVS-DPDK, PMD threads are pinned to specific CPU cores and are responsible for packet processing in the userspace datapath.
+
+|*Port Binding*
+|The process by which an OVN logical port is associated with a specific chassis. When a VM or container starts, `ovn-controller` on that chassis claims the port binding in the Southbound database, telling other chassis where to send traffic for that port.
+
+|*Port Security*
+|An OVN feature that restricts traffic on a logical port to only the configured MAC and IP addresses. Prevents MAC spoofing and IP spoofing. In OpenStack, port security is enabled by default and enforced through OVN logical flows.
+
+|*Raft*
+|A distributed consensus protocol used by OVSDB for database clustering. Raft ensures that all database replicas agree on the same data, tolerates the failure of a minority of nodes, and automatically elects a new leader when the current leader fails. OVN uses Raft for both the NB DB and SB DB clusters.
+
+|*SNAT/DNAT*
+|Source NAT and Destination NAT. SNAT modifies the source IP address of outbound packets (used for tenant network egress to external networks). DNAT modifies the destination IP address of inbound packets (used for floating IPs and load balancing). Both are implemented in OVN using conntrack.
+
+|*Southbound Database (SB DB)*
+|The OVN database that stores the runtime state of the logical network. Contains logical flows (generated by `ovn-northd`), chassis registrations, port bindings, MAC bindings, and other state. This is the "compiled state" database that `ovn-controller` reads.
+
+|*Table (OpenFlow)*
+|A numbered stage in the OpenFlow pipeline of an OVS bridge. Each table contains flow rules. Packets enter at table 0 and can be sent to subsequent tables using the `resubmit` action. OVN uses specific table numbers for specific functions (e.g., table 0 for ingress port classification).
+
+|*Tunnel*
+|A network path that encapsulates packets for transport across an underlay network. OVN creates Geneve tunnels between chassis automatically. Each tunnel carries traffic for all logical networks, using metadata in the Geneve header to demultiplex packets to the correct logical datapath and port.
+
+|*Userspace Datapath*
+|An OVS datapath that processes packets entirely in user space instead of the kernel. Used with DPDK for high-performance networking. The userspace datapath bypasses the kernel network stack and accesses NICs directly through DPDK poll mode drivers.
+
+|*VXLAN (Virtual Extensible LAN)*
+|A tunneling protocol that encapsulates Layer 2 Ethernet frames in UDP packets. OVN supports VXLAN for communication with hardware VTEPs (physical switches) but prefers Geneve for chassis-to-chassis traffic because VXLAN's 24-bit VNI cannot carry the metadata that OVN needs.
+
+|*Zone (Conntrack)*
+|A conntrack zone is a namespace that isolates connection tracking state. OVN assigns different zones to different logical datapaths so that connection tracking state for one logical network does not interfere with another. Zones are identified by numeric IDs and are managed by `ovn-controller`.
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+Understanding these terms is essential for reading OVN documentation, interpreting OVS/OVN command output, and communicating effectively with the development team and Red Hat support. When in doubt, refer back to this glossary.
+====
+
+
+'''
+
+== Summary
+
+This reference module is designed to be a living document. As OVS and OVN evolve, new resources will become available and some links will change. Here is a priority order for how to use these references:
+
+----
+For daily operations:
+  1. Man pages (always accurate for your installed version)
+  2. Red Hat Knowledgebase (production-tested solutions)
+  3. Debugging scripts and tools from Section 7
+
+For learning:
+  1. Official documentation (start with architecture docs)
+  2. Conference talks (for design rationale and deep dives)
+  3. Blog posts (for practical walkthroughs)
+  4. Training courses (for structured learning)
+
+For troubleshooting:
+  1. Man pages (exact command syntax)
+  2. Red Hat Knowledgebase (known issues and solutions)
+  3. sosreport / must-gather (collecting diagnostic data)
+  4. Community channels (when you are stuck)
+
+For contributing:
+  1. Contributing guide in the repository
+  2. Mailing list archives (to understand conventions)
+  3. Existing patches (to see the expected format)
+----
+
+
+[NOTE]
+.Key Concept
+====
+The best engineers are not the ones who memorize everything - they are the ones who know where to find the answer quickly. Bookmark this module and use it as your starting point.
+====
+
+
+'''
+
+*End of Module 14*
+
+xref:index.adoc[Back to Workshop Index] | xref:13-limitations.adoc[Previous: Module 13]
+

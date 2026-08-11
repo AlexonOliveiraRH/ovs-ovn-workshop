@@ -1,0 +1,1732 @@
+= Module 07 - OVS and OVN in Red Hat OpenStack Platform
+
+
+== Introduction
+
+Red Hat OpenStack Platform (RHOSP) is where most Red Hat engineers encounter OVS and OVN in a production context. Understanding how Neutron integrates with both ML2/OVS and ML2/OVN is critical for troubleshooting, performance tuning, and helping customers through migrations.
+
+This module covers both architectures in detail - the legacy ML2/OVS approach and the current ML2/OVN approach - so you can support environments running either one, and explain the differences to customers considering migration.
+
+'''
+
+== RHOSP Networking Architecture Overview
+
+=== Neutron as the Networking Service
+
+Neutron is OpenStack's networking service. It provides an API for managing virtual networks, subnets, ports, routers, security groups, floating IPs, and other networking constructs. Neutron itself does not forward packets - it delegates the actual implementation to backend plugins and drivers.
+
+When a user creates a network in Horizon or via the OpenStack CLI, Neutron stores the desired state in its database and then calls the configured backend to implement it. The backend is responsible for programming the actual virtual switches, routers, and firewalls on the hypervisors.
+
+----
++--------------------------------------------------+
+|               OpenStack API / Horizon             |
++--------------------------------------------------+
+                       |
+                       v
++--------------------------------------------------+
+|              Neutron Server                       |
+|                                                   |
+|  +--------------------------------------------+  |
+|  |              ML2 Plugin                     |  |
+|  |                                             |  |
+|  |  +------------------+ +------------------+  |  |
+|  |  | Type Drivers     | | Mechanism Driver |  |  |
+|  |  |                  | |                  |  |  |
+|  |  | - flat           | | - OVS            |  |  |
+|  |  | - vlan           | | - OVN            |  |  |
+|  |  | - vxlan          | | - linuxbridge    |  |  |
+|  |  | - geneve         | | - SRIOV          |  |  |
+|  |  +------------------+ +------------------+  |  |
+|  +--------------------------------------------+  |
++--------------------------------------------------+
+                       |
+                       v
+            Backend-specific agents or
+            database connections
+----
+
+=== ML2 Plugin Architecture
+
+The Modular Layer 2 (ML2) plugin is Neutron's primary plugin. It separates networking concerns into two types of drivers:
+
+*Type Drivers* define the network segmentation technology:
+
+* *flat* - No segmentation; all traffic shares the same L2 domain.
+* *vlan* - VLAN tags (802.1Q) for segmentation; limited to 4094 networks.
+* *vxlan* - VXLAN encapsulation for overlay networks; up to 16 million network IDs.
+* *geneve* - Geneve encapsulation for overlay networks; extensible metadata, used by OVN.
+* *gre* - GRE tunnels for overlay networks.
+
+*Mechanism Drivers* define how the networking is implemented on the infrastructure:
+
+* *openvswitch* (ML2/OVS) - Uses OVS bridges and Neutron agents to implement networks.
+* *ovn* (ML2/OVN) - Uses OVN logical constructs, which program OVS automatically.
+* *linuxbridge* - Uses Linux bridges (less common in production).
+* *sriov* - Uses SR-IOV for direct NIC passthrough to VMs.
+
+The type driver and mechanism driver work together. For example, ML2/OVN with the Geneve type driver means OVN implements tenant networks using Geneve tunnels between hypervisors.
+
+
+[NOTE]
+.Key Concept
+====
+The mechanism driver is the critical choice that determines the entire networking architecture. ML2/OVS and ML2/OVN are the two main mechanism drivers you will encounter in RHOSP environments. The choice between them affects agent architecture, packet flow paths, troubleshooting methodology, and operational procedures.
+====
+
+
+=== How Neutron Abstracts Networking
+
+Regardless of the backend, Neutron presents the same API objects:
+
+
+[cols="1,1",options="header"]
+|===
+|Neutron Object
+|Purpose
+
+|*Network*
+|An isolated L2 broadcast domain
+
+|*Subnet*
+|An IP address range associated with a network
+
+|*Port*
+|A virtual network interface (MAC + IP) attached to a network
+
+|*Router*
+|A virtual router connecting subnets and providing gateway access
+
+|*Security Group*
+|A set of ingress/egress firewall rules applied to ports
+
+|*Floating IP*
+|A public IP mapped (DNAT/SNAT) to a private IP on a port
+
+|*Trunk*
+|A parent port with sub-ports for VLAN-tagged traffic
+
+|===
+
+
+These objects are the same whether ML2/OVS or ML2/OVN is the backend. What changes is how these objects are implemented under the hood.
+
+'''
+
+== ML2/OVS in RHOSP (Legacy)
+
+=== Architecture
+
+In an ML2/OVS deployment, Neutron uses a set of agents running on each node to implement the network configuration:
+
+----
++--------------------------------------------+
+|              Controller Node                |
+|                                             |
+|  Neutron Server (ML2/OVS mechanism driver)  |
+|  RabbitMQ (message bus)                     |
+|  MariaDB (Neutron database)                 |
++---------------------+----------------------+
+                      |
+                      | RPC via RabbitMQ
+                      |
+        +-------------+------------------+
+        |                                |
+        v                                v
++-----------------------------+  +-----------------------------+
+|     Network Node            |  |      Compute Node           |
+|                             |  |                             |
+| neutron-openvswitch-agent   |  | neutron-openvswitch-agent   |
+| neutron-l3-agent            |  |                             |
+| neutron-dhcp-agent          |  | OVS bridges:                |
+| neutron-metadata-agent      |  |   br-int                    |
+|                             |  |   br-tun                    |
+| OVS bridges:                |  |                             |
+|   br-int                    |  | VM-A        VM-B            |
+|   br-tun                    |  +-----------------------------+
+|   br-ex                     |
+|                             |
+| Router namespaces (qrouter) |
+| DHCP namespaces (qdhcp)     |
++-----------------------------+
+----
+
+=== Key Components
+
+*neutron-openvswitch-agent* (L2 agent) - Runs on every node (compute and network). Receives network state from the Neutron server via RabbitMQ and programs the local OVS bridges accordingly. It is responsible for:
+
+* Creating VLAN tags for internal tenant network segmentation on `br-int`.
+* Setting up tunnel ports and flow rules on `br-tun` for overlay encapsulation.
+* Adding VM ports to `br-int` when instances are launched.
+* Programming MAC/IP-based flow rules for known destinations.
+
+*neutron-l3-agent* - Runs on network nodes (or on all nodes with DVR). Creates Linux network namespaces (`qrouter-<router-id>`) that act as virtual routers. Each namespace has interfaces connected to `br-int` and, for external connectivity, to `br-ex`. The L3 agent programs:
+
+* IP addresses on namespace interfaces.
+* IP routing rules inside the namespace.
+* iptables/nftables rules for NAT (floating IPs, SNAT for external access).
+* HA keepalived instances for router redundancy (VRRP-based).
+
+*neutron-dhcp-agent* - Runs on network nodes. Creates Linux network namespaces (`qdhcp-<network-id>`) that each contain a `dnsmasq` process. This process serves DHCP and DNS for the corresponding tenant network. A port in `br-int` connects the namespace to the virtual network.
+
+*neutron-metadata-agent* - Runs on network nodes (colocated with the L3 agent). Provides the OpenStack metadata service (169.254.169.254) to VMs through the router namespaces. VMs access metadata by sending HTTP requests to 169.254.169.254, which the namespace routes to the metadata agent, which proxies the request to the Nova metadata API.
+
+=== OVS Bridge Architecture in ML2/OVS
+
+Each node running ML2/OVS has up to three OVS bridges:
+
+*br-int (Integration Bridge)*
+
+This is the central bridge where all VM ports are connected. It is the heart of the virtual network on each node.
+
+----
++--------------------------------------------------------------------+
+|                          br-int                                     |
+|                                                                     |
+|  +---------+  +---------+  +---------+  +---------+  +---------+   |
+|  | VM port |  | VM port |  | DHCP    |  | Router  |  | patch   |   |
+|  | (qvo-)  |  | (qvo-)  |  | namespace| | namespace| | to      |   |
+|  |         |  |         |  | port    |  | port    |  | br-tun  |   |
+|  | tag=10  |  | tag=10  |  | tag=10  |  | tag=10  |  |         |   |
+|  +---------+  +---------+  +---------+  +---------+  +---------+   |
++--------------------------------------------------------------------+
+----
+
+Key characteristics:
+
+* Each port on `br-int` is assigned an internal VLAN tag. This tag is local to the node - VLAN 10 on one compute might represent a completely different tenant network than VLAN 10 on another compute.
+* The L2 agent maps these local VLAN tags to/from tunnel IDs (VNI for VXLAN) when traffic crosses between `br-int` and `br-tun`.
+* Flow rules on `br-int` handle local forwarding, ARP responses, and security group enforcement.
+
+*br-tun (Tunnel Bridge)*
+
+This bridge handles overlay encapsulation and decapsulation. It connects to `br-int` via a patch port.
+
+----
++--------------------------------------------------------------------+
+|                          br-tun                                     |
+|                                                                     |
+|  +---------+  +----------+  +----------+  +----------+             |
+|  | patch   |  | vxlan-   |  | vxlan-   |  | vxlan-   |             |
+|  | to      |  | compute2 |  | compute3 |  | network  |             |
+|  | br-int  |  |          |  |          |  | node     |             |
+|  +---------+  +----------+  +----------+  +----------+             |
++--------------------------------------------------------------------+
+----
+
+Key characteristics:
+
+* One tunnel port per remote node (VXLAN, GRE, or Geneve endpoint).
+* Ingress flows: Strip the tunnel encapsulation, map the VNI to a local VLAN tag, forward to `br-int`.
+* Egress flows: Map the local VLAN tag to a VNI, encapsulate in a tunnel, send to the remote node's tunnel IP.
+* The `neutron-openvswitch-agent` manages tunnel port creation and flow rules on `br-tun`.
+
+*br-ex (External Bridge)*
+
+This bridge exists only on network nodes (or gateway nodes) and provides connectivity to external/provider networks.
+
+----
++--------------------------------------------------------------------+
+|                          br-ex                                      |
+|                                                                     |
+|  +---------+  +---------+                                           |
+|  | physical|  | Router  |                                           |
+|  | NIC     |  | namespace|                                          |
+|  | (e.g.,  |  | external |                                          |
+|  |  eth1)  |  | port    |                                           |
+|  +---------+  +---------+                                           |
++--------------------------------------------------------------------+
+----
+
+Key characteristics:
+
+* The physical NIC connected to the external/provider network is added to `br-ex`.
+* Router namespace external interfaces (`qg-<port-id>`) are connected to `br-ex`.
+* Floating IP traffic exits through `br-ex` to the physical network.
+
+=== Packet Flow Through Bridges
+
+==== VM to VM - Same Compute, Same Network
+
+This is the simplest case. Both VMs are on the same compute node and the same tenant network.
+
+----
+VM-A (192.168.1.10) --> qvb-A --> qbr-A --> qvo-A --> br-int --> qvo-B --> qbr-B --> qvb-B --> VM-B (192.168.1.20)
+----
+
+
+[NOTE]
+====
+The `qbr` (quantum bridge) is a Linux bridge used as an intermediary between the VM's tap interface and OVS. It was historically needed because OVS did not support iptables-based security groups. With the move to OVS native firewall (conntrack-based security groups), the `qbr` bridge may not be present in newer configurations.
+====
+
+
+Flow path on `br-int`:
+. Packet arrives from `qvo-A` on `br-int`.
+. Flow rules match the destination MAC and local VLAN tag.
+. Packet is forwarded to `qvo-B` on `br-int`.
+. Packet never leaves the compute node.
+
+==== VM to VM - Different Compute, Same Network
+
+VMs are on different compute nodes but the same tenant network.
+
+----
+Compute 1                                      Compute 2
+VM-A --> qvo-A --> br-int --> patch --> br-tun   br-tun --> patch --> br-int --> qvo-B --> VM-B
+                                   |                 ^
+                                   |  VXLAN tunnel   |
+                                   +-----------------+
+----
+
+Detailed flow:
+
+. *br-int on Compute 1*: Packet from VM-A arrives on `qvo-A`. If the destination MAC is not known locally, the packet is forwarded to the patch port leading to `br-tun`. The packet carries the local VLAN tag for the tenant network.
+
+. *br-tun on Compute 1*: Flow table 0 classifies the packet as coming from `br-int`. Table 20 (unicast) or table 21 (broadcast/multicast/unknown) handles the forwarding:
+** For known unicast: Table 20 matches the destination MAC, rewrites the local VLAN tag to the tunnel VNI, and outputs to the specific tunnel port for Compute 2.
+** For unknown/broadcast: Table 21 rewrites the VLAN tag to VNI and outputs to all tunnel ports for this VNI.
+
+. *Tunnel transport*: The packet is encapsulated in a VXLAN (or GRE/Geneve) header with the VNI corresponding to the tenant network and sent over the underlay network to Compute 2.
+
+. *br-tun on Compute 2*: The packet arrives on the tunnel port from Compute 1. Table 4 (VXLAN input) matches the VNI, rewrites it to the local VLAN tag for this tenant network on this compute, and forwards to `br-int` via the patch port.
+
+. *br-int on Compute 2*: The packet arrives with the correct local VLAN tag. Flow rules match the destination MAC and forward to `qvo-B`.
+
+==== VM to External Network
+
+A VM accesses the internet or an external network. This requires a router with a gateway to the external network.
+
+----
+Compute Node                    Network Node
+VM-A --> br-int --> br-tun      br-tun --> br-int --> qr (router ns) --> qg --> br-ex --> physical NIC
+              |                    ^
+              | VXLAN tunnel       |
+              +--------------------+
+----
+
+Detailed flow:
+
+. *Compute node*: VM-A sends a packet to an external IP. Since the destination is not on the local subnet, the VM sends it to its default gateway (the router).
+
+. *br-int -> br-tun on compute*: The packet is encapsulated in a VXLAN tunnel and sent to the network node.
+
+. *Network node br-tun -> br-int*: The packet is decapsulated and forwarded to `br-int` with the correct local VLAN tag.
+
+. *Router namespace (qrouter-)*: The packet arrives on the router's internal interface (`qr-<port-id>`). Inside the namespace:
+** If the VM has a floating IP: SNAT rule translates the source IP from the VM's private IP to the floating IP. The packet exits via the external interface (`qg-<port-id>`).
+** If no floating IP but SNAT is enabled on the router: The source IP is translated to the router's external IP.
+** The packet is routed from the internal interface to the external interface based on the namespace's routing table.
+
+. *br-ex on network node*: The packet arrives on `br-ex` via the router's external interface and is forwarded out the physical NIC to the external network.
+
+
+[WARNING]
+====
+In the legacy ML2/OVS architecture without DVR, all north-south traffic (VM to external) must pass through the network node. This makes the network node a potential bottleneck and single point of failure (unless HA L3 agent with VRRP is configured). This is one of the main motivations for moving to OVN.
+====
+
+
+=== Flow Tables in ML2/OVS
+
+Understanding the flow tables on each bridge is essential for troubleshooting.
+
+*br-int key tables:*
+
+[source,bash]
+----
+# Dump br-int flows (on a compute node)
+ovs-ofctl dump-flows br-int
+----
+
+----
+Table 0: Ingress classification
+- Matches incoming ports, applies VLAN tags for internal segmentation.
+- Drops invalid VLAN tagged traffic from VM ports (anti-spoofing).
+- Example: cookie=0x..., table=0, priority=3, in_port="qvo-abc", dl_vlan=0xffff, actions=mod_vlan_vid:10,resubmit(,60)
+
+Table 60: Forwarding based on destination MAC
+- For known unicast: output to the specific port.
+- For unknown: flood to all ports in the same VLAN.
+- Example: cookie=0x..., table=60, priority=20, dl_vlan=10, dl_dst=fa:16:3e:xx:xx:xx, actions=strip_vlan,output:"qvo-xyz"
+
+Table 24: Security group conntrack (if OVS native firewall)
+- Commit new connections to conntrack.
+- Allow established/related connections.
+- Drop invalid connections.
+----
+
+*br-tun key tables:*
+
+[source,bash]
+----
+ovs-ofctl dump-flows br-tun
+----
+
+----
+Table 0: Classify source (patch port vs tunnel port)
+- From patch port (br-int): send to table 2 (egress processing)
+- From tunnel port: send to table 4 (VXLAN), 3 (GRE), or 6 (Geneve)
+
+Table 2: Egress - local VLAN to tunnel VNI
+- Example: table=2, dl_vlan=10, actions=strip_vlan,set_tunnel:0x64,resubmit(,20)
+
+Table 4: Ingress - tunnel VNI to local VLAN
+- Example: table=4, tun_id=0x64, actions=mod_vlan_vid:10,resubmit(,10)
+
+Table 10: MAC learning for incoming tunnel traffic
+Table 20: Unicast output (known destination MACs to specific tunnel ports)
+Table 21: Broadcast/multicast/unknown output (flood to all tunnels for this VNI)
+----
+
+=== Security Groups Implementation
+
+Security groups in ML2/OVS have gone through two implementations:
+
+*iptables-based (older):*
+
+* Each VM port has a Linux bridge (`qbr-<port>`) between the tap device and the OVS port.
+* iptables rules are applied on the Linux bridge using the `physdev` module.
+* This works but adds latency and complexity (extra bridge hop).
+
+*OVS conntrack-based / native firewall (newer):*
+
+* Security group rules are implemented directly as OVS flow rules using connection tracking (`ct()` action).
+* No Linux bridge intermediary needed.
+* Better performance and cleaner architecture.
+* Available in RHOSP 13+ with the `openvswitch` firewall driver.
+
+[source,bash]
+----
+# Check which firewall driver is configured
+grep firewall_driver /etc/neutron/plugins/ml2/openvswitch_agent.ini
+# firewall_driver = openvswitch  (native)
+# firewall_driver = iptables_hybrid  (legacy)
+----
+
+=== DVR (Distributed Virtual Router) with ML2/OVS
+
+DVR was introduced to address the network node bottleneck. With DVR:
+
+* East-west traffic (VM to VM across subnets) is routed locally on the compute node.
+* North-south traffic with floating IPs is handled locally on the compute node.
+* North-south traffic without floating IPs (SNAT) still goes through the network node.
+
+DVR adds complexity:
+
+* Each compute node gets router namespaces for routers that have ports on locally hosted VMs.
+* Additional MAC address handling for "dvr" MAC addresses.
+* More flow rules on `br-int` and `br-tun`.
+* More failure modes to troubleshoot.
+
+=== Limitations of the ML2/OVS Architecture
+
+. *Multiple agents to manage* - L2 agent, L3 agent, DHCP agent, metadata agent, each with its own failure modes.
+. *RabbitMQ dependency* - All agent communication goes through RabbitMQ. Message bus issues cause networking issues.
+. *Centralized routing without DVR* - Network node bottleneck for all cross-subnet traffic.
+. *DVR complexity* - DVR solves the bottleneck but adds significant architectural complexity.
+. *Multiple OVS bridges* - `br-int`, `br-tun`, `br-ex` with flows on each. Troubleshooting requires understanding all three.
+. *DHCP via dnsmasq* - External process in a namespace, with its own failure modes (namespace deletion, dnsmasq crashes, port binding issues).
+. *Scale limitations* - Large deployments (thousands of VMs, hundreds of networks) strain the agent sync model and flow table sizes.
+
+'''
+
+== ML2/OVN in RHOSP (Current)
+
+=== Architecture
+
+ML2/OVN replaces the multiple Neutron agents with OVN's distributed architecture:
+
+----
++-----------------------------------------------------+
+|                  Controller Node                     |
+|                                                      |
+|  Neutron Server (ML2/OVN mechanism driver)           |
+|  OVN Northbound DB (ovsdb-server)                    |
+|  OVN Southbound DB (ovsdb-server)                    |
+|  ovn-northd                                          |
++---------------------------+-------------------------+
+                            |
+                            | OVSDB protocol
+                            |
+          +-----------------+--------------------+
+          |                                      |
+          v                                      v
++---------------------------+    +---------------------------+
+|     Compute Node          |    |    Gateway / Network Node |
+|                           |    |                           |
+|  ovn-controller           |    |  ovn-controller           |
+|                           |    |                           |
+|  OVS: br-int              |    |  OVS: br-int, br-ex      |
+|    (single bridge)        |    |                           |
+|                           |    |  Gateway chassis for      |
+|  Geneve tunnel ports      |    |  external traffic         |
+|  (direct on br-int)       |    |                           |
+|                           |    |  Geneve tunnel ports      |
+|  VM-A       VM-B          |    +---------------------------+
++---------------------------+
+----
+
+=== Key Differences from ML2/OVS
+
+*No more neutron-openvswitch-agent* - Replaced by `ovn-controller`. The `ovn-controller` reads the OVN Southbound Database directly (no RabbitMQ) and programs OVS flow rules on `br-int`. This is more reliable and faster than the RabbitMQ-based agent sync.
+
+*No more neutron-l3-agent* - Routing is handled natively by OVN's distributed logical routers. Every compute node running `ovn-controller` can route traffic locally for VMs it hosts. There are no router namespaces, no keepalived processes, and no DVR complexity.
+
+*No more neutron-dhcp-agent* - DHCP is handled by OVN's built-in DHCP responder. When a VM sends a DHCP discover, OVN's logical flows intercept it and generate a DHCP offer directly in the pipeline. There is no `dnsmasq` process, no DHCP namespace, and no external port needed.
+
+*No more neutron-metadata-agent* (in most configurations) - OVN can provide metadata service through its own mechanism, eliminating the need for a separate metadata agent and the complex metadata proxy chain through router namespaces.
+
+*Single integration bridge* - `br-int` handles everything. There is no separate `br-tun`. Geneve tunnel ports are added directly to `br-int`. This simplifies the architecture and reduces the number of flow table hops per packet.
+
+*No br-tun* - In ML2/OVS, the `br-tun` bridge was responsible for VLAN-to-tunnel translation. In ML2/OVN, OVN handles the overlay logic within `br-int`'s flow tables. Tunnel ports (Geneve) are added directly to `br-int`.
+
+*OVSDB instead of RabbitMQ* - State distribution uses the OVSDB protocol between `ovn-controller` and the Southbound Database. This is more reliable, has better change notification (monitoring), and does not depend on a message broker.
+
+
+[NOTE]
+.Key Concept
+====
+The shift from ML2/OVS to ML2/OVN eliminates four separate agent processes (L2, L3, DHCP, metadata) and replaces them with a single `ovn-controller` per node. This dramatically reduces the number of moving parts that can fail and simplifies the operational model.
+====
+
+
+=== How Neutron Maps to OVN
+
+When the ML2/OVN mechanism driver processes a Neutron API request, it translates the Neutron objects into OVN Northbound Database objects:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Neutron Object
+|OVN NB Object
+|Details
+
+|*Network*
+|*Logical Switch*
+|Each Neutron network becomes an OVN logical switch. The network's segmentation ID maps to the logical switch's tunnel key.
+
+|*Subnet*
+|*DHCP Options + Logical Switch config*
+|Subnet information (CIDR, gateway, DNS) is stored as DHCP options on the logical switch. OVN uses these to respond to DHCP requests.
+
+|*Port*
+|*Logical Switch Port*
+|Each Neutron port becomes a logical switch port with the same MAC and IP addresses. Port security settings are translated to OVN port security.
+
+|*Router*
+|*Logical Router*
+|Each Neutron router becomes an OVN logical router. Router interfaces become logical router ports.
+
+|*Router Interface*
+|*Logical Router Port + Logical Switch Port*
+|Adding a router interface creates a logical router port and a "router" type logical switch port that connects the router to the logical switch.
+
+|*Security Group*
+|*ACLs (Address Sets)*
+|Each security group rule becomes one or more OVN ACLs. Security group membership is tracked using address sets, which are dynamically updated as ports are added or removed.
+
+|*Floating IP*
+|*NAT (DNAT + SNAT)*
+|Each floating IP becomes a NAT entry on the logical router with both DNAT (inbound) and SNAT (outbound) rules.
+
+|*Router Gateway*
+|*Logical Router Gateway Port*
+|Setting a router's external gateway creates a gateway port on the logical router, with SNAT for external access.
+
+|*Trunk*
+|*Parent Port + Child Ports*
+|Trunking is supported via OVN's parent/child port relationship with VLAN tags.
+
+|===
+
+
+You can verify these mappings directly:
+
+[source,bash]
+----
+# List Neutron networks and their corresponding OVN logical switches
+openstack network list
+ovn-nbctl ls-list
+
+# Compare a specific network
+openstack network show <network-id>
+ovn-nbctl ls-find external_ids:neutron\\:network_name=<network-name>
+
+# List OVN logical switch ports for a network
+ovn-nbctl lsp-list <logical-switch-name>
+
+# Check how a security group maps to ACLs
+openstack security group show <sg-id>
+ovn-nbctl acl-list <logical-switch-name>
+----
+
+=== Packet Flow in ML2/OVN
+
+==== VM to VM - Same Compute, Same Logical Switch
+
+----
+VM-A (192.168.1.10) --> tap-A --> br-int --> tap-B --> VM-B (192.168.1.20)
+----
+
+Both ports are on the same logical switch, on the same hypervisor. The flow path within `br-int`:
+
+. *Table 0 (Classifier)*: Packet arrives from VM-A's port. Classified as a local VM port.
+. *Table 8 (Ingress Port Security)*: Validates that the source MAC and IP match the port's allowed addresses. Drops spoofed packets.
+. *Tables 16-22 (Ingress ACLs)*: Evaluates security group rules using conntrack. For an established connection, the packet is allowed immediately. For a new connection, the ACL rules are checked.
+. *Table 24 (Ingress L2 Lookup)*: Looks up the destination MAC address.
+. *Table 32 (Egress Port Security)*: Validates the destination port's security settings.
+. *Tables 40-48 (Egress ACLs)*: Evaluates egress security group rules on the destination port.
+. *Table 64 (Output)*: Sends the packet out the destination port.
+
+The packet never leaves `br-int` and never enters a tunnel.
+
+==== VM to VM - Different Compute, Same Logical Switch
+
+----
+Compute 1                                    Compute 2
+VM-A --> br-int --> geneve tunnel port       geneve tunnel port --> br-int --> VM-B
+                        |                             ^
+                        |   Geneve tunnel             |
+                        +-----------------------------+
+----
+
+Flow path:
+
+. *Compute 1 - br-int ingress pipeline*: Same as above through port security and ACLs.
+. *Compute 1 - L2 Lookup*: Destination MAC is on a remote chassis. The output action sends the packet to the Geneve tunnel port for Compute 2, with the logical datapath and logical output port encoded in the Geneve tunnel metadata.
+. *Geneve transport*: The packet is encapsulated in Geneve with:
+** VNI = logical datapath tunnel key (identifies the logical switch).
+** Geneve options = logical output port, logical input port.
+. *Compute 2 - br-int tunnel classification*: Packet arrives from a Geneve tunnel. The tunnel metadata identifies the logical datapath and destination port.
+. *Compute 2 - egress pipeline*: The packet enters the egress pipeline (egress port security, egress ACLs).
+. *Compute 2 - Output*: Packet is sent out VM-B's port.
+
+
+[NOTE]
+====
+Notice there is no `br-tun` bridge, no VLAN-to-VNI translation, and no patch port between bridges. Everything happens within `br-int` and the Geneve tunnel metadata carries the logical context. This is simpler than the ML2/OVS approach.
+====
+
+
+==== VM to External Network
+
+----
+Compute Node                        Gateway Node
+VM-A --> br-int --> geneve tunnel    geneve tunnel --> br-int --> router pipeline
+                        |                ^                  |
+                        +----------------+                  v
+                                                   br-ex --> physical NIC
+----
+
+Flow path:
+
+. *Compute node*: VM-A sends a packet to an external IP. The default gateway is the logical router.
+. *Compute node - br-int routing pipeline*: OVN performs L3 routing within the `br-int` flow tables. The packet's TTL is decremented, the source MAC is changed to the router's MAC, and the destination MAC is changed to the next hop's MAC. But since the external port is on the gateway chassis (not this compute), the packet is sent via a Geneve tunnel to the gateway node.
+. *Gateway node - br-int*: The packet arrives and continues through the routing pipeline. NAT rules are applied:
+** If the VM has a floating IP: SNAT translates the source IP.
+** If SNAT is enabled on the router: The source IP is translated to the router's external IP.
+. *Gateway node - br-ex*: The packet exits to the physical network through `br-ex`.
+
+=== Gateway Nodes and Chassis Redirect
+
+In OVN, certain functions must be centralized on specific nodes because they require access to the physical external network. These nodes are called *gateway chassis*.
+
+When a logical router has a gateway port (external connectivity), OVN uses the concept of *chassis redirect*:
+
+* The logical router port connected to the external network is a "redirect" type port.
+* This port is bound to a specific gateway chassis.
+* Traffic destined for external networks is tunneled to the gateway chassis for processing.
+* Multiple gateway chassis can be configured for HA (active/standby using BFD).
+
+[source,bash]
+----
+# Check which chassis is the gateway for a logical router port
+ovn-sbctl find port_binding type=chassisredirect
+
+# Check gateway chassis priority
+ovn-nbctl lrp-get-gateway-chassis <router-port>
+----
+
+=== HA for Gateway Routers
+
+OVN supports HA for gateway routers through multiple mechanisms:
+
+*Gateway Chassis HA:*
+
+* Multiple gateway chassis can be assigned to a logical router port with different priorities.
+* BFD (Bidirectional Forwarding Detection) monitors the health of each gateway chassis.
+* If the active gateway chassis fails, OVN automatically redirects traffic to the next highest priority chassis.
+
+[source,bash]
+----
+# Assign multiple gateway chassis with priorities
+ovn-nbctl lrp-set-gateway-chassis <router-port> <chassis-1> 20
+ovn-nbctl lrp-set-gateway-chassis <router-port> <chassis-2> 10
+
+# Check BFD status
+ovn-sbctl list bfd
+----
+
+*L3 HA with distributed gateway ports:*
+
+* OVN can spread gateway ports across multiple chassis for different routers.
+* Each router's gateway port is bound to a specific chassis, but different routers can use different chassis.
+* This distributes the north-south traffic load across multiple gateway nodes.
+
+'''
+
+== Comparing ML2/OVS vs ML2/OVN in RHOSP
+
+=== Performance Differences
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|ML2/OVS
+|ML2/OVN
+
+|East-west routing (same subnet)
+|Local on compute (both)
+|Local on compute (both)
+
+|East-west routing (cross-subnet)
+|Through network node (without DVR)
+|Local on compute (always distributed)
+
+|North-south with floating IP
+|Through network node (or compute with DVR)
+|Through gateway chassis (or compute in some cases)
+
+|North-south SNAT
+|Through network node
+|Through gateway chassis
+
+|DHCP response time
+|dnsmasq process in namespace
+|Direct flow response (faster)
+
+|Security group evaluation
+|OVS conntrack or iptables
+|OVS conntrack (always)
+
+|Control plane convergence
+|RabbitMQ message delivery
+|OVSDB change notification (faster)
+
+|Flow table size per compute
+|Moderate
+|Larger (more comprehensive pipeline)
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+The most significant performance improvement of ML2/OVN over ML2/OVS is the elimination of the network node bottleneck for east-west routing. In large deployments with significant cross-subnet traffic, this alone justifies the migration.
+====
+
+
+=== Feature Parity
+
+Most Neutron features are supported by both ML2/OVS and ML2/OVN. However, there are differences:
+
+*Features better supported in ML2/OVN:*
+
+* Distributed routing (native, no DVR complexity)
+* Built-in DHCP (no dnsmasq dependency)
+* OVN-native load balancing
+* Faster control plane convergence
+* Simpler HA model (BFD-based gateway HA)
+
+*Features that were ML2/OVS-only (historically):*
+
+* Some advanced QoS policies
+* Certain Neutron extensions that relied on OVS agent hooks
+* Specific iptables-based firewall rules (edge cases)
+
+
+[NOTE]
+====
+As of RHOSP 16.2 and later, ML2/OVN has reached full feature parity for the vast majority of use cases. Red Hat maintains a detailed feature comparison matrix in the product documentation. Always consult the release-specific documentation for the exact list of supported features.
+====
+
+
+=== Operational Differences
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|ML2/OVS
+|ML2/OVN
+
+|Services to monitor
+|neutron-openvswitch-agent, neutron-l3-agent, neutron-dhcp-agent, neutron-metadata-agent
+|ovn-controller, ovn-northd, OVN NB/SB databases
+
+|Log locations
+|Individual agent logs on each node
+|ovn-controller log on each node, ovn-northd log on controllers
+
+|Troubleshooting starting point
+|Agent logs, OVS flow dumps on multiple bridges
+|OVN NB/SB DB inspection, ovn-trace, single bridge flows
+
+|Namespace management
+|Router and DHCP namespaces to manage
+|No namespaces for L3/DHCP
+
+|Backup criticality
+|Neutron DB is the source of truth
+|Neutron DB + OVN NB DB are both important
+
+|Upgrade impact
+|Per-node agent restarts
+|Central DB upgrade + per-node ovn-controller restart
+
+|===
+
+
+=== Migration Considerations
+
+When migrating from ML2/OVS to ML2/OVN in RHOSP:
+
+. *Feature audit* - Verify that all Neutron features in use are supported by ML2/OVN.
+. *Performance baseline* - Measure current performance (throughput, latency, connection rates) before migration.
+. *Migration tooling* - Use Red Hat's provided migration tools (available in RHOSP 16.2+).
+. *Downtime planning* - The migration involves networking downtime. Plan a maintenance window.
+. *Rollback plan* - Have a tested rollback procedure in case issues arise.
+. *Post-migration validation* - Verify all network connectivity, security groups, floating IPs, and routing.
+. *Monitoring update* - Update monitoring and alerting to track OVN services instead of Neutron agents.
+
+=== Red Hat's Recommendation and Direction
+
+* *RHOSP 16.2+*: ML2/OVN is the default for new deployments.
+* *RHOSP 17+*: ML2/OVN is the standard networking backend.
+* *RHOSO (Red Hat OpenStack Services on OpenShift)*: Uses ML2/OVN exclusively.
+* *New deployments*: Should use ML2/OVN unless there is a specific, documented reason for ML2/OVS.
+* *Existing ML2/OVS deployments*: Red Hat recommends planning migration to ML2/OVN, especially before upgrading to versions where ML2/OVS support may be reduced.
+
+
+[WARNING]
+====
+While ML2/OVS is still supported in currently maintained RHOSP versions, Red Hat's engineering investment and new feature development are focused on ML2/OVN. Customers running ML2/OVS should plan their migration path.
+====
+
+
+'''
+
+== Hands-On: Exploring OVS/OVN in a RHOSP Environment
+
+This section provides commands to run on a live RHOSP environment. These assume the environment is already deployed and you have SSH access to the nodes.
+
+
+[NOTE]
+====
+These commands are for exploration and learning. They are all read-only and safe to run on a production environment. Commands that modify state are clearly marked.
+====
+
+
+=== For ML2/OVS Environments
+
+==== Check Neutron Configuration
+
+On the controller node:
+
+[source,bash]
+----
+# Verify the mechanism driver
+grep mechanism_drivers /etc/neutron/plugins/ml2/ml2_conf.ini
+----
+
+----
+mechanism_drivers = openvswitch
+----
+
+[source,bash]
+----
+# Check the type drivers
+grep type_drivers /etc/neutron/plugins/ml2/ml2_conf.ini
+----
+
+----
+type_drivers = vxlan,vlan,flat,geneve
+----
+
+[source,bash]
+----
+# Check the firewall driver (native OVS or iptables)
+grep firewall_driver /etc/neutron/plugins/ml2/openvswitch_agent.ini
+----
+
+----
+firewall_driver = openvswitch
+----
+
+==== List OVS Bridges
+
+On a compute node:
+
+[source,bash]
+----
+# Show all OVS bridges, ports, and interfaces
+ovs-vsctl show
+----
+
+----
+Bridge br-int
+    Controller "tcp:127.0.0.1:6633"
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal
+    Port "qvo3a4f5b6c-de"
+        tag: 10
+        Interface "qvo3a4f5b6c-de"
+    Port patch-tun
+        Interface patch-tun
+            type: patch
+            options: {peer=patch-int}
+Bridge br-tun
+    Controller "tcp:127.0.0.1:6633"
+    fail_mode: secure
+    Port br-tun
+        Interface br-tun
+            type: internal
+    Port patch-int
+        Interface patch-int
+            type: patch
+            options: {peer=patch-tun}
+    Port "vxlan-c0a80102"
+        Interface "vxlan-c0a80102"
+            type: vxlan
+            options: {df_default="true", local_ip="192.168.1.1", remote_ip="192.168.1.2"}
+----
+
+On a network node:
+
+[source,bash]
+----
+ovs-vsctl show
+----
+
+----
+# Same as compute plus br-ex:
+Bridge br-ex
+    Port br-ex
+        Interface br-ex
+            type: internal
+    Port "eth1"
+        Interface "eth1"
+    Port "qg-7d8e9f0a-bc"
+        Interface "qg-7d8e9f0a-bc"
+            type: internal
+----
+
+==== Examine Flow Tables
+
+[source,bash]
+----
+# br-int flows (compute node)
+ovs-ofctl dump-flows br-int
+----
+
+----
+# Example output (abbreviated)
+cookie=0x..., table=0, priority=3,in_port="qvo3a4f5b6c-de",dl_vlan=0xffff actions=mod_vlan_vid:10,resubmit(,60)
+cookie=0x..., table=60, priority=20,dl_vlan=10,dl_dst=fa:16:3e:xx:xx:xx actions=strip_vlan,output:"qvo3a4f5b6c-de"
+cookie=0x..., table=60, priority=1 actions=NORMAL
+----
+
+[source,bash]
+----
+# br-tun flows (examine tunnel mapping)
+ovs-ofctl dump-flows br-tun
+----
+
+----
+# Example output (abbreviated)
+cookie=0x..., table=0, priority=1,in_port="patch-int" actions=resubmit(,2)
+cookie=0x..., table=0, priority=1,in_port="vxlan-c0a80102" actions=resubmit(,4)
+cookie=0x..., table=2, priority=1,dl_vlan=10 actions=strip_vlan,set_tunnel:0x64,resubmit(,20)
+cookie=0x..., table=4, priority=1,tun_id=0x64 actions=mod_vlan_vid:10,resubmit(,10)
+----
+
+[source,bash]
+----
+# br-ex flows (network node)
+ovs-ofctl dump-flows br-ex
+----
+
+==== Trace a Packet from VM to VM
+
+[source,bash]
+----
+# Find the VM's port on br-int
+ovs-vsctl list-ports br-int | grep qvo
+
+# Get the port number
+ovs-ofctl show br-int | grep qvo
+
+# Check which flows match for traffic from this port
+ovs-ofctl dump-flows br-int | grep "in_port=\"qvo3a4f5b6c-de\""
+
+# Check the corresponding tunnel flows
+ovs-ofctl dump-flows br-tun | grep "tun_id=0x64"
+----
+
+==== Check Security Group Flows
+
+[source,bash]
+----
+# With native OVS firewall, security group flows use conntrack
+ovs-ofctl dump-flows br-int | grep "ct("
+
+# Example conntrack flow for allowing established connections
+# cookie=0x..., table=72, priority=50,ct_state=+est-rel-rpl,ct_mark=0, actions=output:<port>
+----
+
+==== Check L3 Agent Router Namespaces
+
+On the network node:
+
+[source,bash]
+----
+# List all router namespaces
+ip netns list | grep qrouter
+
+# Enter a router namespace and check its configuration
+ip netns exec qrouter-<router-id> ip addr show
+ip netns exec qrouter-<router-id> ip route show
+ip netns exec qrouter-<router-id> iptables -t nat -L -n -v
+----
+
+'''
+
+=== For ML2/OVN Environments
+
+[IMPORTANT]
+.Containerized OVN Services in RHOSP 17.x
+====
+In RHOSP 17.x with TripleO, the OVN databases and `ovn-northd` run as Pacemaker-managed Podman containers on the controller nodes. You cannot run `ovn-nbctl` or `ovn-sbctl` directly on the host - you must `exec` into the appropriate container.
+
+The typical container names are:
+
+* `ovn_cluster_north_db_server` - hosts the OVN Northbound database
+* `ovn_cluster_south_db_server` - hosts the OVN Southbound database
+
+To check which containers are running:
+
+[source,bash]
+----
+sudo podman ps --format "{{.Names}}" | grep ovn
+----
+
+To access the OVN databases:
+
+[source,bash]
+----
+# Northbound database commands
+sudo podman exec ovn_cluster_north_db_server ovn-nbctl show
+
+# Southbound database commands
+sudo podman exec ovn_cluster_south_db_server ovn-sbctl show
+----
+
+Because the OVN databases run in a Raft cluster across the three controllers, append `--no-leader-only` if you need to query a specific node rather than the current leader:
+
+[source,bash]
+----
+sudo podman exec ovn_cluster_north_db_server ovn-nbctl --no-leader-only show
+----
+
+To check Pacemaker resource status:
+
+[source,bash]
+----
+sudo pcs status | grep -A2 ovn
+----
+
+On *compute nodes*, `ovn-controller` runs as a Podman container named `ovn_controller`:
+
+[source,bash]
+----
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
+----
+
+The commands in the sections below are shown without the `podman exec` prefix for readability. In a RHOSP 17.x environment, prefix each command with `sudo podman exec <container-name>` as shown above.
+====
+
+==== Check Neutron Configuration
+
+On the controller node:
+
+[source,bash]
+----
+# Verify the mechanism driver
+grep mechanism_drivers /etc/neutron/plugins/ml2/ml2_conf.ini
+----
+
+----
+mechanism_drivers = ovn
+----
+
+[source,bash]
+----
+# Check OVN-specific configuration
+grep -A 20 "\[ovn\]" /etc/neutron/plugins/ml2/ml2_conf.ini
+----
+
+----
+[ovn]
+ovn_nb_connection = tcp:<controller-ip>:6641
+ovn_sb_connection = tcp:<controller-ip>:6642
+ovn_l3_scheduler = leastloaded
+ovn_metadata_enabled = True
+----
+
+==== Examine OVN Northbound Database
+
+[source,bash]
+----
+# Show all logical switches and ports
+ovn-nbctl show
+----
+
+----
+switch 7a8b9c0d-1234-5678-abcd-ef0123456789 (neutron-<network-id>)
+    port <port-id-1>
+        addresses: ["fa:16:3e:xx:xx:xx 192.168.1.10"]
+    port <port-id-2>
+        addresses: ["fa:16:3e:yy:yy:yy 192.168.1.20"]
+    port provnet-<network-id>
+        type: localnet
+        addresses: ["unknown"]
+----
+
+[source,bash]
+----
+# List all logical switches
+ovn-nbctl ls-list
+----
+
+[source,bash]
+----
+# List ports on a specific logical switch
+ovn-nbctl lsp-list <logical-switch-name>
+----
+
+[source,bash]
+----
+# Show port details (addresses, security)
+ovn-nbctl lsp-get-addresses <port-name>
+ovn-nbctl lsp-get-port-security <port-name>
+----
+
+[source,bash]
+----
+# Show logical routers
+ovn-nbctl lr-list
+
+# Show router ports
+ovn-nbctl lrp-list <router-name>
+
+# Show router routes
+ovn-nbctl lr-route-list <router-name>
+
+# Show NAT rules (floating IPs, SNAT)
+ovn-nbctl lr-nat-list <router-name>
+----
+
+==== Examine OVN Southbound Database
+
+[source,bash]
+----
+# Show all chassis and their port bindings
+ovn-sbctl show
+----
+
+----
+Chassis "chassis-1"
+    hostname: compute-1.example.com
+    Encap geneve
+        ip: "192.168.1.101"
+        options: {csum="true"}
+    Port_Binding "port-id-1"
+    Port_Binding "port-id-2"
+Chassis "chassis-2"
+    hostname: compute-2.example.com
+    Encap geneve
+        ip: "192.168.1.102"
+        options: {csum="true"}
+    Port_Binding "port-id-3"
+----
+
+[source,bash]
+----
+# List all chassis
+ovn-sbctl list chassis
+----
+
+[source,bash]
+----
+# Check specific port bindings (which port is on which chassis)
+ovn-sbctl find port_binding logical_port=<port-id>
+----
+
+==== List Logical Flows
+
+[source,bash]
+----
+# List all logical flows (can be very large)
+ovn-sbctl lflow-list
+
+# List logical flows for a specific logical switch
+ovn-sbctl lflow-list <logical-switch-name>
+
+# List flows for a specific table (e.g., table 0 = classifier)
+ovn-sbctl lflow-list <logical-switch-name> | grep "table=0"
+----
+
+----
+# Example logical flow output
+Datapath: "neutron-<network-id>" (7a8b9c0d-...)
+  table=0 (ls_in_port_sec_l2), priority=50, match=(inport == "port-1" && eth.src == {fa:16:3e:xx:xx:xx}), action=(next;)
+  table=6 (ls_in_acl), priority=34000, match=(ct.est && !ct.rel && !ct.new && !ct.inv && ct.rpl && ct_mark.blocked == 0), action=(reg0[9] = 0; next;)
+  table=13 (ls_in_l2_lkup), priority=50, match=(eth.dst == fa:16:3e:yy:yy:yy), action=(outport = "port-2"; output;)
+----
+
+==== Check OVS Flows Programmed by OVN
+
+On a compute node:
+
+[source,bash]
+----
+# Dump physical flows on br-int (programmed by ovn-controller)
+ovs-ofctl dump-flows br-int
+----
+
+----
+# OVN-generated flows are organized by table number
+# Tables correspond to the OVN logical pipeline stages
+# The cookie value links physical flows back to logical flows
+----
+
+[source,bash]
+----
+# To correlate physical flows with logical flows, use ovn-detrace:
+ovs-ofctl dump-flows br-int | ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+----
+
+
+[NOTE]
+====
+`ovn-detrace` is an extremely useful tool that annotates OVS physical flows with their corresponding OVN logical flows. This bridges the gap between the physical and logical layers and is invaluable for troubleshooting.
+====
+
+
+==== Trace a Packet with ovn-trace
+
+`ovn-trace` simulates the logical pipeline for a given packet without sending an actual packet. This is one of OVN's most powerful troubleshooting tools.
+
+[source,bash]
+----
+# Trace a packet from port-1 to port-2 on the same logical switch
+ovn-trace --summary neutron-<network-id> \
+  'inport == "<port-1>" && eth.src == fa:16:3e:xx:xx:xx && eth.dst == fa:16:3e:yy:yy:yy && ip4.src == 192.168.1.10 && ip4.dst == 192.168.1.20 && ip.ttl == 64'
+----
+
+----
+# Example output (summary mode)
+ingress(dp="neutron-<network-id>", inport="port-1")
+-------------------------------------------------
+ 0. ls_in_port_sec_l2: inport == "port-1" && eth.src == {fa:16:3e:xx:xx:xx}, priority 50, uuid ...
+    next;
+ 6. ls_in_acl (allow-related): ..., priority 2002, uuid ...
+    ct_commit { ... }; next;
+13. ls_in_l2_lkup: eth.dst == fa:16:3e:yy:yy:yy, priority 50, uuid ...
+    outport = "port-2";
+    output;
+
+egress(dp="neutron-<network-id>", inport="port-1", outport="port-2")
+-------------------------------------------------
+ 1. ls_out_port_sec_l2: outport == "port-2" && eth.dst == {fa:16:3e:yy:yy:yy}, priority 50, uuid ...
+    output;
+    /* output to "port-2", type "" */
+----
+
+[source,bash]
+----
+# Trace a routed packet (cross-subnet)
+ovn-trace --summary neutron-<network-id> \
+  'inport == "<port-1>" && eth.src == fa:16:3e:xx:xx:xx && eth.dst == 00:00:00:00:01:01 && ip4.src == 192.168.1.10 && ip4.dst == 10.0.0.20 && ip.ttl == 64'
+----
+
+The trace output shows every pipeline stage the packet traverses, which flow matched, and what action was taken. If a packet would be dropped, the trace shows exactly where and why.
+
+==== Check Chassis and Port Bindings
+
+[source,bash]
+----
+# List all chassis with hostnames and encapsulation info
+ovn-sbctl list chassis | grep -E "name|hostname|Encap"
+
+# Check which ports are bound to which chassis
+ovn-sbctl list port_binding | grep -E "logical_port|chassis|type"
+
+# Find unbound ports (ports with no chassis - VMs might be down or port is misconfigured)
+ovn-sbctl find port_binding chassis=[]
+
+# Check the binding status of a specific port
+ovn-sbctl get port_binding <port-id> chassis
+----
+
+==== Verify Geneve Tunnels
+
+On a compute node:
+
+[source,bash]
+----
+# List Geneve tunnel ports on br-int
+ovs-vsctl find interface type=geneve
+----
+
+----
+_uuid               : <uuid>
+admin_state         : up
+bfd                 : {}
+bfd_status          : {}
+cfm_fault           : []
+cfm_fault_status    : []
+cfm_mpid            : []
+name                : "ovn-chass2-0"
+ofport              : 2
+options             : {csum="true", key=flow, remote_ip="192.168.1.102"}
+type                : geneve
+----
+
+[source,bash]
+----
+# Verify tunnel connectivity by checking OVS port statistics
+ovs-ofctl dump-ports br-int
+
+# Check for tunnel port errors
+ovs-vsctl list interface ovn-chass2-0 | grep -E "name|error|statistics"
+----
+
+==== Check OVN DHCP
+
+[source,bash]
+----
+# List DHCP options in the NB DB
+ovn-nbctl list dhcp_options
+----
+
+----
+_uuid               : <uuid>
+cidr                : "192.168.1.0/24"
+external_ids        : {"neutron:revision_number"="0", "subnet_id"="<subnet-id>"}
+options             : {classless_static_route="{169.254.169.254/32,192.168.1.1, 0.0.0.0/0,192.168.1.1}", dns_server="{8.8.8.8}", lease_time="43200", mtu="1442", router="192.168.1.1", server_id="192.168.1.1", server_mac="fa:16:3e:xx:xx:xx"}
+----
+
+[source,bash]
+----
+# Check the logical flows that implement DHCP
+ovn-sbctl lflow-list | grep -i dhcp
+----
+
+----
+# Example DHCP responder flow
+table=14(ls_in_dhcp_options), priority=100, match=(inport == "port-1" && eth.src == fa:16:3e:xx:xx:xx && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(reg0[3] = put_dhcp_opts(offerip = 192.168.1.10, ...); next;)
+----
+
+==== Check OVN ACLs for Security Groups
+
+[source,bash]
+----
+# List ACLs on a logical switch
+ovn-nbctl acl-list <logical-switch-name>
+----
+
+----
+from-lport  1002 (inport == @pg_<security-group-id> && ip4) allow-related
+from-lport  1002 (inport == @pg_<security-group-id> && ip6) allow-related
+from-lport  1001 (inport == @pg_<security-group-id> && ip) drop
+  to-lport  1002 (outport == @pg_<security-group-id> && ip4 && ip4.src == 0.0.0.0/0 && tcp.dst == 22) allow-related
+  to-lport  1002 (outport == @pg_<security-group-id> && ip4 && ip4.src == 0.0.0.0/0 && icmp4) allow-related
+  to-lport  1001 (outport == @pg_<security-group-id> && ip) drop
+----
+
+[source,bash]
+----
+# Check address sets (used by security groups for dynamic group membership)
+ovn-nbctl list address_set
+----
+
+[source,bash]
+----
+# Verify security group logical flows
+ovn-sbctl lflow-list | grep -E "acl|ct_commit|ct\("
+----
+
+'''
+
+== Common RHOSP Networking Issues Related to OVS/OVN
+
+=== Tunnel Connectivity Problems
+
+*Symptoms:*
+
+* VMs on different computes cannot communicate.
+* `ping` between VMs on the same network but different hypervisors fails.
+* OVN: Geneve tunnels show errors.
+* ML2/OVS: VXLAN tunnel ports show errors.
+
+*Diagnostic steps:*
+
+[source,bash]
+----
+# Check if tunnel ports are up
+ovs-vsctl show | grep -A 3 geneve    # OVN
+ovs-vsctl show | grep -A 3 vxlan     # ML2/OVS
+
+# Check tunnel port statistics for errors
+ovs-vsctl list interface <tunnel-port-name> | grep -E "name|error|statistics"
+
+# Verify underlay connectivity (can the hypervisors reach each other on the tunnel network?)
+ping <remote-hypervisor-tunnel-ip>
+
+# Check MTU (tunnels add overhead; underlay MTU must accommodate it)
+# Geneve overhead: ~58 bytes (standard) or more with options
+# VXLAN overhead: ~50 bytes
+ip link show <underlay-interface> | grep mtu
+
+# Check for firewall rules blocking tunnel traffic
+# Geneve: UDP port 6081
+# VXLAN: UDP port 4789
+iptables -L -n | grep -E "6081|4789"
+nft list ruleset | grep -E "6081|4789"
+----
+
+*Common causes:*
+
+* Underlay network connectivity issue (routing, firewall).
+* MTU too small on the underlay network (tunneled packets are dropped due to fragmentation).
+* Firewall blocking tunnel ports (UDP 6081 for Geneve, UDP 4789 for VXLAN).
+* Wrong tunnel endpoint IP configured.
+
+
+[WARNING]
+====
+MTU issues are one of the most common and hardest-to-diagnose tunnel problems. If small packets (e.g., ping with default size) work but large packets or TCP transfers fail, suspect an MTU issue. The underlay network MTU must be at least the VM MTU plus the tunnel overhead. For Geneve with a 1500-byte VM MTU, the underlay needs at least ~1558 bytes.
+====
+
+
+=== VM Cannot Get DHCP
+
+*Symptoms:*
+
+* VM boots but gets no IP address.
+* VM is stuck at DHCP discovery.
+* `openstack server show` shows no IP assigned.
+
+*Diagnostic steps for ML2/OVS:*
+
+[source,bash]
+----
+# Check the DHCP namespace exists
+ip netns list | grep qdhcp-<network-id>
+
+# Check dnsmasq is running in the namespace
+ip netns exec qdhcp-<network-id> ps aux | grep dnsmasq
+
+# Check the DHCP port is in br-int
+ovs-vsctl show | grep tap<dhcp-port-id>
+
+# Check dnsmasq lease file
+cat /var/lib/neutron/dhcp/<network-id>/leases
+
+# Capture DHCP traffic
+ip netns exec qdhcp-<network-id> tcpdump -i tap<dhcp-port-id> -n port 67 or port 68
+----
+
+*Diagnostic steps for ML2/OVN:*
+
+[source,bash]
+----
+# Check DHCP options are configured in OVN NB DB
+ovn-nbctl list dhcp_options | grep -A 5 <subnet-id>
+
+# Check the logical flows for DHCP
+ovn-sbctl lflow-list | grep -i dhcp
+
+# Verify the port has the correct addresses
+ovn-nbctl lsp-get-addresses <port-id>
+
+# Trace a DHCP packet
+ovn-trace --summary neutron-<network-id> \
+  'inport == "<port-id>" && eth.src == <vm-mac> && eth.dst == ff:ff:ff:ff:ff:ff && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67'
+
+# Check OVS flows for DHCP handling
+ovs-ofctl dump-flows br-int | grep "udp,.*tp_dst=67"
+----
+
+*Common causes:*
+
+* ML2/OVS: DHCP agent not running, dnsmasq not started, namespace networking issue.
+* ML2/OVN: DHCP options not configured for the subnet, port security blocking DHCP, missing logical flows.
+* Both: Security group blocking DHCP (port 67/68), VM's port not properly wired to OVS.
+
+=== Security Group Blocking Traffic
+
+*Symptoms:*
+
+* VM has an IP address but cannot communicate.
+* Some traffic works (e.g., SSH) but other traffic does not (e.g., HTTP).
+* Ping works but TCP connections fail (or vice versa).
+
+*Diagnostic steps:*
+
+[source,bash]
+----
+# Check security group rules on the port
+openstack port show <port-id> -f json | grep security_group
+openstack security group rule list <security-group-id>
+
+# ML2/OVN: Check ACLs
+ovn-nbctl acl-list <logical-switch-name>
+
+# ML2/OVN: Trace the specific traffic pattern
+ovn-trace --summary neutron-<network-id> \
+  'inport == "<port-id>" && eth.src == <src-mac> && eth.dst == <dst-mac> && ip4.src == <src-ip> && ip4.dst == <dst-ip> && tcp.dst == 80 && ip.ttl == 64'
+
+# Check conntrack table for the connection
+conntrack -L | grep <src-ip>
+
+# Check OVS conntrack flows
+ovs-ofctl dump-flows br-int | grep "ct("
+----
+
+*Common causes:*
+
+* Missing security group rule for the required protocol/port.
+* Default security group only allows SSH and ICMP - other traffic is blocked.
+* Conntrack table full (`net.netfilter.nf_conntrack_max` reached).
+* Stale conntrack entries after security group rule change (rare; OVN handles this, but can happen in edge cases).
+
+=== Floating IP Not Working
+
+*Symptoms:*
+
+* Cannot reach VM from external network using floating IP.
+* VM cannot reach external network despite having a floating IP.
+* Floating IP shows as "ACTIVE" in OpenStack but traffic does not flow.
+
+*Diagnostic steps for ML2/OVS:*
+
+[source,bash]
+----
+# Check the router namespace has the floating IP
+ip netns exec qrouter-<router-id> ip addr show | grep <floating-ip>
+
+# Check NAT rules in the router namespace
+ip netns exec qrouter-<router-id> iptables -t nat -L -n -v | grep <floating-ip>
+
+# Check the external interface is in br-ex
+ovs-vsctl show | grep -A 2 br-ex
+
+# Check br-ex flows
+ovs-ofctl dump-flows br-ex
+----
+
+*Diagnostic steps for ML2/OVN:*
+
+[source,bash]
+----
+# Check NAT rules on the logical router
+ovn-nbctl lr-nat-list <router-name>
+----
+
+----
+TYPE             GATEWAY_PORT          EXTERNAL_IP        LOGICAL_IP        EXTERNAL_MAC
+dnat_and_snat    lrp-<gateway-port>    <floating-ip>      <fixed-ip>
+snat             lrp-<gateway-port>    <router-ext-ip>    <subnet-cidr>
+----
+
+[source,bash]
+----
+# Check chassis redirect (gateway port binding)
+ovn-sbctl find port_binding type=chassisredirect
+
+# Verify the gateway chassis is reachable
+ovn-sbctl list chassis | grep -E "name|hostname"
+
+# Trace a packet from external to the floating IP
+ovn-trace --summary neutron-<external-network-id> \
+  'inport == "<provider-port>" && eth.src == <external-mac> && ip4.src == <external-ip> && ip4.dst == <floating-ip> && ip.ttl == 64'
+
+# Check ARP responses for the floating IP on the external network
+# OVN should respond to ARP requests for floating IPs on the gateway chassis
+ovn-sbctl lflow-list | grep <floating-ip> | grep arp
+----
+
+*Common causes:*
+
+* ML2/OVS: Router namespace not properly configured, iptables NAT rules missing, br-ex not connected to physical network.
+* ML2/OVN: Gateway chassis not reachable, NAT rules not in OVN NB DB, ARP not being responded to on external network.
+* Both: External network misconfiguration, upstream router not routing to the floating IP subnet, physical network issue.
+
+=== Performance Issues
+
+*Symptoms:*
+
+* High latency between VMs.
+* Low throughput on VM-to-VM traffic.
+* Intermittent packet loss.
+* CPU spikes on compute nodes.
+
+*Diagnostic steps:*
+
+[source,bash]
+----
+# Check OVS CPU usage
+top -p $(pgrep ovs-vswitchd)
+
+# Check for flow table misses (upcalls to userspace)
+ovs-appctl coverage/show | grep -E "upcall|flow_create"
+
+# Check the kernel datapath cache hit rate
+ovs-appctl dpctl/show | grep -E "hit|missed|lost"
+
+# Check for large flow tables
+ovs-ofctl dump-flows br-int | wc -l
+
+# Check conntrack table usage (ML2/OVN)
+sysctl net.netfilter.nf_conntrack_count
+sysctl net.netfilter.nf_conntrack_max
+
+# Check for conntrack table drops
+conntrack -S
+
+# Check interface errors and drops
+ovs-ofctl dump-ports br-int
+ip -s link show <interface>
+
+# Check for MTU issues (path MTU discovery failures)
+tcpdump -i <interface> 'icmp[icmptype] == 3 and icmp[icmpcode] == 4'
+
+# Check OVS memory usage
+ovs-appctl memory/show
+----
+
+*Common causes:*
+
+* MTU mismatch causing fragmentation or drops.
+* Conntrack table exhaustion (`nf_conntrack_max` too low for the workload).
+* High upcall rate (too many unique flows, causing frequent kernel-to-userspace transitions).
+* CPU contention on compute nodes.
+* Network interface ring buffer or interrupt configuration issues.
+
+=== OVN Database Synchronization Issues
+
+*Symptoms (ML2/OVN only):*
+
+* Network changes from Neutron API do not take effect.
+* Some compute nodes have stale configurations.
+* `ovn-controller` logs show connection errors.
+* OVN database cluster shows unhealthy members.
+
+*Diagnostic steps:*
+
+[source,bash]
+----
+# Check OVN NB DB cluster health
+ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+----
+
+----
+# Healthy output shows:
+# Role: leader (or follower)
+# Term: <number>
+# Status: cluster member
+# Connections: connected to all peers
+----
+
+[source,bash]
+----
+# Check OVN SB DB cluster health
+ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+
+# Check ovn-northd is running and processing
+systemctl status ovn-northd
+journalctl -u ovn-northd --since "10 minutes ago"
+
+# Check ovn-controller connectivity on a compute node
+ovs-vsctl get open_vswitch . external_ids:ovn-remote
+# Should show the SB DB connection string
+
+# Check ovn-controller status
+systemctl status ovn-controller
+journalctl -u ovn-controller --since "10 minutes ago" | grep -i "error\|warn\|disconnect"
+
+# Verify the controller is connected to the SB DB
+ovs-vsctl list open_vswitch | grep ovn
+
+# Check for unsynchronized ports
+# Compare NB DB ports with SB DB port bindings
+ovn-nbctl lsp-list <logical-switch> | wc -l
+ovn-sbctl list port_binding | grep -c "logical_port"
+----
+
+*Common causes:*
+
+* Network connectivity between ovn-controller and the SB DB.
+* OVN database cluster lost quorum (in Raft HA mode, more than half the members must be available).
+* ovn-northd not running or crashed (NB DB changes will not propagate to SB DB).
+* ovn-controller not running on a compute node (flows will not be programmed on that node).
+* Database compaction needed (database file has grown very large).
+
+[source,bash]
+----
+# Compact the databases if they are too large
+ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+
+# Check database file sizes
+ls -lh /var/lib/ovn/ovnnb_db.db /var/lib/ovn/ovnsb_db.db
+----
+
+
+[WARNING]
+====
+If the OVN Raft cluster loses quorum (e.g., 2 out of 3 members are down), the databases become read-only. No new network changes can be applied until quorum is restored. This is a critical situation that requires immediate attention. Do not attempt to force a cluster reconfiguration without understanding the implications - consult the OVN documentation and Red Hat support.
+====
+
+
+'''
+
+== Key Takeaways
+
+. *Neutron is the API layer; OVS/OVN is the implementation layer.* Neutron defines what the network should look like. ML2/OVS or ML2/OVN implements it on the infrastructure.
+
+. *ML2/OVS uses multiple agents; ML2/OVN uses a single ovn-controller.* The agent reduction in ML2/OVN simplifies operations and reduces failure modes.
+
+. *ML2/OVS uses br-int + br-tun + br-ex; ML2/OVN uses br-int (+ br-ex for external).* Fewer bridges means simpler packet paths and easier troubleshooting.
+
+. *ML2/OVN provides native distributed routing.* No DVR complexity, no network node bottleneck for east-west traffic. This is the single biggest architectural advantage.
+
+. *ML2/OVN eliminates external dependencies for DHCP, metadata, and routing.* These are implemented as logical flows within OVN rather than external processes in namespaces.
+
+. *Troubleshooting ML2/OVS is bottom-up (flows, bridges, namespaces). Troubleshooting ML2/OVN is top-down then bottom-up (logical topology, then flows).* Use `ovn-trace` and `ovn-nbctl` before reaching for `ovs-ofctl` and `tcpdump`.
+
+. *Red Hat's direction is ML2/OVN.* New deployments should use ML2/OVN. Existing ML2/OVS deployments should plan migration.
+
+. *Know both architectures.* You will encounter both ML2/OVS and ML2/OVN in customer environments, especially during migration periods. Being able to troubleshoot both is a valuable skill.
+
+'''
+
+*Previous module:* xref:06-ovs-vs-ovn.adoc[Module 06 - OVS vs OVN: A Comprehensive Comparison]
+*Next module:* xref:08-ovs-ovn-in-rhoso.adoc[Module 08 - OVS and OVN in RHOSO]
+

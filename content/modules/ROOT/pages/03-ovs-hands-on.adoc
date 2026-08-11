@@ -1,0 +1,3740 @@
+= Module 03 - OVS Hands-On Lab
+
+
+== Prerequisites
+
+=== Lab Environment
+
+This lab requires a single virtual machine (or physical machine) running RHEL 9 or Fedora. All exercises run on a single node. Exercise 6 simulates two OVS instances by using network namespaces and a loopback tunnel.
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Requirement
+
+|OS
+|RHEL 9.x or Fedora 38+
+
+|CPU
+|2+ vCPUs
+
+|RAM
+|2 GB minimum
+
+|Disk
+|10 GB free space
+
+|Access
+|Root or sudo privileges
+
+|Network
+|One management interface (for SSH)
+
+|===
+
+
+[NOTE]
+====
+All commands in this lab assume you are running as root or using `sudo`. The lab is designed to be entirely self-contained on a single machine using network namespaces to simulate virtual machines.
+====
+
+
+=== Required Packages
+
+Install these packages before starting:
+
+* `openvswitch` - Provides ovs-vswitchd, ovsdb-server, and all OVS utilities
+* `iproute` - Provides `ip` command for namespace and link management
+* `iperf3` - Network throughput testing (used in Exercise 8)
+* `tcpdump` - Packet capture and analysis (used in Exercises 6 and 7)
+* `net-tools` - Provides `ifconfig` and `netstat` (optional, for reference)
+
+[source,bash]
+----
+sudo dnf install -y openvswitch iproute iperf3 tcpdump net-tools
+----
+
+=== Network Topology
+
+The lab progressively builds the following topology across all exercises:
+
+----
+    Exercise 6: Tunnel Overlays
+    (VXLAN/Geneve between br0 and br1)
+
+         br0 (OVS Bridge)                    br1 (OVS Bridge)
+         10.0.0.254/24                       10.0.1.254/24
+    +---------+---------+               +---------+---------+
+    |    |    |    |    |               |    |    |         |
+   vm1  vm2  vm3  vm4  |              vm5  vm6  |         |
+  VLAN VLAN VLAN VLAN  |             (Ex.6)     |         |
+  100  200  100  200   |                        |         |
+ (Ex.3)(Ex.3)(Ex.4)(Ex.4)                       |         |
+  10.0  10.0  10.0  10.0                      10.0      10.0
+  .0.1  .0.2  .0.3  .0.4                     .1.1      .1.2
+   /24   /24   /24   /24                      /24       /24
+                       |                        |
+                   vxlan0/geneve0 <===========> vxlan0/geneve0
+                   (tunnel port)                (tunnel port)
+
+    Exercise 7: mirror0 port on br0 captures traffic
+    Exercise 8: QoS/policing on vm1 port
+    Exercise 9: bond0 (eth-a + eth-b) on br0
+----
+
+'''
+
+== Exercise 1: Installing and Starting OVS
+
+*Objective:* Install Open vSwitch, start its services, and verify all components are running correctly. You will learn which daemons OVS uses and how to inspect its database.
+
+=== Step 1: Install OVS packages
+
+[source,bash]
+----
+sudo dnf install -y openvswitch
+----
+
+Expected output:
+
+----
+...
+Installed:
+  openvswitch-3.3.0-x.el9.x86_64
+  ...
+Complete!
+----
+
+
+[NOTE]
+====
+On RHEL 9, the package is available from the Fast Datapath repository. If not enabled, run `sudo subscription-manager repos --enable fast-datapath-for-rhel-9-x86_64-rpms` first. On Fedora, `openvswitch` is available in the standard repositories.
+====
+
+
+=== Step 2: Start and enable OVS services
+
+[source,bash]
+----
+# Start and enable the openvswitch service
+sudo systemctl enable --now openvswitch
+----
+
+Expected output:
+
+----
+Created symlink /etc/systemd/system/multi-user.target.wants/openvswitch.service -> /usr/lib/systemd/system/openvswitch.service.
+----
+
+[source,bash]
+----
+# Verify the service is active
+sudo systemctl status openvswitch
+----
+
+Expected output:
+
+----
+● openvswitch.service - Open vSwitch
+     Loaded: loaded (/usr/lib/systemd/system/openvswitch.service; enabled; preset: disabled)
+     Active: active (exited) since Thu 2026-08-06 10:00:00 UTC; 5s ago
+   Main PID: 12345 (code=exited, status=0/SUCCESS)
+        CPU: 2ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `openvswitch.service` is a "wrapper" unit that starts two underlying services: `ovsdb-server` (the database daemon) and `ovs-vswitchd` (the actual forwarding daemon). Think of it like starting a car - turning the key activates both the engine and the electronics.
+====
+
+
+=== Step 3: Verify the individual daemons
+
+[source,bash]
+----
+# Check that both daemons are running
+sudo systemctl status ovsdb-server ovs-vswitchd
+----
+
+Expected output:
+
+----
+● ovsdb-server.service - Open vSwitch Database Unit
+     Loaded: loaded (/usr/lib/systemd/system/ovsdb-server.service; static)
+     Active: active (running) since Thu 2026-08-06 10:00:00 UTC; 30s ago
+   Main PID: 12340
+      Tasks: 1 (limit: 23456)
+     Memory: 4.5M
+        CPU: 50ms
+
+● ovs-vswitchd.service - Open vSwitch Forwarding Unit
+     Loaded: loaded (/usr/lib/systemd/system/ovs-vswitchd.service; static)
+     Active: active (running) since Thu 2026-08-06 10:00:01 UTC; 29s ago
+   Main PID: 12350
+      Tasks: 1 (limit: 23456)
+     Memory: 12.0M
+        CPU: 100ms
+----
+
+=== Step 4: Check daemon versions
+
+[source,bash]
+----
+# Check the version of the switching daemon
+ovs-vswitchd --version
+----
+
+Expected output:
+
+----
+ovs-vswitchd (Open vSwitch) 3.3.0
+----
+
+[source,bash]
+----
+# Check the version of the database daemon
+ovsdb-server --version
+----
+
+Expected output:
+
+----
+ovsdb-server (Open vSwitch) 3.3.0
+----
+
+=== Step 5: Verify the kernel module
+
+[source,bash]
+----
+# Check that the OVS kernel module is loaded
+lsmod | grep openvswitch
+----
+
+Expected output:
+
+----
+openvswitch           196608  0
+nf_conntrack          196608  1 openvswitch
+nf_nat                 49152  1 openvswitch
+nf_defrag_ipv6         24576  1 openvswitch
+libcrc32c              16384  2 openvswitch,nf_conntrack
+----
+
+
+[NOTE]
+.Key Concept
+====
+OVS has two forwarding paths. The kernel module (`openvswitch.ko`) handles the "fast path" - once a flow is learned, packets are switched directly in the kernel for maximum performance. The `ovs-vswitchd` userspace daemon handles the "slow path" - the first packet of each new flow goes up to userspace for flow table lookup and classification, and then a datapath flow is installed in the kernel for subsequent packets. Think of it like a restaurant: the first order goes to the chef (userspace) who decides the recipe, and then the line cooks (kernel) prepare all identical orders automatically.
+====
+
+
+=== Step 6: Examine the OVS database
+
+[source,bash]
+----
+# Show the top-level OVS configuration
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    ovs_version: "3.3.0"
+----
+
+The UUID at the top is the unique identifier for this OVS instance. Since we have not created any bridges yet, the output is minimal.
+
+[source,bash]
+----
+# List the full contents of the Open_vSwitch table
+sudo ovs-vsctl list Open_vSwitch
+----
+
+Expected output:
+
+----
+_uuid               : a1b2c3d4-e5f6-7890-abcd-ef1234567890
+bridges             : []
+cur_cfg             : 1
+datapath_types      : [netdev, system]
+db_version          : "8.5.0"
+dpdk_initialized    : false
+external_ids        : {hostname=lab-host, system-id="a1b2c3d4-..."}
+iface_types         : [erspan, geneve, gre, internal, ip6erspan, ip6gre,
+                       ip6tnl, lisp, patch, stt, system, tap, vxlan]
+manager_options     : []
+next_cfg            : 1
+other_config        : {}
+ovs_version         : "3.3.0"
+ssl                 : []
+statistics          : {}
+system_type         : ""
+system_version      : ""
+----
+
+
+[NOTE]
+.Key Concept
+====
+The OVSDB (Open vSwitch Database) is the persistent configuration store for OVS. It records every bridge, port, interface, and setting. When you run `ovs-vsctl` commands, you are reading from or writing to this database. The database survives reboots - if you create a bridge, it will still be there after a reboot. Think of it as OVS's "memory".
+====
+
+
+=== Verification
+
+Run this summary check to confirm everything is working:
+
+[source,bash]
+----
+echo "=== OVS Service Status ==="
+sudo systemctl is-active openvswitch ovsdb-server ovs-vswitchd
+
+echo ""
+echo "=== OVS Version ==="
+ovs-vswitchd --version | head -1
+
+echo ""
+echo "=== Kernel Module ==="
+lsmod | grep openvswitch | head -1
+
+echo ""
+echo "=== Database Status ==="
+sudo ovs-vsctl show | head -2
+----
+
+Expected output:
+
+----
+=== OVS Service Status ===
+active
+active
+active
+
+=== OVS Version ===
+ovs-vswitchd (Open vSwitch) 3.3.0
+
+=== Kernel Module ===
+openvswitch           196608  0
+
+=== Database Status ===
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    ovs_version: "3.3.0"
+----
+
+=== What just happened?
+
+You installed OVS and verified its three core components:
+
+. *ovsdb-server* - The database daemon that stores all configuration (bridges, ports, flows). It is the "brain" that remembers how the switch is configured.
+. *ovs-vswitchd* - The forwarding daemon that makes switching decisions. It reads from the database and programs the kernel datapath. It is the "decision maker".
+. *openvswitch kernel module* - The fast-path data plane that forwards packets at near-hardware speed. It is the "muscle" that moves packets.
+
+These three components work together: `ovsdb-server` stores configuration, `ovs-vswitchd` reads it and makes forwarding decisions, and the kernel module executes those decisions at high speed.
+
+=== Try it yourself
+
+* Run `sudo ovs-vsctl --version` to see the version of the CLI tool itself
+* Explore the systemd unit files: `systemctl cat openvswitch`, `systemctl cat ovsdb-server`, `systemctl cat ovs-vswitchd`
+* Check the OVS log file: `sudo journalctl -u ovs-vswitchd --since "5 minutes ago"`
+* Try `sudo ovsdb-client list-dbs` to see which databases are loaded (you should see `Open_vSwitch`)
+
+'''
+
+== Exercise 2: Creating Your First Bridge
+
+*Objective:* Create an OVS bridge, examine its properties, understand the default OpenFlow rules, and learn how the bridge appears as both a network device and a datapath.
+
+=== Step 1: Create a bridge
+
+[source,bash]
+----
+# Create a bridge called "br0"
+sudo ovs-vsctl add-br br0
+----
+
+=== Step 2: Examine the bridge
+
+[source,bash]
+----
+# Show the OVS configuration (now includes the bridge)
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br0
+        Port br0
+            Interface br0
+                type: internal
+    ovs_version: "3.3.0"
+----
+
+
+[NOTE]
+.Key Concept
+====
+When you create a bridge, OVS automatically creates an "internal" port with the same name. This internal port is a virtual network interface that the Linux host can use to communicate with the bridge. Think of it as the bridge having a "management port" built-in - like the management interface on a physical switch that allows the switch itself to have an IP address.
+====
+
+
+[source,bash]
+----
+# Get detailed information about the bridge
+sudo ovs-vsctl list Bridge br0
+----
+
+Expected output:
+
+----
+_uuid               : b1c2d3e4-f5a6-7890-bcde-f12345678901
+auto_attach          : []
+controller          : []
+datapath_id         : "00005a4b3c2d1e0f"
+datapath_type       : ""
+external_ids        : {}
+fail_mode           : []
+flood_vlans         : []
+flow_tables         : {}
+ipfix               : []
+mcast_snooping_enable: false
+mirrors             : []
+name                : br0
+netflow             : []
+other_config        : {}
+ports               : [c2d3e4f5-a6b7-8901-cdef-234567890123]
+protocols           : []
+rstp_enable         : false
+rstp_status         : {}
+sflow               : []
+status              : {}
+stp_enable          : false
+----
+
+=== Step 3: Examine the default OpenFlow rules
+
+[source,bash]
+----
+# Dump the OpenFlow flow table
+sudo ovs-ofctl dump-flows br0
+----
+
+Expected output:
+
+----
+ cookie=0x0, duration=45.123s, table=0, n_packets=0, n_bytes=0, priority=0 actions=NORMAL
+----
+
+
+[NOTE]
+.Key Concept
+====
+The default flow rule `priority=0 actions=NORMAL` tells OVS to behave like a traditional learning switch. Any packet that does not match a higher-priority rule will be handled using MAC-address learning and flooding - exactly how a regular Ethernet switch works. This is the "catch-all" rule, and `NORMAL` means "do what a normal switch would do."
+====
+
+
+[source,bash]
+----
+# Show the flow table in a more verbose format
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=0 actions=NORMAL
+----
+
+=== Step 4: Understand the internal port
+
+[source,bash]
+----
+# See the bridge as a Linux network interface
+ip link show br0
+----
+
+Expected output:
+
+----
+5: br0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 5a:4b:3c:2d:1e:0f brd ff:ff:ff:ff:ff:ff
+----
+
+
+[NOTE]
+====
+The interface is currently `DOWN` because we have not brought it up or assigned an IP address yet.
+====
+
+
+=== Step 5: Assign an IP to the bridge internal port
+
+[source,bash]
+----
+# Bring the bridge interface up and assign an IP
+sudo ip addr add 10.0.0.254/24 dev br0
+sudo ip link set br0 up
+----
+
+[source,bash]
+----
+# Verify the IP assignment
+ip addr show br0
+----
+
+Expected output:
+
+----
+5: br0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 5a:4b:3c:2d:1e:0f brd ff:ff:ff:ff:ff:ff
+    inet 10.0.0.254/24 scope global br0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::584b:3cff:fe2d:1e0f/64 scope link
+       valid_lft forever preferred_lft forever
+----
+
+
+[NOTE]
+.Key Concept
+====
+Assigning an IP to the bridge's internal port is like assigning a management IP to a physical switch's SVI (Switched Virtual Interface). The host can now reach anything on the 10.0.0.0/24 network that is connected to `br0`. This is useful for acting as a gateway or for the host to communicate with VMs attached to the bridge.
+====
+
+
+=== Step 6: Show the bridge in the datapath
+
+[source,bash]
+----
+# Show the kernel datapath
+sudo ovs-dpctl show
+----
+
+Expected output:
+
+----
+system@ovs-system:
+  lookups: hit:0 missed:0 lost:0
+  flows: 0
+  masks: hit:0 total:0 hit/pkt:0.00
+  cache: hit:0 hit-rate:0.00%
+  port 0: ovs-system (internal)
+  port 1: br0 (internal)
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `ovs-dpctl show` command shows the kernel-level datapath - this is the fast-path forwarding plane. Each port in the datapath has a numeric ID (port 0, port 1, etc.). When the kernel module forwards packets, it uses these port numbers. The `ovs-system` datapath is the default system datapath that all bridges share. Think of the datapath as the "hardware" layer of OVS, while `ovs-vsctl` shows the "configuration" layer.
+====
+
+
+=== Verification
+
+[source,bash]
+----
+# Confirm bridge exists and has an IP
+sudo ovs-vsctl list-br
+ip addr show br0 | grep "inet "
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+br0
+    inet 10.0.0.254/24 scope global br0
+ priority=0 actions=NORMAL
+----
+
+=== What just happened?
+
+You created your first OVS bridge and explored it from three different perspectives:
+
+. *Configuration layer* (`ovs-vsctl show`) - Shows the bridge as a managed object in the OVSDB with its ports and interfaces.
+. *OpenFlow layer* (`ovs-ofctl dump-flows`) - Shows the forwarding rules that govern how the bridge handles packets. The default `NORMAL` action means standard MAC learning.
+. *Datapath layer* (`ovs-dpctl show`) - Shows the kernel-level forwarding plane where packets are actually moved between ports.
+
+Think of these three layers like a building: the OVSDB is the blueprint (what the building should look like), OpenFlow is the floor plan (how traffic flows through rooms), and the datapath is the actual physical structure (where things really happen).
+
+=== Try it yourself
+
+* Create a second bridge `br-test` with `sudo ovs-vsctl add-br br-test`, then list all bridges with `sudo ovs-vsctl list-br`
+* Delete the test bridge with `sudo ovs-vsctl del-br br-test`
+* Run `sudo ovs-vsctl list Port br0` to see the port details
+* Run `sudo ovs-vsctl list Interface br0` to see the interface details
+* Change the bridge's datapath ID: `sudo ovs-vsctl set Bridge br0 other_config:datapath-id=0000000000000001` and verify with `sudo ovs-ofctl show br0`
+
+'''
+
+== Exercise 3: Connecting VMs/Namespaces
+
+*Objective:* Create network namespaces that simulate virtual machines, connect them to the OVS bridge using veth pairs, and verify Layer 2 connectivity and MAC learning.
+
+=== Step 1: Create network namespaces
+
+[source,bash]
+----
+# Create two namespaces to simulate VMs
+sudo ip netns add vm1
+sudo ip netns add vm2
+----
+
+[source,bash]
+----
+# Verify the namespaces exist
+ip netns list
+----
+
+Expected output:
+
+----
+vm2
+vm1
+----
+
+
+[NOTE]
+.Key Concept
+====
+A Linux network namespace is an isolated copy of the network stack - it has its own interfaces, routing table, and firewall rules. It is a lightweight way to simulate a separate machine without the overhead of a full VM. In production, Docker containers and VMs each have their own network namespace. Think of a namespace as a "virtual machine" for networking purposes.
+====
+
+
+=== Step 2: Create veth pairs
+
+[source,bash]
+----
+# Create a veth pair for vm1
+# One end (veth-vm1) stays on the host, the other (eth0-vm1) goes into the namespace
+sudo ip link add veth-vm1 type veth peer name eth0-vm1
+
+# Create a veth pair for vm2
+sudo ip link add veth-vm2 type veth peer name eth0-vm2
+----
+
+[source,bash]
+----
+# Verify the veth pairs were created
+ip link show type veth
+----
+
+Expected output:
+
+----
+6: eth0-vm1@veth-vm1: <BROADCAST,MULTICAST,M-DOWN> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 3e:5f:7a:9b:1c:2d brd ff:ff:ff:ff:ff:ff
+7: veth-vm1@eth0-vm1: <BROADCAST,MULTICAST,M-DOWN> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 4a:6b:8c:0d:2e:3f brd ff:ff:ff:ff:ff:ff
+8: eth0-vm2@veth-vm2: <BROADCAST,MULTICAST,M-DOWN> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 5b:7c:9d:1e:3f:4a brd ff:ff:ff:ff:ff:ff
+9: veth-vm2@eth0-vm2: <BROADCAST,MULTICAST,M-DOWN> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 6c:8d:0e:2f:4a:5b brd ff:ff:ff:ff:ff:ff
+----
+
+
+[NOTE]
+.Key Concept
+====
+A veth (virtual Ethernet) pair is like a virtual patch cable - anything that goes in one end comes out the other. One end stays on the host and connects to the OVS bridge, while the other end goes inside the namespace to act as the "VM's" network interface. This is exactly how Docker, libvirt, and OpenStack connect containers and VMs to virtual switches.
+====
+
+
+=== Step 3: Move one end into each namespace
+
+[source,bash]
+----
+# Move eth0-vm1 into the vm1 namespace
+sudo ip link set eth0-vm1 netns vm1
+
+# Move eth0-vm2 into the vm2 namespace
+sudo ip link set eth0-vm2 netns vm2
+----
+
+[source,bash]
+----
+# Verify - eth0-vm1 should no longer appear on the host
+ip link show eth0-vm1 2>&1
+----
+
+Expected output:
+
+----
+Device "eth0-vm1" does not exist.
+----
+
+[source,bash]
+----
+# But it is visible inside the namespace
+sudo ip netns exec vm1 ip link show
+----
+
+Expected output:
+
+----
+1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 00:00:00:00:00:00 brd 00:00:00:00:00:00
+6: eth0-vm1@if7: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether 3e:5f:7a:9b:1c:2d brd ff:ff:ff:ff:ff:ff link-netnsid 0
+----
+
+=== Step 4: Attach the host-side ends to the OVS bridge
+
+[source,bash]
+----
+# Add veth-vm1 and veth-vm2 to the bridge
+sudo ovs-vsctl add-port br0 veth-vm1
+sudo ovs-vsctl add-port br0 veth-vm2
+
+# Bring the host-side interfaces up
+sudo ip link set veth-vm1 up
+sudo ip link set veth-vm2 up
+----
+
+[source,bash]
+----
+# Verify the bridge now has ports
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br0
+        Port veth-vm2
+            Interface veth-vm2
+        Port veth-vm1
+            Interface veth-vm1
+        Port br0
+            Interface br0
+                type: internal
+    ovs_version: "3.3.0"
+----
+
+=== Step 5: Assign IPs inside the namespaces
+
+[source,bash]
+----
+# Configure vm1: assign IP and bring interfaces up
+sudo ip netns exec vm1 ip addr add 10.0.0.1/24 dev eth0-vm1
+sudo ip netns exec vm1 ip link set eth0-vm1 up
+sudo ip netns exec vm1 ip link set lo up
+
+# Configure vm2: assign IP and bring interfaces up
+sudo ip netns exec vm2 ip addr add 10.0.0.2/24 dev eth0-vm2
+sudo ip netns exec vm2 ip link set eth0-vm2 up
+sudo ip netns exec vm2 ip link set lo up
+----
+
+[source,bash]
+----
+# Verify IP configuration inside vm1
+sudo ip netns exec vm1 ip addr show eth0-vm1
+----
+
+Expected output:
+
+----
+6: eth0-vm1@if7: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 3e:5f:7a:9b:1c:2d brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.0.0.1/24 scope global eth0-vm1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::3c5f:7aff:fe9b:1c2d/64 scope link
+       valid_lft forever preferred_lft forever
+----
+
+=== Step 6: Test connectivity
+
+[source,bash]
+----
+# Ping vm2 from vm1
+sudo ip netns exec vm1 ping -c 4 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.234 ms
+64 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.078 ms
+64 bytes from 10.0.0.2: icmp_seq=3 ttl=64 time=0.065 ms
+64 bytes from 10.0.0.2: icmp_seq=4 ttl=64 time=0.070 ms
+
+--- 10.0.0.2 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3004ms
+rtt min/avg/max/mdev = 0.065/0.111/0.234/0.070 ms
+----
+
+=== Step 7: Observe MAC learning
+
+[source,bash]
+----
+# Show the MAC address table (FDB - Forwarding Database)
+sudo ovs-appctl fdb/show br0
+----
+
+Expected output:
+
+----
+ port  VLAN  MAC                Age
+    1     0  3e:5f:7a:9b:1c:2d    5
+    2     0  5b:7c:9d:1e:3f:4a    5
+----
+
+
+[NOTE]
+.Key Concept
+====
+Just like a physical switch, OVS learns MAC addresses. When vm1 sends a packet, OVS sees the source MAC on port 1 and records it in the FDB (Forwarding Database). The next time a packet is destined for that MAC, OVS sends it directly to port 1 instead of flooding it to all ports. The "Age" column shows how many seconds since the MAC was last seen. This is identical to how `show mac-address-table` works on a Cisco switch.
+====
+
+
+=== Step 8: Show datapath flows
+
+[source,bash]
+----
+# Show the cached flows in the kernel datapath
+sudo ovs-dpctl dump-flows
+----
+
+Expected output:
+
+----
+recirc_id(0),in_port(2),eth(src=3e:5f:7a:9b:1c:2d,dst=5b:7c:9d:1e:3f:4a),eth_type(0x0800),ipv4(frag=no), packets:4, bytes:392, used:0.5s, actions:3
+recirc_id(0),in_port(3),eth(src=5b:7c:9d:1e:3f:4a,dst=3e:5f:7a:9b:1c:2d),eth_type(0x0800),ipv4(frag=no), packets:4, bytes:392, used:0.5s, actions:2
+----
+
+
+[NOTE]
+.Key Concept
+====
+These are the kernel-level "fast path" flows. After `ovs-vswitchd` makes a forwarding decision for the first packet, it installs a cached flow in the kernel datapath. Subsequent matching packets are forwarded entirely in the kernel without going to userspace. This is why OVS is so fast - the slow path only handles the first packet. Think of it like GPS navigation: the first time you drive a route, you need directions (userspace), but once you know the way, you drive on autopilot (kernel).
+====
+
+
+=== Verification
+
+[source,bash]
+----
+# Full connectivity check
+echo "=== Bridge ports ==="
+sudo ovs-vsctl list-ports br0
+
+echo ""
+echo "=== Ping vm1 -> vm2 ==="
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2 | tail -1
+
+echo ""
+echo "=== Ping vm2 -> vm1 ==="
+sudo ip netns exec vm2 ping -c 1 -W 1 10.0.0.1 | tail -1
+
+echo ""
+echo "=== MAC Table ==="
+sudo ovs-appctl fdb/show br0
+----
+
+Expected output:
+
+----
+=== Bridge ports ===
+veth-vm1
+veth-vm2
+
+=== Ping vm1 -> vm2 ===
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+
+=== Ping vm2 -> vm1 ===
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+
+=== MAC Table ===
+ port  VLAN  MAC                Age
+    1     0  3e:5f:7a:9b:1c:2d    2
+    2     0  5b:7c:9d:1e:3f:4a    2
+----
+
+=== What just happened?
+
+You built a complete virtual network:
+
+. *Namespaces* simulate VMs with isolated network stacks
+. *Veth pairs* act as virtual cables connecting VMs to the switch
+. *OVS bridge* acts as a Layer 2 switch connecting everything together
+. *MAC learning* makes forwarding intelligent - OVS learns where each VM lives and sends traffic directly
+
+This is exactly the same architecture used in production OpenStack and Kubernetes deployments. When a VM or container is created, the orchestrator creates a namespace (or the hypervisor/container runtime does), creates a veth pair, plugs one end into OVS, and assigns an IP. You just did manually what Nova or CRI-O does automatically.
+
+=== Try it yourself
+
+* Ping the bridge IP (10.0.0.254) from vm1: `sudo ip netns exec vm1 ping -c 2 10.0.0.254`
+* Check the ARP table inside vm1: `sudo ip netns exec vm1 ip neigh show`
+* Watch MAC learning in real time: run `watch -n 1 'sudo ovs-appctl fdb/show br0'` in one terminal while pinging from another
+* Try to ping a non-existent IP (10.0.0.99) and observe what happens in the MAC table (you will see broadcast ARP entries)
+
+'''
+
+== Exercise 4: VLANs with OVS
+
+*Objective:* Configure VLAN tagging on OVS ports to create isolated Layer 2 segments on the same bridge. You will learn how access ports, trunk ports, and VLAN isolation work in OVS.
+
+=== Step 1: Create two more namespaces
+
+[source,bash]
+----
+# Create vm3 and vm4
+sudo ip netns add vm3
+sudo ip netns add vm4
+
+# Create veth pairs
+sudo ip link add veth-vm3 type veth peer name eth0-vm3
+sudo ip link add veth-vm4 type veth peer name eth0-vm4
+
+# Move one end into each namespace
+sudo ip link set eth0-vm3 netns vm3
+sudo ip link set eth0-vm4 netns vm4
+
+# Add the host-side ends to the bridge
+sudo ovs-vsctl add-port br0 veth-vm3
+sudo ovs-vsctl add-port br0 veth-vm4
+
+# Bring the host-side interfaces up
+sudo ip link set veth-vm3 up
+sudo ip link set veth-vm4 up
+
+# Assign IPs inside the namespaces
+sudo ip netns exec vm3 ip addr add 10.0.0.3/24 dev eth0-vm3
+sudo ip netns exec vm3 ip link set eth0-vm3 up
+sudo ip netns exec vm3 ip link set lo up
+
+sudo ip netns exec vm4 ip addr add 10.0.0.4/24 dev eth0-vm4
+sudo ip netns exec vm4 ip link set eth0-vm4 up
+sudo ip netns exec vm4 ip link set lo up
+----
+
+[source,bash]
+----
+# Verify all four namespaces can ping each other (before VLAN tagging)
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.3
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.4
+----
+
+Expected output:
+
+----
+PING 10.0.0.3 (10.0.0.3) 56(84) bytes of data.
+64 bytes from 10.0.0.3: icmp_seq=1 ttl=64 time=0.180 ms
+
+--- 10.0.0.3 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.180/0.180/0.180/0.000 ms
+PING 10.0.0.4 (10.0.0.4) 56(84) bytes of data.
+64 bytes from 10.0.0.4: icmp_seq=1 ttl=64 time=0.175 ms
+
+--- 10.0.0.4 ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.175/0.175/0.175/0.000 ms
+----
+
+=== Step 2: Assign VLAN tags to ports
+
+[source,bash]
+----
+# Put vm1 and vm3 on VLAN 100
+sudo ovs-vsctl set port veth-vm1 tag=100
+sudo ovs-vsctl set port veth-vm3 tag=100
+
+# Put vm2 and vm4 on VLAN 200
+sudo ovs-vsctl set port veth-vm2 tag=200
+sudo ovs-vsctl set port veth-vm4 tag=200
+----
+
+[source,bash]
+----
+# Verify the VLAN tags
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br0
+        Port veth-vm1
+            tag: 100
+            Interface veth-vm1
+        Port veth-vm2
+            tag: 200
+            Interface veth-vm2
+        Port veth-vm3
+            tag: 100
+            Interface veth-vm3
+        Port veth-vm4
+            tag: 200
+            Interface veth-vm4
+        Port br0
+            Interface br0
+                type: internal
+    ovs_version: "3.3.0"
+----
+
+
+[NOTE]
+.Key Concept
+====
+Setting `tag=100` on a port makes it an "access port" for VLAN 100. This is equivalent to `switchport access vlan 100` on a Cisco switch. Packets from the VM arrive untagged, and OVS internally tags them with VLAN 100. Packets leaving the port to the VM have the VLAN tag stripped. The VM never sees the VLAN tag - it is invisible to the VM.
+====
+
+
+=== Step 3: Test VLAN isolation
+
+[source,bash]
+----
+# vm1 (VLAN 100) should be able to ping vm3 (VLAN 100)
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.3
+----
+
+Expected output:
+
+----
+PING 10.0.0.3 (10.0.0.3) 56(84) bytes of data.
+64 bytes from 10.0.0.3: icmp_seq=1 ttl=64 time=0.190 ms
+64 bytes from 10.0.0.3: icmp_seq=2 ttl=64 time=0.082 ms
+
+--- 10.0.0.3 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.082/0.136/0.190/0.054 ms
+----
+
+[source,bash]
+----
+# vm1 (VLAN 100) should NOT be able to ping vm2 (VLAN 200)
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+
+--- 10.0.0.2 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 1001ms
+----
+
+[source,bash]
+----
+# vm2 (VLAN 200) should be able to ping vm4 (VLAN 200)
+sudo ip netns exec vm2 ping -c 2 -W 1 10.0.0.4
+----
+
+Expected output:
+
+----
+PING 10.0.0.4 (10.0.0.4) 56(84) bytes of data.
+64 bytes from 10.0.0.4: icmp_seq=1 ttl=64 time=0.195 ms
+64 bytes from 10.0.0.4: icmp_seq=2 ttl=64 time=0.085 ms
+
+--- 10.0.0.4 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.085/0.140/0.195/0.055 ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+VLAN isolation works because OVS internally tags every frame with a VLAN ID. Even though vm1 and vm2 are on the same bridge and have IPs in the same subnet, they cannot communicate because they are on different VLANs. The bridge treats each VLAN as a separate "virtual switch." This is the same principle used in data centers to isolate tenants on shared physical infrastructure.
+====
+
+
+=== Step 4: Create a trunk port
+
+[source,bash]
+----
+# Create a trunk namespace and veth pair
+sudo ip netns add trunk-ns
+sudo ip link add veth-trunk type veth peer name eth0-trunk
+sudo ip link set eth0-trunk netns trunk-ns
+sudo ip link set veth-trunk up
+
+# Add the trunk port to the bridge with multiple allowed VLANs
+sudo ovs-vsctl add-port br0 veth-trunk trunks=100,200
+----
+
+[source,bash]
+----
+# Verify the trunk port configuration
+sudo ovs-vsctl get port veth-trunk trunks
+----
+
+Expected output:
+
+----
+[100, 200]
+----
+
+
+[NOTE]
+.Key Concept
+====
+A trunk port carries traffic from multiple VLANs simultaneously. Unlike access ports (which strip the VLAN tag), trunk ports preserve the 802.1Q VLAN tag in the Ethernet header. This is how traffic from multiple VLANs crosses between switches. In a trunk port, frames arriving from the wire keep their VLAN tags, and frames leaving to the wire include VLAN tags. Think of a trunk port as a "multi-lane highway" where each VLAN is a different lane, while an access port is a "single-lane road."
+====
+
+
+[source,bash]
+----
+# Inside the trunk namespace, create VLAN sub-interfaces to access both VLANs
+sudo ip netns exec trunk-ns ip link set eth0-trunk up
+sudo ip netns exec trunk-ns ip link add link eth0-trunk name eth0-trunk.100 type vlan id 100
+sudo ip netns exec trunk-ns ip link add link eth0-trunk name eth0-trunk.200 type vlan id 200
+sudo ip netns exec trunk-ns ip addr add 10.0.0.254/24 dev eth0-trunk.100
+sudo ip netns exec trunk-ns ip addr add 10.0.0.253/24 dev eth0-trunk.200
+sudo ip netns exec trunk-ns ip link set eth0-trunk.100 up
+sudo ip netns exec trunk-ns ip link set eth0-trunk.200 up
+----
+
+[source,bash]
+----
+# Ping vm1 (VLAN 100) from the trunk namespace's VLAN 100 sub-interface
+sudo ip netns exec trunk-ns ping -c 2 -W 1 10.0.0.1
+----
+
+Expected output:
+
+----
+PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.
+64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=0.220 ms
+64 bytes from 10.0.0.1: icmp_seq=2 ttl=64 time=0.090 ms
+
+--- 10.0.0.1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.090/0.155/0.220/0.065 ms
+----
+
+=== Step 5: Show VLAN in the flow table
+
+[source,bash]
+----
+# Look at the flow table to see how OVS handles VLANs internally
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=0 actions=NORMAL
+----
+
+
+[NOTE]
+====
+Even though we set VLAN tags, you still see only the default `NORMAL` rule. This is because VLAN tagging on access ports is handled by the `NORMAL` action - OVS applies it automatically as part of normal switching. The VLAN tag configuration is stored in the OVSDB, not as explicit OpenFlow rules. If you wanted to handle VLANs manually using OpenFlow, you would use `mod_vlan_vid` and `strip_vlan` actions.
+====
+
+
+[source,bash]
+----
+# You can see the VLAN in action in the MAC table
+sudo ovs-appctl fdb/show br0
+----
+
+Expected output:
+
+----
+ port  VLAN  MAC                Age
+    1   100  3e:5f:7a:9b:1c:2d    3
+    2   200  5b:7c:9d:1e:3f:4a    3
+    3   100  7d:9e:1f:3a:5b:6c    3
+    4   200  8e:0f:2a:4b:6c:7d    3
+----
+
+=== Verification
+
+[source,bash]
+----
+echo "=== VLAN 100 connectivity (should work) ==="
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.3 && echo "PASS" || echo "FAIL"
+
+echo ""
+echo "=== Cross-VLAN isolation (should fail) ==="
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2 && echo "FAIL - VLANs not isolated!" || echo "PASS - VLANs are isolated"
+
+echo ""
+echo "=== VLAN 200 connectivity (should work) ==="
+sudo ip netns exec vm2 ping -c 1 -W 1 10.0.0.4 && echo "PASS" || echo "FAIL"
+----
+
+Expected output:
+
+----
+=== VLAN 100 connectivity (should work) ===
+PASS
+
+=== Cross-VLAN isolation (should fail) ===
+PASS - VLANs are isolated
+
+=== VLAN 200 connectivity (should work) ===
+PASS
+----
+
+=== What just happened?
+
+You configured VLAN segmentation on a single OVS bridge:
+
+. *Access ports* (vm1-vm4) each belong to a single VLAN. OVS tags incoming frames and strips tags on outgoing frames automatically.
+. *VLAN isolation* prevents communication between VLANs even on the same bridge and same IP subnet. This is fundamental to multi-tenant networking.
+. *Trunk ports* carry multiple VLANs with 802.1Q tags preserved, allowing a single link to serve multiple VLANs (like an uplink between switches).
+
+This is exactly how cloud environments isolate tenants. Each tenant's VMs are tagged with a VLAN, and even though they share the same physical switch (or virtual bridge), they cannot see each other's traffic.
+
+=== Try it yourself
+
+* Try setting a `native_vlan` on the trunk port: `sudo ovs-vsctl set port veth-trunk vlan_mode=native-untagged tag=100 trunks=100,200` - untagged traffic will be placed on VLAN 100
+* Check the port's VLAN mode: `sudo ovs-vsctl get port veth-vm1 vlan_mode` (empty means "access" by default)
+* Remove the VLAN tag from vm1 and test connectivity with vm2 again: `sudo ovs-vsctl remove port veth-vm1 tag 100`
+* Explore all VLAN modes: `sudo ovs-vsctl set port veth-vm1 vlan_mode=native-tagged`
+
+'''
+
+== Exercise 5: OpenFlow Programming
+
+*Objective:* Write manual OpenFlow rules to control packet forwarding, including L2 forwarding, L3-based matching, drop rules, header modification, and multi-table pipelines. This exercise shows you the full power of OpenFlow programming in OVS.
+
+
+[WARNING]
+====
+Before starting this exercise, remove the VLAN tags from Exercises 3-4 so all ports can communicate freely. We need a clean environment for OpenFlow testing.
+====
+
+
+=== Step 1: Prepare the environment
+
+[source,bash]
+----
+# Remove VLAN tags from all ports
+sudo ovs-vsctl remove port veth-vm1 tag 100
+sudo ovs-vsctl remove port veth-vm2 tag 200
+sudo ovs-vsctl remove port veth-vm3 tag 100
+sudo ovs-vsctl remove port veth-vm4 tag 200
+
+# Remove the trunk port and namespace
+sudo ovs-vsctl del-port br0 veth-trunk
+sudo ip link del veth-trunk 2>/dev/null
+sudo ip netns del trunk-ns
+
+# Verify all four VMs can ping each other
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.3
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.185 ms
+...
+PING 10.0.0.3 (10.0.0.3) 56(84) bytes of data.
+64 bytes from 10.0.0.3: icmp_seq=1 ttl=64 time=0.178 ms
+...
+----
+
+[source,bash]
+----
+# Get the port numbers assigned by OVS (we need these for OpenFlow rules)
+sudo ovs-ofctl show br0
+----
+
+Expected output:
+
+----
+OFPT_FEATURES_REPLY (xid=0x2): dpid:00005a4b3c2d1e0f
+n_tables:254, n_buffers:0
+capabilities: FLOW_STATS TABLE_STATS PORT_STATS QUEUE_STATS ARP_MATCH_IP
+actions: output enqueue set_vlan_vid set_vlan_pcp strip_vlan mod_dl_src mod_dl_dst mod_nw_src mod_nw_dst mod_nw_tos mod_tp_src mod_tp_dst
+ 1(veth-vm1): addr:4a:6b:8c:0d:2e:3f
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ 2(veth-vm2): addr:6c:8d:0e:2f:4a:5b
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ 3(veth-vm3): addr:aa:bb:cc:dd:ee:01
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ 4(veth-vm4): addr:aa:bb:cc:dd:ee:02
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ LOCAL(br0): addr:5a:4b:3c:2d:1e:0f
+     config:     0
+     state:      0
+     speed: 0 Mbps now, 0 Mbps max
+----
+
+
+[NOTE]
+====
+Take note of the port numbers: veth-vm1 = port 1, veth-vm2 = port 2, veth-vm3 = port 3, veth-vm4 = port 4, br0 (LOCAL) = port 65534. You will use these port numbers in OpenFlow rules.
+====
+
+
+=== Step 2: Dump existing flows and understand them
+
+[source,bash]
+----
+# Show the current flows
+sudo ovs-ofctl dump-flows br0
+----
+
+Expected output:
+
+----
+ cookie=0x0, duration=600.123s, table=0, n_packets=150, n_bytes=14700, priority=0 actions=NORMAL
+----
+
+
+[NOTE]
+.Key Concept
+====
+Each OpenFlow rule has several fields: - *cookie* - A label used by controllers to identify their flows (0x0 = not set) - *duration* - How long the rule has been installed - *table* - Which flow table (0-254) the rule belongs to - *n_packets/n_bytes* - How many packets/bytes have matched this rule - *priority* - Higher priority rules are checked first (0-65535) - *match fields* - What the rule matches on (empty here = match all) - *actions* - What to do with matching packets (NORMAL = standard switching)
+====
+
+
+=== Step 3: Delete all flows and add manual L2 forwarding
+
+[source,bash]
+----
+# Delete all existing flows
+sudo ovs-ofctl del-flows br0
+----
+
+[source,bash]
+----
+# Verify the flow table is empty
+sudo ovs-ofctl dump-flows br0
+----
+
+Expected output:
+
+----
+(no output - table is empty)
+----
+
+[source,bash]
+----
+# Test: ping should fail now because there are no forwarding rules
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+
+--- 10.0.0.2 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 1001ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+With an empty flow table, OVS has no idea what to do with any packet - it drops everything. This is the "whitelist" model of SDN: nothing is allowed unless explicitly permitted. Compare this to a traditional switch where the default is to flood and learn (the `NORMAL` action).
+====
+
+
+Now let's add L2 forwarding rules manually. We need to know the MAC addresses of our VMs:
+
+[source,bash]
+----
+# Get the MAC addresses
+sudo ip netns exec vm1 ip link show eth0-vm1 | grep ether
+sudo ip netns exec vm2 ip link show eth0-vm2 | grep ether
+----
+
+Expected output:
+
+----
+    link/ether 3e:5f:7a:9b:1c:2d brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    link/ether 5b:7c:9d:1e:3f:4a brd ff:ff:ff:ff:ff:ff link-netnsid 0
+----
+
+[source,bash]
+----
+# Add L2 forwarding rules based on destination MAC
+# Replace MAC addresses with your actual MAC addresses from the output above
+
+# Traffic destined for vm1's MAC -> send to port 1
+sudo ovs-ofctl add-flow br0 "priority=100,dl_dst=3e:5f:7a:9b:1c:2d,actions=output:1"
+
+# Traffic destined for vm2's MAC -> send to port 2
+sudo ovs-ofctl add-flow br0 "priority=100,dl_dst=5b:7c:9d:1e:3f:4a,actions=output:2"
+
+# ARP broadcasts (needed for IP-to-MAC resolution) -> flood to all ports
+sudo ovs-ofctl add-flow br0 "priority=50,dl_type=0x0806,actions=flood"
+
+# Default drop rule (implicit, but adding explicitly for clarity)
+sudo ovs-ofctl add-flow br0 "priority=0,actions=drop"
+----
+
+[source,bash]
+----
+# Verify the flows
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=100,dl_dst=3e:5f:7a:9b:1c:2d actions=output:1
+ priority=100,dl_dst=5b:7c:9d:1e:3f:4a actions=output:2
+ priority=50,arp actions=FLOOD
+ priority=0 actions=drop
+----
+
+[source,bash]
+----
+# Test: vm1 and vm2 can now ping each other
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.350 ms
+64 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.095 ms
+
+--- 10.0.0.2 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.095/0.222/0.350/0.128 ms
+----
+
+=== Step 4: Add L3-based forwarding rules
+
+[source,bash]
+----
+# Delete previous flows to start fresh
+sudo ovs-ofctl del-flows br0
+
+# Add L3 (IP) based forwarding - match on destination IP instead of MAC
+# ip = shorthand for dl_type=0x0800 (IPv4)
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.1,actions=output:1"
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.2,actions=output:2"
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.3,actions=output:3"
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.4,actions=output:4"
+
+# ARP must still be flooded for MAC resolution
+sudo ovs-ofctl add-flow br0 "priority=50,arp,actions=flood"
+
+# Default drop
+sudo ovs-ofctl add-flow br0 "priority=0,actions=drop"
+----
+
+[source,bash]
+----
+# Verify the flows
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=100,ip,nw_dst=10.0.0.1 actions=output:1
+ priority=100,ip,nw_dst=10.0.0.2 actions=output:2
+ priority=100,ip,nw_dst=10.0.0.3 actions=output:3
+ priority=100,ip,nw_dst=10.0.0.4 actions=output:4
+ priority=50,arp actions=FLOOD
+ priority=0 actions=drop
+----
+
+[source,bash]
+----
+# Test: all VMs can communicate
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.3
+sudo ip netns exec vm2 ping -c 1 -W 1 10.0.0.4
+----
+
+Expected output:
+
+----
+PING 10.0.0.3 (10.0.0.3) 56(84) bytes of data.
+64 bytes from 10.0.0.3: icmp_seq=1 ttl=64 time=0.310 ms
+...
+PING 10.0.0.4 (10.0.0.4) 56(84) bytes of data.
+64 bytes from 10.0.0.4: icmp_seq=1 ttl=64 time=0.290 ms
+...
+----
+
+=== Step 5: Add a drop rule
+
+[source,bash]
+----
+# Block traffic from vm1 (10.0.0.1) to vm3 (10.0.0.3) with a higher-priority drop rule
+sudo ovs-ofctl add-flow br0 "priority=200,ip,nw_src=10.0.0.1,nw_dst=10.0.0.3,actions=drop"
+----
+
+[source,bash]
+----
+# Verify the drop rule is in place
+sudo ovs-ofctl dump-flows br0 --no-stats | sort -t',' -k1 -r
+----
+
+Expected output:
+
+----
+ priority=200,ip,nw_src=10.0.0.1,nw_dst=10.0.0.3 actions=drop
+ priority=100,ip,nw_dst=10.0.0.1 actions=output:1
+ priority=100,ip,nw_dst=10.0.0.2 actions=output:2
+ priority=100,ip,nw_dst=10.0.0.3 actions=output:3
+ priority=100,ip,nw_dst=10.0.0.4 actions=output:4
+ priority=50,arp actions=FLOOD
+ priority=0 actions=drop
+----
+
+[source,bash]
+----
+# Test: vm1 -> vm3 should fail, but vm1 -> vm2 should still work
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.3
+----
+
+Expected output:
+
+----
+PING 10.0.0.3 (10.0.0.3) 56(84) bytes of data.
+
+--- 10.0.0.3 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 1001ms
+----
+
+[source,bash]
+----
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.095 ms
+64 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.078 ms
+
+--- 10.0.0.2 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.078/0.086/0.095/0.008 ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+OpenFlow priorities determine which rule wins when multiple rules match the same packet. The drop rule at priority 200 is checked before the forwarding rule at priority 100. This is the basis of security policies in SDN - you can selectively block traffic by adding high-priority drop rules, similar to firewall rules or ACLs.
+====
+
+
+=== Step 6: Add a header modification rule
+
+[source,bash]
+----
+# Delete previous flows
+sudo ovs-ofctl del-flows br0
+
+# Add a rule that modifies the destination MAC address before forwarding
+# This rewrites the dst MAC to vm2's MAC and sends to port 2
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.2,actions=mod_dl_dst:5b:7c:9d:1e:3f:4a,output:2"
+
+# Add a rule using the set_field action (OpenFlow 1.3+ syntax)
+# This changes the source MAC before forwarding
+sudo ovs-ofctl add-flow br0 "priority=100,ip,nw_dst=10.0.0.1,actions=set_field:aa:bb:cc:dd:ee:ff->eth_src,output:1"
+
+# ARP and default rules
+sudo ovs-ofctl add-flow br0 "priority=50,arp,actions=flood"
+sudo ovs-ofctl add-flow br0 "priority=0,actions=drop"
+----
+
+[source,bash]
+----
+# Verify the flows
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=100,ip,nw_dst=10.0.0.2 actions=mod_dl_dst:5b:7c:9d:1e:3f:4a,output:2
+ priority=100,ip,nw_dst=10.0.0.1 actions=set_field:aa:bb:cc:dd:ee:ff->eth_src,output:1
+ priority=50,arp actions=FLOOD
+ priority=0 actions=drop
+----
+
+
+[NOTE]
+.Key Concept
+====
+Header modification is one of the most powerful features of OpenFlow. It lets OVS rewrite packet headers before forwarding - changing MAC addresses, IP addresses, VLAN tags, or even TCP/UDP ports. This is how NAT, load balancing, and service chaining are implemented in SDN. Think of it as OVS acting as a "packet editor" - it can read a packet, change parts of it, and then forward the modified version.
+====
+
+
+=== Step 7: Implement a multi-table pipeline with resubmit
+
+[source,bash]
+----
+# Delete previous flows
+sudo ovs-ofctl del-flows br0
+
+# Table 0: Classification table
+# Classify packets by protocol and send to the appropriate processing table
+sudo ovs-ofctl add-flow br0 "table=0,priority=100,arp,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br0 "table=0,priority=100,ip,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br0 "table=0,priority=0,actions=drop"
+
+# Table 1: Forwarding table
+# Make forwarding decisions based on destination IP
+sudo ovs-ofctl add-flow br0 "table=1,priority=100,ip,nw_dst=10.0.0.1,actions=output:1"
+sudo ovs-ofctl add-flow br0 "table=1,priority=100,ip,nw_dst=10.0.0.2,actions=output:2"
+sudo ovs-ofctl add-flow br0 "table=1,priority=100,ip,nw_dst=10.0.0.3,actions=output:3"
+sudo ovs-ofctl add-flow br0 "table=1,priority=100,ip,nw_dst=10.0.0.4,actions=output:4"
+sudo ovs-ofctl add-flow br0 "table=1,priority=50,arp,actions=flood"
+sudo ovs-ofctl add-flow br0 "table=1,priority=0,actions=drop"
+----
+
+[source,bash]
+----
+# Verify the multi-table pipeline
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ table=0, priority=100,arp actions=resubmit(,1)
+ table=0, priority=100,ip actions=resubmit(,1)
+ table=0, priority=0 actions=drop
+ table=1, priority=100,ip,nw_dst=10.0.0.1 actions=output:1
+ table=1, priority=100,ip,nw_dst=10.0.0.2 actions=output:2
+ table=1, priority=100,ip,nw_dst=10.0.0.3 actions=output:3
+ table=1, priority=100,ip,nw_dst=10.0.0.4 actions=output:4
+ table=1, priority=50,arp actions=FLOOD
+ table=1, priority=0 actions=drop
+----
+
+[source,bash]
+----
+# Test: connectivity still works through the pipeline
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.2
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.310 ms
+64 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.085 ms
+
+--- 10.0.0.2 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.085/0.197/0.310/0.113 ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+Multi-table pipelines split packet processing into stages. Table 0 "classifies" packets (is it ARP? IP? something else?), and Table 1 makes forwarding decisions. The `resubmit(,1)` action sends the packet to Table 1 for further processing without actually forwarding it yet. This is how real SDN controllers (like OVN, OpenDaylight, and ONOS) organize their flow pipelines - OVN typically uses 20+ tables, each handling a different aspect of packet processing (ingress ACL, routing, NAT, egress ACL, etc.).
+====
+
+
+=== Step 8: Restore normal switching
+
+[source,bash]
+----
+# Delete all manual flows and restore normal switching
+sudo ovs-ofctl del-flows br0
+sudo ovs-ofctl add-flow br0 "priority=0,actions=NORMAL"
+----
+
+[source,bash]
+----
+# Verify normal switching is restored
+sudo ovs-ofctl dump-flows br0 --no-stats
+----
+
+Expected output:
+
+----
+ priority=0 actions=NORMAL
+----
+
+[source,bash]
+----
+# Confirm connectivity
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2
+sudo ip netns exec vm3 ping -c 1 -W 1 10.0.0.4
+----
+
+Expected output:
+
+----
+PING 10.0.0.2 (10.0.0.2) 56(84) bytes of data.
+64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.195 ms
+...
+PING 10.0.0.4 (10.0.0.4) 56(84) bytes of data.
+64 bytes from 10.0.0.4: icmp_seq=1 ttl=64 time=0.180 ms
+...
+----
+
+=== Verification
+
+[source,bash]
+----
+# Verify normal switching is restored and all VMs can communicate
+for src in vm1 vm2 vm3 vm4; do
+  for dst_ip in 10.0.0.1 10.0.0.2 10.0.0.3 10.0.0.4; do
+    result=$(sudo ip netns exec $src ping -c 1 -W 1 $dst_ip 2>/dev/null | grep -c "1 received")
+    if [ "$result" -eq 1 ]; then
+      echo "$src -> $dst_ip: OK"
+    else
+      echo "$src -> $dst_ip: FAIL"
+    fi
+  done
+done
+----
+
+Expected output:
+
+----
+vm1 -> 10.0.0.1: OK
+vm1 -> 10.0.0.2: OK
+vm1 -> 10.0.0.3: OK
+vm1 -> 10.0.0.4: OK
+vm2 -> 10.0.0.1: OK
+vm2 -> 10.0.0.2: OK
+vm2 -> 10.0.0.3: OK
+vm2 -> 10.0.0.4: OK
+vm3 -> 10.0.0.1: OK
+vm3 -> 10.0.0.2: OK
+vm3 -> 10.0.0.3: OK
+vm3 -> 10.0.0.4: OK
+vm4 -> 10.0.0.1: OK
+vm4 -> 10.0.0.2: OK
+vm4 -> 10.0.0.3: OK
+vm4 -> 10.0.0.4: OK
+----
+
+=== What just happened?
+
+You went from being a "user" of OVS to being a "programmer" of OVS:
+
+. *L2 forwarding* - You manually told OVS "send packets with this destination MAC to this port." This replaces automatic MAC learning with explicit rules.
+. *L3-based forwarding* - You matched on IP addresses instead of MAC addresses, showing that OVS can make decisions based on any header field.
+. *Drop rules* - You created a firewall-like rule that blocks specific traffic. Priority determines which rule wins.
+. *Header modification* - You rewrote packet headers, which is the foundation of NAT and load balancing.
+. *Multi-table pipeline* - You split processing into stages, which is how production SDN controllers organize thousands of rules.
+
+Think of OpenFlow as the "programming language" of OVS. The `NORMAL` action is like running a pre-built program (traditional switching), while manual flows are like writing your own program.
+
+=== Try it yourself
+
+* Add a flow that rate-limits ICMP: `sudo ovs-ofctl add-flow br0 "priority=200,icmp,actions=normal"` with a meter (requires OpenFlow 1.3+)
+* Create a flow that matches on TCP port 80: `sudo ovs-ofctl add-flow br0 "priority=100,tcp,tp_dst=80,actions=output:2"`
+* Try `ovs-ofctl add-flow br0 "priority=100,in_port=1,actions=output:2,3,4"` to forward traffic from port 1 to multiple ports
+* Use a cookie to label your flows: `sudo ovs-ofctl add-flow br0 "cookie=0x1234,priority=100,ip,actions=normal"`
+
+'''
+
+== Exercise 6: Tunnel Overlays
+
+*Objective:* Create VXLAN and Geneve tunnels between two OVS bridges on the same host (simulating two separate hypervisors), and observe the encapsulated traffic. You will learn how overlay networks work.
+
+=== Step 1: Create a second bridge and namespaces
+
+We will simulate two "remote hosts" by using two OVS bridges on the same machine. A pair of veth interfaces will connect the bridges so they can reach each other at the IP level (simulating a physical network between hosts).
+
+[source,bash]
+----
+# Create the second bridge
+sudo ovs-vsctl add-br br1
+
+# Create namespaces to simulate VMs on the "remote host"
+sudo ip netns add vm5
+sudo ip netns add vm6
+
+# Create veth pairs for the remote VMs
+sudo ip link add veth-vm5 type veth peer name eth0-vm5
+sudo ip link add veth-vm6 type veth peer name eth0-vm6
+
+# Move one end into each namespace
+sudo ip link set eth0-vm5 netns vm5
+sudo ip link set eth0-vm6 netns vm6
+
+# Add the host-side ends to br1
+sudo ovs-vsctl add-port br1 veth-vm5
+sudo ovs-vsctl add-port br1 veth-vm6
+
+# Bring up the host-side interfaces
+sudo ip link set veth-vm5 up
+sudo ip link set veth-vm6 up
+
+# Configure IPs inside the namespaces
+# Using 10.0.1.0/24 subnet for the "remote" side
+sudo ip netns exec vm5 ip addr add 10.0.1.1/24 dev eth0-vm5
+sudo ip netns exec vm5 ip link set eth0-vm5 up
+sudo ip netns exec vm5 ip link set lo up
+
+sudo ip netns exec vm6 ip addr add 10.0.1.2/24 dev eth0-vm6
+sudo ip netns exec vm6 ip link set eth0-vm6 up
+sudo ip netns exec vm6 ip link set lo up
+----
+
+=== Step 2: Set up the underlay network
+
+We need an "underlay" network for the tunnel endpoints to communicate. We will use the bridge internal ports as tunnel endpoints with IPs on a separate "transport" subnet.
+
+[source,bash]
+----
+# Assign tunnel endpoint IPs to each bridge's internal port
+# br0 is the "local host" with tunnel IP 172.16.0.1
+# br1 is the "remote host" with tunnel IP 172.16.0.2
+sudo ip addr add 172.16.0.1/24 dev br0
+sudo ip addr add 172.16.0.2/24 dev br1
+sudo ip link set br1 up
+----
+
+[source,bash]
+----
+# Verify the tunnel endpoint IPs
+ip addr show br0 | grep "inet "
+ip addr show br1 | grep "inet "
+----
+
+Expected output:
+
+----
+    inet 10.0.0.254/24 scope global br0
+    inet 172.16.0.1/24 scope global br0
+    inet 172.16.0.2/24 scope global br1
+----
+
+[source,bash]
+----
+# Verify underlay connectivity
+ping -c 2 -W 1 172.16.0.2
+----
+
+Expected output:
+
+----
+PING 172.16.0.2 (172.16.0.2) 56(84) bytes of data.
+64 bytes from 172.16.0.2: icmp_seq=1 ttl=64 time=0.035 ms
+64 bytes from 172.16.0.2: icmp_seq=2 ttl=64 time=0.028 ms
+
+--- 172.16.0.2 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.028/0.031/0.035/0.003 ms
+----
+
+=== Step 3: Create a VXLAN tunnel
+
+[source,bash]
+----
+# Add a VXLAN tunnel port on br0 pointing to br1's tunnel IP
+sudo ovs-vsctl add-port br0 vxlan0 -- set interface vxlan0 \
+    type=vxlan \
+    options:remote_ip=172.16.0.2 \
+    options:key=1000
+
+# Add a VXLAN tunnel port on br1 pointing to br0's tunnel IP
+sudo ovs-vsctl add-port br1 vxlan0 -- set interface vxlan0 \
+    type=vxlan \
+    options:remote_ip=172.16.0.1 \
+    options:key=1000
+----
+
+
+[NOTE]
+.Key Concept
+====
+VXLAN (Virtual Extensible LAN) encapsulates Layer 2 Ethernet frames inside UDP packets (port 4789). The `key=1000` is the VNI (VXLAN Network Identifier) - equivalent to a VLAN ID but with a much larger range (16 million vs. 4094). This allows you to extend Layer 2 networks across different physical hosts. Think of VXLAN as putting an envelope (UDP header) around a letter (Ethernet frame) so it can travel through the postal system (IP network) to reach another mailbox (remote host).
+====
+
+
+[source,bash]
+----
+# Verify the tunnel ports
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br1
+        Port vxlan0
+            Interface vxlan0
+                type: vxlan
+                options: {key="1000", remote_ip="172.16.0.1"}
+        Port veth-vm6
+            Interface veth-vm6
+        Port br1
+            Interface br1
+                type: internal
+        Port veth-vm5
+            Interface veth-vm5
+    Bridge br0
+        Port veth-vm1
+            Interface veth-vm1
+        Port veth-vm2
+            Interface veth-vm2
+        Port veth-vm3
+            Interface veth-vm3
+        Port veth-vm4
+            Interface veth-vm4
+        Port vxlan0
+            Interface vxlan0
+                type: vxlan
+                options: {key="1000", remote_ip="172.16.0.2"}
+        Port br0
+            Interface br0
+                type: internal
+    ovs_version: "3.3.0"
+----
+
+=== Step 4: Test connectivity through the tunnel
+
+For traffic to flow over the tunnel, the VMs on both sides need to be on the same IP subnet. Let's update the VM IPs on br1 to be on the same subnet as br0's VMs:
+
+[source,bash]
+----
+# Update vm5 and vm6 to use the same subnet as vm1-vm4
+sudo ip netns exec vm5 ip addr flush dev eth0-vm5
+sudo ip netns exec vm5 ip addr add 10.0.0.5/24 dev eth0-vm5
+
+sudo ip netns exec vm6 ip addr flush dev eth0-vm6
+sudo ip netns exec vm6 ip addr add 10.0.0.6/24 dev eth0-vm6
+----
+
+[source,bash]
+----
+# Ping vm5 from vm1 through the VXLAN tunnel
+sudo ip netns exec vm1 ping -c 4 10.0.0.5
+----
+
+Expected output:
+
+----
+PING 10.0.0.5 (10.0.0.5) 56(84) bytes of data.
+64 bytes from 10.0.0.5: icmp_seq=1 ttl=64 time=0.450 ms
+64 bytes from 10.0.0.5: icmp_seq=2 ttl=64 time=0.180 ms
+64 bytes from 10.0.0.5: icmp_seq=3 ttl=64 time=0.165 ms
+64 bytes from 10.0.0.5: icmp_seq=4 ttl=64 time=0.170 ms
+
+--- 10.0.0.5 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3004ms
+rtt min/avg/max/mdev = 0.165/0.241/0.450/0.119 ms
+----
+
+=== Step 5: Observe encapsulated traffic with tcpdump
+
+[source,bash]
+----
+# In a separate terminal (or use & to background), capture VXLAN traffic
+# VXLAN uses UDP port 4789
+sudo tcpdump -i br0 -n -c 5 udp port 4789
+----
+
+Then in another terminal, generate traffic:
+
+[source,bash]
+----
+# Generate traffic through the tunnel
+sudo ip netns exec vm1 ping -c 3 10.0.0.5
+----
+
+Expected tcpdump output:
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on br0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+10:30:01.123456 IP 172.16.0.1.54321 > 172.16.0.2.4789: VXLAN, flags [I] (0x08), vni 1000
+IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12345, seq 1, length 64
+10:30:01.123789 IP 172.16.0.2.54321 > 172.16.0.1.4789: VXLAN, flags [I] (0x08), vni 1000
+IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12345, seq 1, length 64
+10:30:02.124456 IP 172.16.0.1.54321 > 172.16.0.2.4789: VXLAN, flags [I] (0x08), vni 1000
+IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12345, seq 2, length 64
+10:30:02.124789 IP 172.16.0.2.54321 > 172.16.0.1.4789: VXLAN, flags [I] (0x08), vni 1000
+IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12345, seq 2, length 64
+5 packets captured
+----
+
+
+[NOTE]
+.Key Concept
+====
+Notice the double headers in the tcpdump output. The outer header shows `172.16.0.1 > 172.16.0.2` on UDP port 4789 (the VXLAN tunnel), and the inner header shows `10.0.0.1 > 10.0.0.5` (the actual VM traffic). The VNI (1000) identifies which virtual network this traffic belongs to. This is the fundamental principle of overlay networking - original packets are "wrapped" inside tunnel headers so they can traverse the physical network.
+====
+
+
+=== Step 6: Replace with Geneve tunnel and compare
+
+[source,bash]
+----
+# Remove the VXLAN tunnel ports
+sudo ovs-vsctl del-port br0 vxlan0
+sudo ovs-vsctl del-port br1 vxlan0
+
+# Add Geneve tunnel ports
+sudo ovs-vsctl add-port br0 geneve0 -- set interface geneve0 \
+    type=geneve \
+    options:remote_ip=172.16.0.2 \
+    options:key=2000
+
+sudo ovs-vsctl add-port br1 geneve0 -- set interface geneve0 \
+    type=geneve \
+    options:remote_ip=172.16.0.1 \
+    options:key=2000
+----
+
+[source,bash]
+----
+# Test connectivity through the Geneve tunnel
+sudo ip netns exec vm1 ping -c 2 -W 1 10.0.0.5
+----
+
+Expected output:
+
+----
+PING 10.0.0.5 (10.0.0.5) 56(84) bytes of data.
+64 bytes from 10.0.0.5: icmp_seq=1 ttl=64 time=0.420 ms
+64 bytes from 10.0.0.5: icmp_seq=2 ttl=64 time=0.175 ms
+
+--- 10.0.0.5 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.175/0.297/0.420/0.123 ms
+----
+
+[source,bash]
+----
+# Capture Geneve traffic (UDP port 6081)
+sudo tcpdump -i br0 -n -c 4 udp port 6081
+----
+
+Expected tcpdump output:
+
+----
+10:35:01.123456 IP 172.16.0.1.54321 > 172.16.0.2.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12346, seq 1, length 64
+10:35:01.123789 IP 172.16.0.2.54321 > 172.16.0.1.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12346, seq 1, length 64
+10:35:02.124456 IP 172.16.0.1.54321 > 172.16.0.2.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12346, seq 2, length 64
+10:35:02.124789 IP 172.16.0.2.54321 > 172.16.0.1.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12346, seq 2, length 64
+----
+
+
+[NOTE]
+====
+The VNI `0x7d0` is the hex representation of 2000 (the key we specified).
+====
+
+
+=== Step 7: Show tunnel in ovs-vsctl show output
+
+[source,bash]
+----
+# Full view of both bridges with tunnel ports
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br1
+        Port geneve0
+            Interface geneve0
+                type: geneve
+                options: {key="2000", remote_ip="172.16.0.1"}
+        Port veth-vm6
+            Interface veth-vm6
+        Port br1
+            Interface br1
+                type: internal
+        Port veth-vm5
+            Interface veth-vm5
+    Bridge br0
+        Port veth-vm1
+            Interface veth-vm1
+        Port veth-vm2
+            Interface veth-vm2
+        Port veth-vm3
+            Interface veth-vm3
+        Port veth-vm4
+            Interface veth-vm4
+        Port geneve0
+            Interface geneve0
+                type: geneve
+                options: {key="2000", remote_ip="172.16.0.2"}
+        Port br0
+            Interface br0
+                type: internal
+    ovs_version: "3.3.0"
+----
+
+=== Step 8: Tunnel comparison
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Feature
+|VXLAN
+|Geneve
+|GRE
+
+|*Encapsulation*
+|UDP
+|UDP
+|IP protocol 47
+
+|*Default Port*
+|4789
+|6081
+|N/A (no port)
+
+|*Header Overhead*
+|50 bytes
+|54+ bytes
+|38 bytes
+
+|*Network ID Range*
+|24-bit (16M)
+|24-bit (16M)
+|32-bit (4B)
+
+|*Extensible Metadata*
+|No
+|Yes (TLV options)
+|No
+
+|*NAT Traversal*
+|Yes (UDP)
+|Yes (UDP)
+|No
+
+|*Hardware Offload*
+|Widely supported
+|Growing support
+|Widely supported
+
+|*Used By*
+|VMware NSX, some OpenStack
+|OVN, OpenStack (default)
+|Legacy deployments
+
+|*IETF Standard*
+|RFC 7348
+|RFC 8926
+|RFC 2784
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+Geneve is the preferred tunnel protocol for OVN and modern deployments because it is extensible. The TLV (Type-Length-Value) options in the Geneve header allow carrying metadata about packets - such as which logical switch port a packet came from, or which security group applies. VXLAN's fixed header cannot carry this metadata. Think of VXLAN as a fixed-size envelope where you can only write the address, while Geneve is an envelope where you can attach additional notes and labels.
+====
+
+
+=== Verification
+
+[source,bash]
+----
+echo "=== Tunnel port on br0 ==="
+sudo ovs-vsctl list interface geneve0 | grep -E "type|options"
+
+echo ""
+echo "=== Cross-tunnel connectivity ==="
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.5 && echo "PASS" || echo "FAIL"
+sudo ip netns exec vm2 ping -c 1 -W 1 10.0.0.6 && echo "PASS" || echo "FAIL"
+----
+
+Expected output:
+
+----
+=== Tunnel port on br0 ===
+options             : {key="2000", remote_ip="172.16.0.2"}
+type                : geneve
+
+=== Cross-tunnel connectivity ===
+PASS
+PASS
+----
+
+=== What just happened?
+
+You built an overlay network that connects two OVS bridges through encapsulated tunnels:
+
+. *VXLAN tunnel* - Encapsulated L2 frames in UDP packets on port 4789, allowing VMs on different bridges (simulating different hosts) to communicate as if they were on the same Layer 2 segment.
+. *Geneve tunnel* - A more modern protocol that does the same thing but with extensible metadata support.
+. *tcpdump* showed you the double-header structure: outer headers carry the tunnel, inner headers carry the original VM traffic.
+
+This is exactly how cloud networks work. In OpenStack or OpenShift, compute nodes might be in different racks or even different data centers, but VMs/pods communicate as if they are on the same network. The overlay tunnel makes the physical network "invisible" to the virtual network.
+
+=== Try it yourself
+
+* Create a GRE tunnel: `sudo ovs-vsctl add-port br0 gre0 -- set interface gre0 type=gre options:remote_ip=172.16.0.2`
+* Try setting a different VNI (key) on each side and observe that connectivity breaks (keys must match)
+* Use `sudo ovs-vsctl list interface geneve0` to see all the tunnel interface properties
+* Try `options:df_default=true` to set the Don't Fragment flag on tunnel packets
+
+'''
+
+== Exercise 7: Port Mirroring
+
+*Objective:* Configure port mirroring on OVS to copy traffic from one port to a monitoring port for analysis. This is essential for network troubleshooting and security monitoring.
+
+=== Step 1: Create a monitoring namespace
+
+[source,bash]
+----
+# Create a namespace for the monitoring station
+sudo ip netns add monitor
+
+# Create a veth pair for the monitoring port
+sudo ip link add veth-mirror type veth peer name eth0-mirror
+sudo ip link set eth0-mirror netns monitor
+
+# Add the monitoring port to br0
+sudo ovs-vsctl add-port br0 veth-mirror
+
+# Bring up interfaces
+sudo ip link set veth-mirror up
+sudo ip netns exec monitor ip link set eth0-mirror up
+sudo ip netns exec monitor ip link set lo up
+----
+
+[source,bash]
+----
+# Verify the monitoring port is on br0
+sudo ovs-vsctl show | grep -A2 veth-mirror
+----
+
+Expected output:
+
+----
+        Port veth-mirror
+            Interface veth-mirror
+----
+
+=== Step 2: Create a mirror on br0
+
+[source,bash]
+----
+# Create a mirror that copies all traffic from veth-vm1 to the monitoring port
+# This is a single command using OVS's multi-operation syntax
+sudo ovs-vsctl -- set bridge br0 mirrors=@m \
+    -- --id=@veth-vm1 get port veth-vm1 \
+    -- --id=@veth-mirror get port veth-mirror \
+    -- --id=@m create mirror name=mirror0 \
+       select-src-port=@veth-vm1 \
+       select-dst-port=@veth-vm1 \
+       output-port=@veth-mirror
+----
+
+Expected output:
+
+----
+d4e5f6a7-b8c9-0123-def4-567890abcdef
+----
+
+
+[NOTE]
+.Key Concept
+====
+The mirror configuration sends a copy of every packet entering or leaving `veth-vm1` to `veth-mirror`. The `select-src-port` captures packets sent BY vm1, and `select-dst-port` captures packets sent TO vm1. The `output-port` is where the copies go. This is equivalent to SPAN (Switched Port Analyzer) on a Cisco switch. Think of it as a "wiretap" - the original traffic flows normally, but a copy is made for the monitoring station.
+====
+
+
+[source,bash]
+----
+# Verify the mirror configuration
+sudo ovs-vsctl list mirror mirror0
+----
+
+Expected output:
+
+----
+_uuid               : d4e5f6a7-b8c9-0123-def4-567890abcdef
+external_ids        : {}
+name                : mirror0
+output_port         : e5f6a7b8-c9d0-1234-ef56-7890abcdef01
+output_vlan         : []
+select_all          : false
+select_dst_port     : [f6a7b8c9-d0e1-2345-f678-90abcdef0123]
+select_src_port     : [f6a7b8c9-d0e1-2345-f678-90abcdef0123]
+select_vlan         : []
+snaplen             : []
+statistics          : {tx_bytes=0, tx_packets=0}
+----
+
+=== Step 3: Capture mirrored traffic
+
+In one terminal, start tcpdump in the monitoring namespace:
+
+[source,bash]
+----
+# Start capturing on the monitoring port
+sudo ip netns exec monitor tcpdump -i eth0-mirror -n -c 10
+----
+
+In a second terminal, generate traffic:
+
+[source,bash]
+----
+# Ping vm2 from vm1 - this traffic should be mirrored
+sudo ip netns exec vm1 ping -c 3 10.0.0.2
+----
+
+Expected tcpdump output in the monitoring namespace:
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on eth0-mirror, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+10:40:01.100000 ARP, Request who-has 10.0.0.2 tell 10.0.0.1, length 28
+10:40:01.100100 ARP, Reply 10.0.0.2 is-at 5b:7c:9d:1e:3f:4a, length 28
+10:40:01.100200 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 1, length 64
+10:40:01.100300 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 1, length 64
+10:40:02.101000 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 2, length 64
+10:40:02.101100 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 2, length 64
+10:40:03.102000 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 3, length 64
+10:40:03.102100 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 3, length 64
+8 packets captured
+----
+
+
+[NOTE]
+.Key Concept
+====
+Notice that you see BOTH the requests (from vm1) AND the replies (to vm1) because we selected both `select-src-port` and `select-dst-port`. The monitoring namespace sees all traffic involving vm1 without interfering with the actual data flow. In production, this is used for IDS/IPS systems, network forensics, and compliance monitoring.
+====
+
+
+=== Step 4: Check mirror statistics
+
+[source,bash]
+----
+# View mirror statistics
+sudo ovs-vsctl list mirror mirror0 | grep statistics
+----
+
+Expected output:
+
+----
+statistics          : {tx_bytes=784, tx_packets=8}
+----
+
+=== Step 5: Clean up mirror configuration
+
+[source,bash]
+----
+# Remove the mirror
+sudo ovs-vsctl clear bridge br0 mirrors
+
+# Remove the monitoring port and namespace
+sudo ovs-vsctl del-port br0 veth-mirror
+sudo ip link del veth-mirror 2>/dev/null
+sudo ip netns del monitor
+----
+
+[source,bash]
+----
+# Verify the mirror is gone
+sudo ovs-vsctl list mirror
+----
+
+Expected output:
+
+----
+(no output - no mirrors configured)
+----
+
+=== Verification
+
+[source,bash]
+----
+# Confirm mirror is removed and normal traffic still flows
+sudo ovs-vsctl find mirror name=mirror0
+echo "Mirror count: $(sudo ovs-vsctl list mirror 2>/dev/null | grep -c name)"
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2 && echo "Normal traffic: OK" || echo "Normal traffic: FAIL"
+----
+
+Expected output:
+
+----
+Mirror count: 0
+Normal traffic: OK
+----
+
+=== What just happened?
+
+You configured a SPAN-like port mirror on OVS:
+
+. *Mirror creation* - You told OVS to copy all traffic involving vm1 to a monitoring port. The original traffic was unaffected.
+. *Traffic capture* - You used tcpdump in a separate namespace to analyze the mirrored traffic, seeing both directions of communication.
+. *Statistics* - OVS tracks how many packets and bytes were mirrored.
+. *Cleanup* - Removing the mirror stops the copying without affecting any other functionality.
+
+Port mirroring is like having a security camera (the mirror port) watching a doorway (the mirrored port). People walk through the door normally, but the camera records everything. In production, the monitoring port is typically connected to a network analyzer, SIEM system, or IDS/IPS appliance.
+
+=== Try it yourself
+
+* Create a mirror that captures ALL traffic on the bridge: use `select_all=true` instead of `select-src-port/select-dst-port`
+* Mirror only traffic on a specific VLAN: use `select_vlan=100`
+* Try mirroring to a VLAN instead of a port: replace `output-port` with `output-vlan=999`
+* Mirror multiple source ports: `select-src-port=@veth-vm1,@veth-vm2`
+
+'''
+
+== Exercise 8: QoS and Rate Limiting
+
+*Objective:* Apply ingress policing and egress QoS to OVS ports to control bandwidth. You will measure the difference using iperf3 before and after applying rate limits.
+
+=== Step 1: Run an iperf3 baseline test WITHOUT rate limiting
+
+First, start an iperf3 server inside vm2:
+
+[source,bash]
+----
+# Start iperf3 server in vm2 (run in background)
+sudo ip netns exec vm2 iperf3 -s -D
+----
+
+Expected output:
+
+----
+Running as a daemon
+----
+
+[source,bash]
+----
+# Run iperf3 client from vm1 to vm2 (baseline, no rate limit)
+sudo ip netns exec vm1 iperf3 -c 10.0.0.2 -t 5
+----
+
+Expected output:
+
+----
+Connecting to host 10.0.0.2, port 5201
+[  5] local 10.0.0.1 port 45678 connected to 10.0.0.2 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-1.00   sec  5.50 GBytes  47.2 Gbits/sec    0
+[  5]   1.00-2.00   sec  5.60 GBytes  48.1 Gbits/sec    0
+[  5]   2.00-3.00   sec  5.55 GBytes  47.7 Gbits/sec    0
+[  5]   3.00-4.00   sec  5.58 GBytes  47.9 Gbits/sec    0
+[  5]   4.00-5.00   sec  5.57 GBytes  47.8 Gbits/sec    0
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-5.00   sec  27.8 GBytes  47.7 Gbits/sec    0             sender
+[  5]   0.00-5.00   sec  27.8 GBytes  47.7 Gbits/sec                  receiver
+
+iperf Done.
+----
+
+
+[NOTE]
+====
+Without rate limiting, traffic between veth pairs on the same host is extremely fast (tens of Gbits/sec) because the packets never touch a physical NIC. Your actual numbers will vary depending on your CPU and memory speed.
+====
+
+
+=== Step 2: Set up ingress policing
+
+[source,bash]
+----
+# Apply ingress policing on veth-vm1
+# Rate: 1000 kbps (1 Mbps), Burst: 100 kb
+sudo ovs-vsctl set interface veth-vm1 \
+    ingress_policing_rate=1000 \
+    ingress_policing_burst=100
+----
+
+[source,bash]
+----
+# Verify the policing settings
+sudo ovs-vsctl list interface veth-vm1 | grep -E "ingress_policing"
+----
+
+Expected output:
+
+----
+ingress_policing_burst: 100
+ingress_policing_rate: 1000
+----
+
+
+[NOTE]
+.Key Concept
+====
+Ingress policing limits the rate of traffic ENTERING the OVS port (from the VM into the switch). The `rate` is in kbps and the `burst` is in kb. Packets that exceed the rate are dropped. This is a "policer" (not a "shaper") - it does not buffer or delay packets, it simply drops anything above the limit. Think of it as a doorman at a club: if too many people try to enter at once, the doorman turns them away at the door rather than making them wait in line.
+====
+
+
+=== Step 3: Run iperf3 test WITH rate limiting
+
+[source,bash]
+----
+# Run iperf3 client from vm1 to vm2 (with 1 Mbps rate limit)
+sudo ip netns exec vm1 iperf3 -c 10.0.0.2 -t 5
+----
+
+Expected output:
+
+----
+Connecting to host 10.0.0.2, port 5201
+[  5] local 10.0.0.1 port 45679 connected to 10.0.0.2 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-1.00   sec   128 KBytes  1.05 Mbits/sec    0
+[  5]   1.00-2.00   sec   124 KBytes  1.01 Mbits/sec    0
+[  5]   2.00-3.00   sec   122 KBytes   999 Kbits/sec    0
+[  5]   3.00-4.00   sec   124 KBytes  1.01 Mbits/sec    0
+[  5]   4.00-5.00   sec   122 KBytes   999 Kbits/sec    0
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-5.00   sec   620 KBytes  1.01 Mbits/sec    0             sender
+[  5]   0.00-5.00   sec   620 KBytes  1.01 Mbits/sec                  receiver
+
+iperf Done.
+----
+
+=== Step 4: Compare the results
+
+
+[cols="1,1,1",options="header"]
+|===
+|Metric
+|Without Rate Limit
+|With Rate Limit (1 Mbps)
+
+|Bitrate
+|~47.7 Gbits/sec
+|~1.01 Mbits/sec
+
+|Transfer (5 sec)
+|~27.8 GBytes
+|~620 KBytes
+
+|Retransmits
+|0
+|0
+
+|Throttle Ratio
+|N/A
+|~47,000x reduction
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+The rate limiter reduced throughput by approximately 47,000 times. This demonstrates how powerful ingress policing is for controlling bandwidth on a per-port basis. In cloud environments, this is used to enforce tenant quotas - if a customer pays for 1 Gbps, you set `ingress_policing_rate=1000000` on their VM's port.
+====
+
+
+=== Step 5: Set up egress QoS with queues
+
+[source,bash]
+----
+# Create a QoS policy with two queues on veth-vm2
+# Queue 0: default, max 500 Mbps
+# Queue 1: priority traffic, max 100 Mbps
+sudo ovs-vsctl set port veth-vm2 qos=@newqos \
+    -- --id=@newqos create qos type=linux-htb \
+       other-config:max-rate=500000000 \
+       queues:0=@q0 \
+       queues:1=@q1 \
+    -- --id=@q0 create queue other-config:max-rate=500000000 \
+    -- --id=@q1 create queue other-config:max-rate=100000000
+----
+
+Expected output:
+
+----
+a1b2c3d4-5678-90ab-cdef-123456789abc
+b2c3d4e5-6789-0abc-def1-23456789abcd
+c3d4e5f6-7890-abcd-ef12-3456789abcde
+----
+
+[source,bash]
+----
+# Verify the QoS configuration
+sudo ovs-vsctl list qos
+----
+
+Expected output:
+
+----
+_uuid               : a1b2c3d4-5678-90ab-cdef-123456789abc
+external_ids        : {}
+other_config        : {max-rate="500000000"}
+queues              : {0=b2c3d4e5-6789-0abc-def1-23456789abcd, 1=c3d4e5f6-7890-abcd-ef12-3456789abcde}
+type                : linux-htb
+----
+
+[source,bash]
+----
+# Show the queue configurations
+sudo ovs-vsctl list queue
+----
+
+Expected output:
+
+----
+_uuid               : b2c3d4e5-6789-0abc-def1-23456789abcd
+dscp                : []
+external_ids        : {}
+other_config        : {max-rate="500000000"}
+
+_uuid               : c3d4e5f6-7890-abcd-ef12-3456789abcde
+dscp                : []
+external_ids        : {}
+other_config        : {max-rate="100000000"}
+----
+
+
+[NOTE]
+.Key Concept
+====
+Egress QoS controls traffic LEAVING the OVS port (from the switch to the VM). Unlike ingress policing, QoS with HTB (Hierarchical Token Bucket) supports queuing and scheduling - traffic that exceeds the rate is buffered rather than dropped. Multiple queues allow you to differentiate between traffic classes. Think of it like lanes on a highway: the "default" lane has higher capacity, while the "priority" lane is narrower but you can use OpenFlow rules to direct specific traffic into specific queues.
+====
+
+
+=== Step 6: Clear QoS configuration
+
+[source,bash]
+----
+# Remove QoS from the port
+sudo ovs-vsctl clear port veth-vm2 qos
+
+# Remove the QoS and queue entries from the database
+# (They remain as orphans if not explicitly destroyed)
+sudo ovs-vsctl -- --all destroy qos -- --all destroy queue
+
+# Remove ingress policing from veth-vm1
+sudo ovs-vsctl set interface veth-vm1 \
+    ingress_policing_rate=0 \
+    ingress_policing_burst=0
+----
+
+[source,bash]
+----
+# Verify QoS is cleared
+sudo ovs-vsctl list interface veth-vm1 | grep ingress_policing
+sudo ovs-vsctl list qos
+----
+
+Expected output:
+
+----
+ingress_policing_burst: 0
+ingress_policing_rate: 0
+(no output from list qos - all QoS removed)
+----
+
+[source,bash]
+----
+# Stop the iperf3 server
+sudo ip netns exec vm2 pkill iperf3
+----
+
+=== Verification
+
+[source,bash]
+----
+# Confirm QoS is fully cleaned up
+echo "=== Ingress policing ==="
+sudo ovs-vsctl get interface veth-vm1 ingress_policing_rate
+sudo ovs-vsctl get interface veth-vm1 ingress_policing_burst
+
+echo ""
+echo "=== QoS entries ==="
+echo "QoS count: $(sudo ovs-vsctl list qos 2>/dev/null | grep -c _uuid)"
+echo "Queue count: $(sudo ovs-vsctl list queue 2>/dev/null | grep -c _uuid)"
+
+echo ""
+echo "=== Unrestricted throughput test ==="
+sudo ip netns exec vm2 iperf3 -s -D
+sudo ip netns exec vm1 iperf3 -c 10.0.0.2 -t 2 | grep sender
+sudo ip netns exec vm2 pkill iperf3
+----
+
+Expected output:
+
+----
+=== Ingress policing ===
+0
+0
+
+=== QoS entries ===
+QoS count: 0
+Queue count: 0
+
+=== Unrestricted throughput test ===
+[  5]   0.00-2.00   sec  9.50 GBytes  40.8 Gbits/sec    0             sender
+----
+
+=== What just happened?
+
+You applied two different types of traffic control to OVS ports:
+
+. *Ingress policing* - A hard rate limiter on incoming traffic. Excess packets are dropped at the port. Simple but effective - used for tenant bandwidth caps.
+. *Egress QoS with HTB* - A queuing discipline on outgoing traffic. Multiple queues allow traffic classification and prioritization. More sophisticated but also more complex to configure.
+
+The key difference: policing drops excess traffic immediately (no buffering), while QoS/shaping delays excess traffic (buffering it for later delivery). For cloud environments, ingress policing is most commonly used because it is simple and effective at enforcing bandwidth limits.
+
+=== Try it yourself
+
+* Try different rate limits: 10 Mbps (`ingress_policing_rate=10000`), 100 Mbps (`ingress_policing_rate=100000`)
+* Test the effect of burst size: increase `ingress_policing_burst=1000` and see how it affects short bursts of traffic
+* Use OpenFlow to direct traffic to specific queues: `sudo ovs-ofctl add-flow br0 "priority=200,tcp,tp_dst=80,actions=set_queue:1,output:2"`
+* Test how rate limiting affects latency: run `sudo ip netns exec vm1 ping -c 10 10.0.0.2` with and without policing
+
+'''
+
+== Exercise 9: Bonding
+
+*Objective:* Create a bonded port in OVS that aggregates multiple interfaces for redundancy and load balancing. You will test failover behavior and explore different bond modes.
+
+=== Step 1: Create veth pairs to simulate physical NICs
+
+[source,bash]
+----
+# Create two veth pairs to simulate physical NICs
+# These represent two cables connecting to an upstream switch
+sudo ip link add eth-a type veth peer name eth-a-peer
+sudo ip link add eth-b type veth peer name eth-b-peer
+
+# Bring up all the interfaces
+sudo ip link set eth-a up
+sudo ip link set eth-b up
+sudo ip link set eth-a-peer up
+sudo ip link set eth-b-peer up
+----
+
+[source,bash]
+----
+# Verify the interfaces exist
+ip link show eth-a
+ip link show eth-b
+----
+
+Expected output:
+
+----
+10: eth-a@eth-a-peer: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether aa:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff
+11: eth-b@eth-b-peer: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether bb:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff
+----
+
+=== Step 2: Create a bond port
+
+[source,bash]
+----
+# Remove the individual veth-vm1 port first (we'll connect vm1 through the bond)
+# Actually, let's keep the existing ports and add the bond separately for testing
+# Create a bond port on br0 with eth-a and eth-b as members
+sudo ovs-vsctl add-bond br0 bond0 eth-a eth-b
+----
+
+[source,bash]
+----
+# Verify the bond in the bridge configuration
+sudo ovs-vsctl show
+----
+
+Expected output (abbreviated, showing just the bond):
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br0
+        ...
+        Port bond0
+            Interface eth-a
+            Interface eth-b
+        ...
+    ovs_version: "3.3.0"
+----
+
+=== Step 3: Show bond status
+
+[source,bash]
+----
+# Show detailed bond status
+sudo ovs-appctl bond/show bond0
+----
+
+Expected output:
+
+----
+---- bond0 ----
+bond_mode: active-backup
+bond may use recirculation: no, Recirc-ID : -1
+bond-hash-basis: 0
+updelay: 0 ms
+downdelay: 0 ms
+next rebalance: 1000 ms
+lacp_status: off
+lacp_fallback_ab: false
+active member mac: aa:11:22:33:44:55(eth-a)
+
+member eth-a: enabled
+  active member
+  may_enable: true
+
+member eth-b: enabled
+  may_enable: true
+----
+
+
+[NOTE]
+.Key Concept
+====
+The default bond mode is `active-backup`, where only one interface (the "active member") carries traffic at any time. The other interface stands by as a backup. If the active interface fails, traffic automatically switches to the backup. This is the simplest and most compatible bonding mode - it works with any upstream switch without special configuration. Think of it as having two roads between two cities but only using one at a time. If the first road has an accident, traffic is rerouted to the second road.
+====
+
+
+=== Step 4: Test failover
+
+[source,bash]
+----
+# Check which interface is active
+sudo ovs-appctl bond/show bond0 | grep "active member"
+----
+
+Expected output:
+
+----
+active member mac: aa:11:22:33:44:55(eth-a)
+  active member
+----
+
+[source,bash]
+----
+# Simulate failure of the active interface by bringing it down
+sudo ip link set eth-a down
+----
+
+[source,bash]
+----
+# Check bond status again - eth-b should now be the active member
+sudo ovs-appctl bond/show bond0
+----
+
+Expected output:
+
+----
+---- bond0 ----
+bond_mode: active-backup
+bond may use recirculation: no, Recirc-ID : -1
+bond-hash-basis: 0
+updelay: 0 ms
+downdelay: 0 ms
+next rebalance: 1000 ms
+lacp_status: off
+lacp_fallback_ab: false
+active member mac: bb:11:22:33:44:55(eth-b)
+
+member eth-a: disabled
+  may_enable: false
+
+member eth-b: enabled
+  active member
+  may_enable: true
+----
+
+
+[NOTE]
+.Key Concept
+====
+The failover happened automatically and instantly. The bond detected that `eth-a` went down and promoted `eth-b` to be the active member. This is transparent to the VMs - they do not notice the failover. In production, this provides high availability for critical network links.
+====
+
+
+[source,bash]
+----
+# Restore eth-a
+sudo ip link set eth-a up
+----
+
+[source,bash]
+----
+# Verify both members are back
+sudo ovs-appctl bond/show bond0 | grep -E "member eth-"
+----
+
+Expected output:
+
+----
+member eth-a: enabled
+member eth-b: enabled
+  active member
+----
+
+
+[NOTE]
+====
+After `eth-a` comes back, `eth-b` remains the active member. This prevents unnecessary "flapping" between interfaces. You can force a switch back with `sudo ovs-appctl bond/set-active-member bond0 eth-a`.
+====
+
+
+=== Step 5: Bond modes comparison
+
+
+[cols="1,1,1,1,1",options="header"]
+|===
+|Bond Mode
+|Description
+|Load Balancing
+|Upstream Switch Config
+|Use Case
+
+|`active-backup`
+|Only one interface active at a time
+|None (single path)
+|None required
+|Simple redundancy, maximum compatibility
+
+|`balance-slb`
+|Source MAC + VLAN hash-based load balancing
+|Per-source-MAC
+|None required
+|Moderate load balancing without switch support
+
+|`balance-tcp`
+|L2/L3/L4 hash-based load balancing
+|Per-flow (best)
+|LACP required on upstream switch
+|Maximum throughput, requires LACP-capable switch
+
+|===
+
+
+=== Step 6: Change bond mode and observe behavior
+
+[source,bash]
+----
+# Change to balance-slb mode
+sudo ovs-vsctl set port bond0 bond_mode=balance-slb
+----
+
+[source,bash]
+----
+# Verify the mode change
+sudo ovs-appctl bond/show bond0 | head -5
+----
+
+Expected output:
+
+----
+---- bond0 ----
+bond_mode: balance-slb
+bond may use recirculation: no, Recirc-ID : -1
+bond-hash-basis: 0
+updelay: 0 ms
+----
+
+[source,bash]
+----
+# Show the hash-to-member mapping
+sudo ovs-appctl bond/show bond0 | grep "hash"
+----
+
+Expected output:
+
+----
+bond-hash-basis: 0
+----
+
+
+[NOTE]
+.Key Concept
+====
+In `balance-slb` mode, OVS hashes the source MAC address (and VLAN) to decide which interface to use. Different source MACs may use different interfaces, providing load distribution. The key advantage over `active-backup` is that both interfaces carry traffic. The key advantage over `balance-tcp` is that it does not require LACP on the upstream switch. Think of it as having two checkout lanes at a grocery store - different customers (source MACs) go to different lanes, but the same customer always uses the same lane.
+====
+
+
+[source,bash]
+----
+# Change to balance-tcp mode (requires LACP in production)
+sudo ovs-vsctl set port bond0 bond_mode=balance-tcp
+sudo ovs-vsctl set port bond0 lacp=active
+----
+
+[source,bash]
+----
+# Verify
+sudo ovs-appctl bond/show bond0 | head -10
+----
+
+Expected output:
+
+----
+---- bond0 ----
+bond_mode: balance-tcp
+bond may use recirculation: yes, Recirc-ID : 1
+bond-hash-basis: 0
+updelay: 0 ms
+downdelay: 0 ms
+next rebalance: 1000 ms
+lacp_status: negotiating
+lacp_fallback_ab: false
+active member mac: bb:11:22:33:44:55(eth-b)
+----
+
+
+[NOTE]
+====
+`lacp_status: negotiating` will show because the peer end (our veth peer) does not speak LACP. In production with a real LACP-capable switch, this would show `lacp_status: configured`.
+====
+
+
+[source,bash]
+----
+# Reset to active-backup for simplicity
+sudo ovs-vsctl set port bond0 bond_mode=active-backup
+sudo ovs-vsctl set port bond0 lacp=off
+----
+
+=== Verification
+
+[source,bash]
+----
+echo "=== Bond exists ==="
+sudo ovs-vsctl list-ports br0 | grep bond0
+
+echo ""
+echo "=== Bond mode ==="
+sudo ovs-appctl bond/show bond0 | grep bond_mode
+
+echo ""
+echo "=== Bond members ==="
+sudo ovs-appctl bond/show bond0 | grep "member eth-"
+
+echo ""
+echo "=== Both members enabled ==="
+sudo ovs-appctl bond/show bond0 | grep "may_enable: true" | wc -l
+----
+
+Expected output:
+
+----
+=== Bond exists ===
+bond0
+
+=== Bond mode ===
+bond_mode: active-backup
+
+=== Bond members ===
+member eth-a: enabled
+member eth-b: enabled
+  active member
+
+=== Both members enabled ===
+2
+----
+
+=== What just happened?
+
+You configured NIC bonding (link aggregation) on OVS:
+
+. *Bond creation* - Combined two interfaces into a single logical port, providing redundancy.
+. *Failover* - When one interface failed, traffic automatically moved to the backup with zero downtime for the VMs.
+. *Bond modes* - You explored three modes, each with different trade-offs between simplicity, compatibility, and performance.
+
+In production cloud environments, bonding is used on every hypervisor. The management network, storage network, and tenant network each typically use bonded interfaces for redundancy. A typical OpenStack compute node might have two 25GbE NICs bonded together for a combined 50 Gbps of bandwidth with automatic failover if one cable is pulled.
+
+=== Try it yourself
+
+* Add a third interface to the bond: `sudo ip link add eth-c type veth peer name eth-c-peer && sudo ip link set eth-c up && sudo ip link set eth-c-peer up && sudo ovs-vsctl add-bond-member bond0 eth-c`
+* Check LACP details: `sudo ovs-appctl lacp/show bond0`
+* Monitor bond in real time: `watch -n 1 'sudo ovs-appctl bond/show bond0'`
+* Force a specific active member: `sudo ovs-appctl bond/set-active-member bond0 eth-a`
+
+'''
+
+== Exercise 10: Monitoring and Debugging
+
+*Objective:* Learn to use OVS's built-in debugging tools to trace packet paths, inspect counters, analyze logs, and gather statistics. These are the essential tools for troubleshooting OVS issues in production.
+
+=== Step 1: Trace a packet path with ofproto/trace
+
+[source,bash]
+----
+# Get the OpenFlow port numbers
+sudo ovs-ofctl show br0 | grep -E "^\s+[0-9]+"
+----
+
+Expected output:
+
+----
+ 1(veth-vm1): addr:4a:6b:8c:0d:2e:3f
+     ...
+ 2(veth-vm2): addr:6c:8d:0e:2f:4a:5b
+     ...
+ 3(veth-vm3): addr:aa:bb:cc:dd:ee:01
+     ...
+ 4(veth-vm4): addr:aa:bb:cc:dd:ee:02
+     ...
+----
+
+[source,bash]
+----
+# Trace a packet from vm1 to vm2
+# This simulates a packet entering port 1 with vm1's source MAC and vm2's destination MAC
+sudo ovs-appctl ofproto/trace br0 \
+    "in_port=1,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=5b:7c:9d:1e:3f:4a,dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=1"
+----
+
+Expected output:
+
+----
+Flow: icmp,in_port=1,vlan_tci=0x0000,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=5b:7c:9d:1e:3f:4a,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,icmp_type=0,icmp_code=0
+
+bridge("br0")
+-------------
+ 0. priority 0
+    NORMAL
+     -> learned that 3e:5f:7a:9b:1c:2d is on port veth-vm1 in VLAN 0
+     -> forwarding to learned port
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,in_port=1,vlan_tci=0x0000/0x1fff,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=5b:7c:9d:1e:3f:4a,dl_type=0x0800,nw_frag=no
+Datapath actions: 3
+----
+
+
+[NOTE]
+.Key Concept
+====
+`ofproto/trace` is the most powerful debugging tool in OVS. It simulates a packet through the entire OpenFlow pipeline without actually sending any traffic on the wire. You can see exactly which flow table rules are matched, what actions are applied, and where the packet ends up. The `Datapath actions: 3` at the bottom tells you the packet would be sent to datapath port 3 (which is veth-vm2). Think of it like a "what-if" simulator - you describe a packet and OVS tells you exactly what would happen to it.
+====
+
+
+[source,bash]
+----
+# Trace an ARP broadcast
+sudo ovs-appctl ofproto/trace br0 \
+    "in_port=1,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=ff:ff:ff:ff:ff:ff,dl_type=0x0806"
+----
+
+Expected output:
+
+----
+Flow: arp,in_port=1,vlan_tci=0x0000,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=ff:ff:ff:ff:ff:ff
+
+bridge("br0")
+-------------
+ 0. priority 0
+    NORMAL
+     -> learned that 3e:5f:7a:9b:1c:2d is on port veth-vm1 in VLAN 0
+     -> flooding
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,in_port=1,vlan_tci=0x0000/0x1fff,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=ff:ff:ff:ff:ff:ff,dl_type=0x0806
+Datapath actions: 2,3,4,5,6,100
+----
+
+
+[NOTE]
+====
+The "flooding" action sends the ARP broadcast to ALL ports on the bridge except the incoming port. This is standard Ethernet flooding behavior for broadcast frames.
+====
+
+
+=== Step 2: Show the Forwarding Database (MAC table)
+
+[source,bash]
+----
+# Generate some traffic first to populate the MAC table
+sudo ip netns exec vm1 ping -c 1 -W 1 10.0.0.2 > /dev/null 2>&1
+sudo ip netns exec vm3 ping -c 1 -W 1 10.0.0.4 > /dev/null 2>&1
+
+# Show the FDB
+sudo ovs-appctl fdb/show br0
+----
+
+Expected output:
+
+----
+ port  VLAN  MAC                Age
+    1     0  3e:5f:7a:9b:1c:2d    1
+    2     0  5b:7c:9d:1e:3f:4a    1
+    3     0  7d:9e:1f:3a:5b:6c    2
+    4     0  8e:0f:2a:4b:6c:7d    2
+----
+
+
+[NOTE]
+.Key Concept
+====
+The FDB (Forwarding Database) is OVS's MAC address table - it maps MAC addresses to port numbers. When OVS receives a unicast frame, it looks up the destination MAC in the FDB. If found, the frame is sent only to that port (unicast forwarding). If not found, the frame is flooded to all ports. The "Age" column shows how recently the MAC was seen - entries expire after a timeout (default 300 seconds).
+====
+
+
+=== Step 3: Show coverage counters
+
+[source,bash]
+----
+# Show internal coverage counters
+sudo ovs-appctl coverage/show
+----
+
+Expected output (abbreviated):
+
+----
+Event coverage, avg rate over last: 5s, 5min, 15min:
+bridge_reconfigure         0.0/sec     0.0/sec     0.0/sec   total: 8
+ccmap_expand               0.0/sec     0.0/sec     0.0/sec   total: 0
+cmap_expand                0.0/sec     0.0/sec     0.0/sec   total: 25
+dpif_execute               0.0/sec     0.0/sec     0.0/sec   total: 43
+flow_mod                   0.0/sec     0.0/sec     0.0/sec   total: 1
+hmap_pathological          0.0/sec     0.0/sec     0.0/sec   total: 0
+mac_learning_learned       0.0/sec     0.0/sec     0.0/sec   total: 6
+mac_learning_expired       0.0/sec     0.0/sec     0.0/sec   total: 0
+netdev_get_stats           0.0/sec     0.2/sec     0.1/sec   total: 245
+netlink_received           0.0/sec     0.4/sec     0.2/sec   total: 1560
+ofproto_update_port        0.0/sec     0.0/sec     0.0/sec   total: 18
+rev_reconfigure            0.0/sec     0.0/sec     0.0/sec   total: 8
+seq_change                 0.0/sec     0.6/sec     0.3/sec   total: 2400
+unixctl_received           0.2/sec     0.0/sec     0.0/sec   total: 5
+...
+----
+
+
+[NOTE]
+.Key Concept
+====
+Coverage counters are internal performance metrics that track how often specific events occur inside OVS. Key counters to watch: - `mac_learning_learned` - How many new MACs have been learned - `flow_mod` - How many flow table modifications have occurred - `dpif_execute` - How many packets went through the slow path (userspace) - `netlink_received` - Communication between kernel and userspace  If `dpif_execute` is very high, it means too many packets are hitting the slow path, which could indicate a performance problem.
+====
+
+
+=== Step 4: Check OVS logs
+
+[source,bash]
+----
+# View recent OVS logs via journalctl
+sudo journalctl -u ovs-vswitchd --since "10 minutes ago" --no-pager | tail -20
+----
+
+Expected output:
+
+----
+Aug 06 10:00:01 lab-host ovs-vswitchd[12350]: ovs|00001|bridge|INFO|bridge br0: added interface br0 on port 65534
+Aug 06 10:05:00 lab-host ovs-vswitchd[12350]: ovs|00002|bridge|INFO|bridge br0: added interface veth-vm1 on port 1
+Aug 06 10:05:00 lab-host ovs-vswitchd[12350]: ovs|00003|bridge|INFO|bridge br0: added interface veth-vm2 on port 2
+Aug 06 10:15:00 lab-host ovs-vswitchd[12350]: ovs|00004|bridge|INFO|bridge br1: added interface br1 on port 65534
+...
+----
+
+[source,bash]
+----
+# Show all available log modules and their current levels
+sudo ovs-appctl vlog/list | head -20
+----
+
+Expected output:
+
+----
+                 console    syslog    file
+                 -------    ------    ----
+backtrace          OFF       INFO      INFO
+bfd                OFF       INFO      INFO
+bond               OFF       INFO      INFO
+bridge             OFF       INFO      INFO
+bundle             OFF       INFO      INFO
+bundles            OFF       INFO      INFO
+cfm                OFF       INFO      INFO
+collectors         OFF       INFO      INFO
+connmgr            OFF       INFO      INFO
+coverage           OFF       INFO      INFO
+ct_dpif            OFF       INFO      INFO
+daemon             OFF       INFO      INFO
+daemon_unix        OFF       INFO      INFO
+dns_resolve        OFF       INFO      INFO
+dpdk               OFF       INFO      INFO
+dpif               OFF       INFO      INFO
+dpif_netdev        OFF       INFO      INFO
+dpif_netlink       OFF       INFO      INFO
+----
+
+[source,bash]
+----
+# Increase log level for the bridge module to debug
+sudo ovs-appctl vlog/set bridge:file:dbg
+----
+
+Expected output:
+
+----
+(no output - command succeeded)
+----
+
+[source,bash]
+----
+# Verify the log level change
+sudo ovs-appctl vlog/list | grep bridge
+----
+
+Expected output:
+
+----
+bridge             OFF       INFO      DBG
+----
+
+
+[WARNING]
+====
+Debug-level logging generates a LOT of output. Always set it back to INFO or WARN after troubleshooting to avoid filling up your disk. Use `sudo ovs-appctl vlog/set bridge:file:info` to reset.
+====
+
+
+[source,bash]
+----
+# Reset to info level
+sudo ovs-appctl vlog/set bridge:file:info
+----
+
+=== Step 5: Show bridge statistics
+
+[source,bash]
+----
+# Show per-port packet and byte counters
+sudo ovs-ofctl dump-ports br0
+----
+
+Expected output:
+
+----
+OFPST_PORT reply (xid=0x4): 7 ports
+  port LOCAL: rx pkts=25, bytes=2150, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=20, bytes=1800, drop=0, errs=0, coll=0
+  port  1: rx pkts=45, bytes=4230, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=40, bytes=3960, drop=0, errs=0, coll=0
+  port  2: rx pkts=40, bytes=3960, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=45, bytes=4230, drop=0, errs=0, coll=0
+  port  3: rx pkts=30, bytes=2820, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=25, bytes=2350, drop=0, errs=0, coll=0
+  port  4: rx pkts=25, bytes=2350, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=30, bytes=2820, drop=0, errs=0, coll=0
+  port  5: rx pkts=10, bytes=940, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=10, bytes=940, drop=0, errs=0, coll=0
+  port  6: rx pkts=5, bytes=470, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=5, bytes=470, drop=0, errs=0, coll=0
+----
+
+
+[NOTE]
+.Key Concept
+====
+Port statistics show you the exact traffic counters for each port on the bridge. Key fields: - *rx pkts/bytes* - Packets/bytes received on this port (from VM to switch) - *tx pkts/bytes* - Packets/bytes transmitted on this port (from switch to VM) - *drop* - Packets dropped (non-zero values indicate problems) - *errs* - Errors detected (non-zero values indicate link or driver issues)  These counters are cumulative since the bridge was created. If you see a high drop count on a port, it could indicate QoS policing, OpenFlow drop rules, or a buffer overflow.
+====
+
+
+[source,bash]
+----
+# Show per-port statistics with port names
+sudo ovs-ofctl dump-ports-desc br0
+----
+
+Expected output:
+
+----
+OFPST_PORT_DESC reply (xid=0x2):
+ 1(veth-vm1): addr:4a:6b:8c:0d:2e:3f
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ 2(veth-vm2): addr:6c:8d:0e:2f:4a:5b
+     config:     0
+     state:      0
+     current:    10GB-FD COPPER
+     speed: 10000 Mbps now, 0 Mbps max
+ ...
+----
+
+=== Step 6: OVS CLI Cheat Sheet
+
+
+[cols="1,1,1",options="header"]
+|===
+|Command
+|Purpose
+|Example
+
+|*Bridge Management*
+|
+|
+
+|`ovs-vsctl add-br <bridge>`
+|Create a bridge
+|`ovs-vsctl add-br br0`
+
+|`ovs-vsctl del-br <bridge>`
+|Delete a bridge
+|`ovs-vsctl del-br br0`
+
+|`ovs-vsctl list-br`
+|List all bridges
+|`ovs-vsctl list-br`
+
+|`ovs-vsctl show`
+|Show all bridges and ports
+|`ovs-vsctl show`
+
+|*Port Management*
+|
+|
+
+|`ovs-vsctl add-port <br> <port>`
+|Add port to bridge
+|`ovs-vsctl add-port br0 eth0`
+
+|`ovs-vsctl del-port <br> <port>`
+|Remove port from bridge
+|`ovs-vsctl del-port br0 eth0`
+
+|`ovs-vsctl list-ports <br>`
+|List ports on bridge
+|`ovs-vsctl list-ports br0`
+
+|`ovs-vsctl set port <port> tag=<vlan>`
+|Set VLAN tag
+|`ovs-vsctl set port eth0 tag=100`
+
+|*Bond Management*
+|
+|
+
+|`ovs-vsctl add-bond <br> <bond> <if1> <if2>`
+|Create bond
+|`ovs-vsctl add-bond br0 bond0 eth0 eth1`
+
+|`ovs-appctl bond/show <bond>`
+|Show bond status
+|`ovs-appctl bond/show bond0`
+
+|`ovs-appctl bond/set-active-member <bond> <if>`
+|Force active member
+|`ovs-appctl bond/set-active-member bond0 eth0`
+
+|*Tunnel Management*
+|
+|
+
+|`ovs-vsctl add-port <br> <tun> -- set interface <tun> type=vxlan options:remote_ip=<ip>`
+|Add VXLAN tunnel
+|See Exercise 6
+
+|`ovs-vsctl add-port <br> <tun> -- set interface <tun> type=geneve options:remote_ip=<ip>`
+|Add Geneve tunnel
+|See Exercise 6
+
+|*OpenFlow*
+|
+|
+
+|`ovs-ofctl dump-flows <br>`
+|Show flow table
+|`ovs-ofctl dump-flows br0`
+
+|`ovs-ofctl add-flow <br> <flow>`
+|Add a flow
+|`ovs-ofctl add-flow br0 "priority=100,ip,actions=normal"`
+
+|`ovs-ofctl del-flows <br>`
+|Delete all flows
+|`ovs-ofctl del-flows br0`
+
+|`ovs-ofctl show <br>`
+|Show port numbers
+|`ovs-ofctl show br0`
+
+|`ovs-ofctl dump-ports <br>`
+|Show port statistics
+|`ovs-ofctl dump-ports br0`
+
+|*Datapath*
+|
+|
+
+|`ovs-dpctl show`
+|Show kernel datapath
+|`ovs-dpctl show`
+
+|`ovs-dpctl dump-flows`
+|Show kernel flow cache
+|`ovs-dpctl dump-flows`
+
+|*Debugging*
+|
+|
+
+|`ovs-appctl ofproto/trace <br> <packet>`
+|Trace packet through pipeline
+|See Step 1 above
+
+|`ovs-appctl fdb/show <br>`
+|Show MAC address table
+|`ovs-appctl fdb/show br0`
+
+|`ovs-appctl coverage/show`
+|Show coverage counters
+|`ovs-appctl coverage/show`
+
+|`ovs-appctl vlog/list`
+|Show log levels
+|`ovs-appctl vlog/list`
+
+|`ovs-appctl vlog/set <module>:<dest>:<level>`
+|Set log level
+|`ovs-appctl vlog/set bridge:file:dbg`
+
+|*Database*
+|
+|
+
+|`ovs-vsctl list <table>`
+|List all rows in table
+|`ovs-vsctl list Bridge`
+
+|`ovs-vsctl find <table> <col>=<val>`
+|Find rows matching condition
+|`ovs-vsctl find Port name=bond0`
+
+|`ovs-vsctl get <table> <row> <col>`
+|Get column value
+|`ovs-vsctl get Interface eth0 statistics`
+
+|`ovs-vsctl set <table> <row> <col>=<val>`
+|Set column value
+|`ovs-vsctl set Port eth0 tag=100`
+
+|`ovsdb-client dump`
+|Dump entire database
+|`ovsdb-client dump Open_vSwitch`
+
+|*Monitoring*
+|
+|
+
+|`ovs-appctl dpif/show`
+|Show datapath interfaces
+|`ovs-appctl dpif/show`
+
+|`ovs-appctl memory/show`
+|Show memory usage
+|`ovs-appctl memory/show`
+
+|`ovs-vsctl get interface <if> statistics`
+|Interface statistics
+|`ovs-vsctl get interface eth0 statistics`
+
+|===
+
+
+=== Verification
+
+[source,bash]
+----
+# Comprehensive health check
+echo "=== OVS Service ==="
+sudo systemctl is-active openvswitch
+
+echo ""
+echo "=== Bridges ==="
+sudo ovs-vsctl list-br
+
+echo ""
+echo "=== Port count on br0 ==="
+sudo ovs-vsctl list-ports br0 | wc -l
+
+echo ""
+echo "=== Flow count on br0 ==="
+sudo ovs-ofctl dump-flows br0 2>/dev/null | wc -l
+
+echo ""
+echo "=== Datapath flows ==="
+sudo ovs-dpctl dump-flows 2>/dev/null | wc -l
+
+echo ""
+echo "=== MAC table entries ==="
+sudo ovs-appctl fdb/show br0 | tail -n +2 | wc -l
+
+echo ""
+echo "=== Trace test (vm1 -> vm2) ==="
+sudo ovs-appctl ofproto/trace br0 \
+    "in_port=1,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=5b:7c:9d:1e:3f:4a,dl_type=0x0800" 2>/dev/null | grep "Datapath actions"
+----
+
+Expected output:
+
+----
+=== OVS Service ===
+active
+
+=== Bridges ===
+br0
+br1
+
+=== Port count on br0 ===
+7
+
+=== Flow count on br0 ===
+1
+
+=== Datapath flows ===
+4
+
+=== MAC table entries ===
+4
+
+=== Trace test (vm1 -> vm2) ===
+Datapath actions: 3
+----
+
+=== What just happened?
+
+You learned the essential debugging and monitoring toolkit for OVS:
+
+. *ofproto/trace* - The "X-ray machine" for packets. It shows exactly how a packet would be processed without sending real traffic. This is the first tool to reach for when debugging connectivity issues.
+. *FDB (MAC table)* - Shows which MAC addresses have been learned on which ports. Essential for verifying L2 connectivity.
+. *Coverage counters* - Internal performance metrics that help identify bottlenecks and unusual behavior.
+. *Log management* - How to view, filter, and adjust OVS log levels for detailed troubleshooting.
+. *Port statistics* - Traffic counters per port for identifying where packets are going (or being dropped).
+
+In a production support scenario, when a customer reports "VM A cannot reach VM B", your debugging workflow would be:
+. Check `fdb/show` - Is the destination MAC known?
+. Use `ofproto/trace` - Does the flow pipeline forward the packet correctly?
+. Check `dump-ports` - Are packets being received/transmitted on the right ports?
+. Check `dump-flows` - Are there drop rules or unexpected matches?
+. Check logs - Are there errors or warnings?
+
+=== Try it yourself
+
+* Trace a packet with a VLAN tag: `sudo ovs-appctl ofproto/trace br0 "in_port=1,dl_vlan=100,dl_src=3e:5f:7a:9b:1c:2d,dl_dst=ff:ff:ff:ff:ff:ff,dl_type=0x0806"`
+* Show memory usage: `sudo ovs-appctl memory/show`
+* Dump the entire OVSDB: `sudo ovsdb-client dump Open_vSwitch`
+* Show the OpenFlow group table: `sudo ovs-ofctl dump-groups br0`
+* Check datapath interface stats: `sudo ovs-appctl dpif/show`
+* Run a continuous monitor: `sudo ovs-ofctl monitor br0 watch:` (Ctrl+C to stop)
+
+'''
+
+== Lab Cleanup
+
+Run these commands to clean up all resources created during this lab:
+
+[source,bash]
+----
+# Stop any background processes
+sudo ip netns exec vm2 pkill iperf3 2>/dev/null
+
+# Remove all mirrors
+sudo ovs-vsctl clear bridge br0 mirrors 2>/dev/null
+
+# Remove the bond
+sudo ovs-vsctl del-port br0 bond0 2>/dev/null
+sudo ip link del eth-a 2>/dev/null
+sudo ip link del eth-b 2>/dev/null
+
+# Remove tunnel ports
+sudo ovs-vsctl del-port br0 geneve0 2>/dev/null
+sudo ovs-vsctl del-port br0 vxlan0 2>/dev/null
+sudo ovs-vsctl del-port br1 geneve0 2>/dev/null
+sudo ovs-vsctl del-port br1 vxlan0 2>/dev/null
+
+# Remove VM ports from bridges
+sudo ovs-vsctl del-port br0 veth-vm1 2>/dev/null
+sudo ovs-vsctl del-port br0 veth-vm2 2>/dev/null
+sudo ovs-vsctl del-port br0 veth-vm3 2>/dev/null
+sudo ovs-vsctl del-port br0 veth-vm4 2>/dev/null
+sudo ovs-vsctl del-port br1 veth-vm5 2>/dev/null
+sudo ovs-vsctl del-port br1 veth-vm6 2>/dev/null
+sudo ovs-vsctl del-port br0 veth-mirror 2>/dev/null
+sudo ovs-vsctl del-port br0 veth-trunk 2>/dev/null
+
+# Delete the bridges
+sudo ovs-vsctl del-br br0
+sudo ovs-vsctl del-br br1
+
+# Delete veth pairs (deleting one end removes both)
+sudo ip link del veth-vm1 2>/dev/null
+sudo ip link del veth-vm2 2>/dev/null
+sudo ip link del veth-vm3 2>/dev/null
+sudo ip link del veth-vm4 2>/dev/null
+sudo ip link del veth-vm5 2>/dev/null
+sudo ip link del veth-vm6 2>/dev/null
+sudo ip link del veth-mirror 2>/dev/null
+sudo ip link del veth-trunk 2>/dev/null
+sudo ip link del eth-a 2>/dev/null
+sudo ip link del eth-b 2>/dev/null
+
+# Delete all namespaces
+sudo ip netns del vm1 2>/dev/null
+sudo ip netns del vm2 2>/dev/null
+sudo ip netns del vm3 2>/dev/null
+sudo ip netns del vm4 2>/dev/null
+sudo ip netns del vm5 2>/dev/null
+sudo ip netns del vm6 2>/dev/null
+sudo ip netns del monitor 2>/dev/null
+sudo ip netns del trunk-ns 2>/dev/null
+
+# Clean up any orphaned QoS/queue entries
+sudo ovs-vsctl -- --all destroy qos 2>/dev/null
+sudo ovs-vsctl -- --all destroy queue 2>/dev/null
+
+# Verify cleanup
+echo "=== Remaining bridges ==="
+sudo ovs-vsctl list-br
+echo ""
+echo "=== Remaining namespaces ==="
+ip netns list
+echo ""
+echo "=== OVS status ==="
+sudo ovs-vsctl show
+----
+
+Expected output after cleanup:
+
+----
+=== Remaining bridges ===
+(no output - all bridges deleted)
+
+=== Remaining namespaces ===
+(no output - all namespaces deleted)
+
+=== OVS status ===
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    ovs_version: "3.3.0"
+----
+
+
+[NOTE]
+====
+If you want to stop OVS entirely, run `sudo systemctl stop openvswitch`. If you want to remove OVS from the system, run `sudo dnf remove openvswitch`.
+====
+
+
+'''
+
+xref:02-ovs-architecture.adoc[Previous: Module 02 - OVS Architecture] | xref:04-ovn-architecture.adoc[Next: Module 04 - OVN Architecture]
+

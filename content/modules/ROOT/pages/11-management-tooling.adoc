@@ -1,0 +1,1158 @@
+= Module 11: Management and Tooling Reference
+
+== Overview
+
+This module is a comprehensive reference for every command-line tool you will use when managing, inspecting, and troubleshooting OVS and OVN. Earlier modules introduced these tools in context; this module consolidates them into a single reference with complete syntax, practical examples, and tips for daily operations.
+
+Keep this module open when working on a live system. When a customer opens a case and you need to quickly check bridge configuration, dump flows, trace a packet, or inspect the OVN database, you will find the exact command here.
+
+'''
+
+== OVS Management Tools
+
+=== ovs-vsctl - Switch/Bridge Management
+
+*Purpose:* Configure the OVS database (ovsdb). This is the primary tool for creating and managing bridges, ports, and interfaces. It communicates with the `ovsdb-server` daemon.
+
+*How it works:* `ovs-vsctl` reads from and writes to the Open_vSwitch database schema. Every bridge, port, interface, and configuration parameter is stored in this database. Changes made with `ovs-vsctl` take effect immediately - `ovs-vswitchd` monitors the database and applies changes as they are committed.
+
+==== Common Commands
+
+*show - Display current configuration:*
+
+[source,bash]
+----
+sudo ovs-vsctl show
+----
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br-int
+        fail_mode: secure
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "tap12345678-90"
+            Interface "tap12345678-90"
+        Port "ovn-node2-0"
+            Interface "ovn-node2-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.16.0.2"}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port "eth1"
+            Interface "eth1"
+    ovs_version: "3.1.0"
+----
+
+*add-br / del-br - Bridge management:*
+
+[source,bash]
+----
+# Create a bridge
+sudo ovs-vsctl add-br br-test
+
+# Create a bridge with a specific datapath type (e.g., netdev for DPDK)
+sudo ovs-vsctl add-br br-dpdk -- set bridge br-dpdk datapath_type=netdev
+
+# Delete a bridge (also removes all ports on it)
+sudo ovs-vsctl del-br br-test
+
+# List all bridges
+sudo ovs-vsctl list-br
+----
+
+*add-port / del-port - Port management:*
+
+[source,bash]
+----
+# Add a port to a bridge
+sudo ovs-vsctl add-port br-int eth2
+
+# Add a port with a specific type
+sudo ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 \
+  type=vxlan options:remote_ip=172.16.0.2
+
+# Add a port with a VLAN tag
+sudo ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Add a bond (two interfaces bonded together)
+sudo ovs-vsctl add-bond br-int bond0 eth1 eth2
+
+# Delete a port
+sudo ovs-vsctl del-port br-int eth2
+
+# List ports on a bridge
+sudo ovs-vsctl list-ports br-int
+----
+
+*set / get / list / find - Database operations:*
+
+[source,bash]
+----
+# List all records in a table
+sudo ovs-vsctl list bridge
+sudo ovs-vsctl list port
+sudo ovs-vsctl list interface
+
+# List a specific record
+sudo ovs-vsctl list interface eth1
+
+# Get a specific field
+sudo ovs-vsctl get interface eth1 ofport
+sudo ovs-vsctl get bridge br-int datapath_id
+sudo ovs-vsctl get interface eth1 statistics
+
+# Set a field
+sudo ovs-vsctl set bridge br-int other_config:flow-eviction-threshold=2500
+sudo ovs-vsctl set interface eth1 ingress_policing_rate=1000
+sudo ovs-vsctl set interface eth1 ingress_policing_burst=100
+
+# Find records matching a condition
+sudo ovs-vsctl find interface type=geneve
+sudo ovs-vsctl find port tag=100
+sudo ovs-vsctl find interface ofport=-1    # find ports that failed to configure
+----
+
+*External IDs:*
+
+External IDs are key-value metadata that OVN and other controllers attach to OVS objects. They are critical for identifying which OVN logical port corresponds to which OVS port.
+
+[source,bash]
+----
+# View external IDs on a port
+sudo ovs-vsctl get interface tap12345678-90 external_ids
+
+# Example output:
+# {iface-id="port-uuid-1234", iface-status=active}
+
+# Set an external ID
+sudo ovs-vsctl set interface tap12345678-90 \
+  external_ids:iface-id="port-uuid-1234"
+
+# Find a port by its OVN iface-id
+sudo ovs-vsctl find interface external_ids:iface-id="port-uuid-1234"
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `iface-id` external ID is how `ovn-controller` binds an OVS port to an OVN logical port. When you create a VM or pod, the orchestrator (Nova, kubelet) creates the OVS port and sets `iface-id` to the OVN logical port UUID. `ovn-controller` sees this and claims the port binding in the Southbound database. If `iface-id` is missing or wrong, the port will not be bound and the VM/pod will have no network connectivity.
+====
+
+
+==== Useful One-Liners
+
+[source,bash]
+----
+# Show all ports with their OVN iface-ids
+sudo ovs-vsctl --columns=name,external_ids list interface | \
+  grep -A1 "iface-id"
+
+# Show all tunnel ports
+sudo ovs-vsctl find interface type=geneve
+sudo ovs-vsctl find interface type=vxlan
+
+# Show bridge fail mode
+sudo ovs-vsctl get bridge br-int fail_mode
+
+# Count total ports on br-int
+sudo ovs-vsctl list-ports br-int | wc -l
+
+# Show OVS version
+sudo ovs-vsctl --version
+
+# Check if a specific port exists
+sudo ovs-vsctl port-to-br tap12345678-90
+----
+
+'''
+
+=== ovs-ofctl - OpenFlow Management
+
+*Purpose:* Interact directly with the OpenFlow tables on an OVS bridge. This is the tool for inspecting, adding, modifying, and deleting flow entries.
+
+==== Common Commands
+
+*dump-flows - Show all flow entries:*
+
+[source,bash]
+----
+# Dump all flows on br-int
+sudo ovs-ofctl dump-flows br-int
+
+# Specify OpenFlow protocol version (OVN uses OpenFlow 1.5)
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15
+
+# Sort by table number for readability
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table
+
+# Filter flows by table
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 table=0
+
+# Filter flows matching specific criteria
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "ip,nw_dst=10.0.0.1"
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "in_port=5"
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "cookie=0x4a5c0b13/-1"
+----
+
+
+[NOTE]
+====
+When working with OVN-managed bridges, always use `-O OpenFlow15` (or `-O OpenFlow13` at minimum). OVN programs flows using features from OpenFlow 1.3+. Without specifying the protocol version, `ovs-ofctl` defaults to OpenFlow 1.0, which cannot display many OVN flows correctly.
+====
+
+
+*add-flow / del-flows / mod-flows - Flow manipulation:*
+
+[source,bash]
+----
+# Add a flow (for standalone OVS, not OVN-managed bridges)
+sudo ovs-ofctl add-flow br-test \
+  "table=0,priority=100,in_port=1,ip,actions=output:2"
+
+# Delete all flows in a table
+sudo ovs-ofctl del-flows br-test "table=0"
+
+# Delete flows matching specific criteria
+sudo ovs-ofctl del-flows br-test "in_port=1"
+
+# Modify existing flows
+sudo ovs-ofctl mod-flows br-test \
+  "table=0,priority=100,in_port=1,ip,actions=output:3"
+----
+
+
+[WARNING]
+====
+Never add, delete, or modify flows on a bridge managed by OVN (`br-int`). The `ovn-controller` daemon will overwrite your changes during its next reconciliation cycle.
+====
+
+
+*dump-ports - Port statistics:*
+
+[source,bash]
+----
+sudo ovs-ofctl dump-ports br-int
+sudo ovs-ofctl dump-ports br-int tap12345678-90
+----
+
+----
+OFPST_PORT reply (xid=0x4): 15 ports
+  port  5: rx pkts=15234, bytes=1827410, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=12456, bytes=1123456, drop=0, errs=0, coll=0
+----
+
+Non-zero `drop` counters indicate packets being dropped at the port level.
+
+*dump-ports-desc - Port descriptions:*
+
+[source,bash]
+----
+sudo ovs-ofctl dump-ports-desc br-int -O OpenFlow15
+----
+
+*snoop - Watch OpenFlow messages:*
+
+[source,bash]
+----
+sudo ovs-ofctl snoop br-int
+----
+
+==== Flow Syntax Reference
+
+
+[cols="1,1,1",options="header"]
+|===
+|Match Field
+|Description
+|Example
+
+|`in_port=N`
+|Input port number
+|`in_port=5`
+
+|`dl_src=MAC`
+|Source MAC
+|`dl_src=00:11:22:33:44:55`
+
+|`dl_dst=MAC`
+|Destination MAC
+|`dl_dst=ff:ff:ff:ff:ff:ff`
+
+|`dl_type=N`
+|Ethertype
+|`dl_type=0x0800` (IPv4)
+
+|`ip`
+|IPv4 shorthand
+|`ip`
+
+|`arp`
+|ARP shorthand
+|`arp`
+
+|`nw_src=IP[/MASK]`
+|Source IPv4
+|`nw_src=10.0.0.0/24`
+
+|`nw_dst=IP[/MASK]`
+|Destination IPv4
+|`nw_dst=10.0.0.1`
+
+|`nw_proto=N`
+|IP protocol
+|`nw_proto=6` (TCP)
+
+|`tcp` / `udp`
+|Protocol shorthand
+|`tcp`
+
+|`tp_src=N` / `tp_dst=N`
+|L4 port
+|`tp_dst=443`
+
+|`ct_state=FLAGS`
+|Conntrack state
+|`ct_state=+est+trk`
+
+|`metadata=N`
+|OpenFlow metadata
+|`metadata=0x2`
+
+|===
+
+
+Common actions:
+
+
+[cols="1,1",options="header"]
+|===
+|Action
+|Description
+
+|`output:N`
+|Output to port N
+
+|`drop`
+|Drop the packet
+
+|`NORMAL`
+|Normal L2 switching
+
+|`resubmit(,N)`
+|Continue in table N
+
+|`mod_dl_src:MAC`
+|Modify source MAC
+
+|`mod_nw_src:IP`
+|Modify source IP
+
+|`load:VAL->REG`
+|Load value into register
+
+|`ct(args)`
+|Connection tracking
+
+|`flood`
+|Output to all ports except input
+
+|===
+
+
+==== Tips for Filtering Flow Output
+
+[source,bash]
+----
+# Count flows per table
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  grep -oP 'table=\d+' | sort | uniq -c | sort -rn
+
+# Find flows with zero packet counts
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "n_packets=0"
+
+# Find flows matching a specific IP
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "10\.0\.0\.1"
+----
+
+'''
+
+=== ovs-dpctl - Datapath Management
+
+*Purpose:* Interact with the OVS kernel datapath - the fast-path component that caches forwarding decisions.
+
+==== Understanding the Datapath
+
+OVS has two flow processing levels:
+
+. *OpenFlow tables* (in `ovs-vswitchd`) - the full pipeline.
+. *Datapath flow cache* (in kernel) - simplified exact-match flows for fast forwarding.
+
+Cache hits are forwarded entirely in the kernel (fast path). Cache misses go to `ovs-vswitchd` (slow path).
+
+[source,bash]
+----
+# Show cached datapath flows
+sudo ovs-dpctl dump-flows
+sudo ovs-appctl dpctl/dump-flows
+
+# Show datapath ports and statistics
+sudo ovs-dpctl show
+----
+
+
+[NOTE]
+.Key Concept
+====
+Datapath flows are not the same as OpenFlow flows. OpenFlow flows define policy (with wildcards). Datapath flows are cached exact-match results of evaluating specific packets. There can be many datapath flows for a single OpenFlow flow.
+====
+
+
+'''
+
+=== ovs-appctl - Runtime Commands
+
+*Purpose:* Send runtime commands to running OVS daemons.
+
+*ofproto/trace - Packet simulation* (see Module 10 for details):
+
+[source,bash]
+----
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,tcp,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,\
+   nw_src=10.0.0.1,nw_dst=10.0.0.2,tp_dst=80"
+----
+
+*fdb/show - MAC learning table:*
+
+[source,bash]
+----
+sudo ovs-appctl fdb/show br-int
+----
+
+*bond/show - Bond status:*
+
+[source,bash]
+----
+sudo ovs-appctl bond/show bond0
+----
+
+*coverage/show - Performance counters:*
+
+[source,bash]
+----
+sudo ovs-appctl coverage/show
+----
+
+Key counters:
+
+
+[cols="1,1",options="header"]
+|===
+|Counter
+|Description
+
+|`handler`
+|Upcalls from kernel to userspace
+
+|`flow_mod`
+|OpenFlow flow modifications
+
+|`upcall_flow_limit_hit`
+|Upcalls dropped due to flow limit
+
+|===
+
+
+*vlog/set - Adjust log levels:*
+
+[source,bash]
+----
+sudo ovs-appctl vlog/set ofproto:dbg
+sudo ovs-appctl vlog/set ofproto:warn    # restore
+sudo ovs-appctl vlog/list                # show current levels
+----
+
+
+[WARNING]
+====
+Debug logging generates enormous output and can fill disk quickly. Always restore to `warn` or `info` after debugging.
+====
+
+
+*memory/show - Memory usage:*
+
+[source,bash]
+----
+sudo ovs-appctl memory/show
+----
+
+'''
+
+=== ovsdb-client - Database Client
+
+*Purpose:* Direct database queries, monitoring, and dumps.
+
+[source,bash]
+----
+sudo ovsdb-client dump                                    # full database
+sudo ovsdb-client dump Open_vSwitch Bridge                # specific table
+sudo ovsdb-client monitor Open_vSwitch Interface name,ofport  # real-time changes
+sudo ovsdb-client list-dbs                                # list databases
+sudo ovsdb-client get-schema Open_vSwitch                 # schema
+----
+
+'''
+
+== OVN Management Tools
+
+=== ovn-nbctl - Northbound Database Management
+
+*Purpose:* Configure OVN logical networks. The NB DB is the "intent" database describing the desired network topology.
+
+==== Logical Switch Operations
+
+[source,bash]
+----
+sudo ovn-nbctl ls-add ls1                    # create
+sudo ovn-nbctl ls-del ls1                    # delete
+sudo ovn-nbctl ls-list                       # list all
+
+# Logical switch port operations
+sudo ovn-nbctl lsp-add ls1 vm1-port
+sudo ovn-nbctl lsp-set-addresses vm1-port "00:00:00:00:00:01 10.0.0.1"
+sudo ovn-nbctl lsp-set-port-security vm1-port "00:00:00:00:00:01 10.0.0.1"
+sudo ovn-nbctl lsp-list ls1
+sudo ovn-nbctl lsp-del vm1-port
+----
+
+==== Logical Router Operations
+
+[source,bash]
+----
+sudo ovn-nbctl lr-add lr1                    # create
+sudo ovn-nbctl lr-del lr1                    # delete
+sudo ovn-nbctl lr-list                       # list all
+
+# Router port operations
+sudo ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:aa:aa:01 10.0.0.254/24
+sudo ovn-nbctl lrp-list lr1
+sudo ovn-nbctl lrp-del lr1-ls1
+----
+
+*Connect a logical switch to a router:*
+
+[source,bash]
+----
+sudo ovn-nbctl lsp-add ls1 ls1-lr1
+sudo ovn-nbctl lsp-set-type ls1-lr1 router
+sudo ovn-nbctl lsp-set-addresses ls1-lr1 router
+sudo ovn-nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
+----
+
+*Static routes:*
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-add lr1 0.0.0.0/0 203.0.113.254
+sudo ovn-nbctl lr-route-list lr1
+sudo ovn-nbctl lr-route-del lr1 0.0.0.0/0
+----
+
+*NAT rules:*
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-add lr1 snat 203.0.113.1 10.0.0.0/24
+sudo ovn-nbctl lr-nat-add lr1 dnat_and_snat 203.0.113.50 10.0.0.1
+sudo ovn-nbctl lr-nat-list lr1
+sudo ovn-nbctl lr-nat-del lr1 dnat_and_snat 203.0.113.50
+----
+
+==== ACL Operations
+
+[source,bash]
+----
+# Allow incoming TCP port 80
+sudo ovn-nbctl acl-add ls1 to-lport 1000 \
+  'outport == "vm1-port" && tcp.dst == 80' allow-related
+
+# Deny all other incoming traffic
+sudo ovn-nbctl acl-add ls1 to-lport 900 \
+  'outport == "vm1-port"' drop
+
+# Allow all outgoing traffic
+sudo ovn-nbctl acl-add ls1 from-lport 1000 \
+  'inport == "vm1-port"' allow-related
+
+sudo ovn-nbctl acl-list ls1
+----
+
+*Port Groups:*
+
+[source,bash]
+----
+sudo ovn-nbctl pg-add web-servers vm1-port vm2-port vm3-port
+sudo ovn-nbctl acl-add web-servers to-lport 1000 'tcp.dst == 80' allow-related
+sudo ovn-nbctl pg-del web-servers
+----
+
+
+[NOTE]
+.Key Concept
+====
+In OpenStack, each security group becomes an OVN port group. ACLs applied to a port group cover all member ports efficiently.
+====
+
+
+==== Load Balancer Operations
+
+[source,bash]
+----
+sudo ovn-nbctl lb-add my-lb 10.0.0.100:80 \
+  10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080
+sudo ovn-nbctl ls-lb-add ls1 my-lb
+sudo ovn-nbctl lr-lb-add lr1 my-lb
+sudo ovn-nbctl lb-list
+sudo ovn-nbctl lb-del my-lb
+----
+
+==== DHCP Operations
+
+[source,bash]
+----
+sudo ovn-nbctl dhcp-options-create 10.0.0.0/24
+DHCP_UUID=$(sudo ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
+sudo ovn-nbctl dhcp-options-set-options $DHCP_UUID \
+  lease_time=3600 router=10.0.0.254 server_id=10.0.0.254 \
+  server_mac=00:00:00:aa:aa:01 dns_server="{8.8.8.8, 8.8.4.4}"
+sudo ovn-nbctl lsp-set-dhcpv4-options vm1-port $DHCP_UUID
+----
+
+==== Generic Database Operations
+
+[source,bash]
+----
+sudo ovn-nbctl list logical_switch
+sudo ovn-nbctl find logical_switch_port type=router
+sudo ovn-nbctl get logical_switch ls1 _uuid
+sudo ovn-nbctl set logical_switch_port vm1-port enabled=false
+----
+
+'''
+
+=== ovn-sbctl - Southbound Database Management
+
+*Purpose:* Inspect the compiled state in the SB DB - logical flows, port bindings, chassis registrations. You typically do not write to the SB DB directly.
+
+*show - Display chassis and port bindings:*
+
+[source,bash]
+----
+sudo ovn-sbctl show
+----
+
+----
+Chassis "node-1"
+    hostname: node-1.example.com
+    Encap geneve
+        ip: "172.16.0.1"
+        options: {csum="true"}
+    Port_Binding "vm1-port"
+    Port_Binding "vm2-port"
+Chassis "node-2"
+    hostname: node-2.example.com
+    Encap geneve
+        ip: "172.16.0.2"
+    Port_Binding "vm3-port"
+----
+
+
+[NOTE]
+.Key Concept
+====
+If a port does not appear under any chassis in `ovn-sbctl show`, it is unbound. An unbound port means `ovn-controller` on no node has claimed it - typically the OVS port with the matching `iface-id` does not exist or `ovn-controller` is not running.
+====
+
+
+*lflow-list - List logical flows:*
+
+[source,bash]
+----
+sudo ovn-sbctl lflow-list
+sudo ovn-sbctl lflow-list ls1
+sudo ovn-sbctl lflow-list ls1 | grep "ls_in_acl"
+----
+
+Each logical flow shows: Datapath, Pipeline (ingress/egress), Table, Priority, Match, Action, UUID.
+
+*Other queries:*
+
+[source,bash]
+----
+sudo ovn-sbctl chassis-list
+sudo ovn-sbctl find port_binding logical_port="vm1-port"
+sudo ovn-sbctl get port_binding vm1-port chassis
+sudo ovn-sbctl list mac_binding
+----
+
+'''
+
+=== ovn-trace - Logical Packet Tracer
+
+*Purpose:* Simulate packet processing through OVN's logical pipeline (see Module 10 for full details).
+
+[source,bash]
+----
+sudo ovn-trace [OPTIONS] DATAPATH MICROFLOW
+----
+
+
+[cols="1,1",options="header"]
+|===
+|Option
+|Description
+
+|`--detailed`
+|Show every logical flow matched (default)
+
+|`--summary`
+|Key decisions only
+
+|`--minimal`
+|Just the final result
+
+|`--ct new/est/rel/inv`
+|Simulate connection tracking state
+
+|===
+
+
+*Examples:*
+
+[source,bash]
+----
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.1 && ip4.dst == 10.0.0.2 && ip.ttl == 64 && tcp.dst == 80'
+
+sudo ovn-trace --ct new --detailed ls1 \
+  'inport == "vm-client" && eth.src == 00:00:00:00:00:50 && eth.dst == 00:00:00:00:01:00 && ip4.src == 10.0.0.50 && ip4.dst == 10.0.0.100 && ip.ttl == 64 && tcp.dst == 80'
+----
+
+'''
+
+=== ovn-detrace - Physical to Logical Flow Mapper
+
+*Purpose:* Map OVS OpenFlow cookie values back to OVN logical flows.
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+sudo ovs-appctl ofproto/trace br-int "<flow>" 2>&1 | \
+  ovn-detrace --ovnsb=tcp:192.168.1.100:6642
+----
+
+'''
+
+=== ovn-controller appctl Commands
+
+[source,bash]
+----
+sudo ovs-appctl -t ovn-controller connection-status   # SB DB connection
+sudo ovs-appctl -t ovn-controller ct-zone-list         # conntrack zones
+sudo ovs-appctl -t ovn-controller chassis/show         # chassis info
+sudo ovs-appctl -t ovn-controller recompute            # trigger flow recompute
+sudo ovs-appctl -t ovn-controller vlog/set dbg         # debug logging
+sudo ovs-appctl -t ovn-controller vlog/set info        # restore
+----
+
+
+[NOTE]
+====
+If `-t ovn-controller` does not work, try the full path: `-t /var/run/ovn/ovn-controller.<pid>.ctl`.
+====
+
+
+'''
+
+== Monitoring Tools
+
+=== Open vSwitch Logs
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Default Log Path
+
+|`ovs-vswitchd`
+|`/var/log/openvswitch/ovs-vswitchd.log`
+
+|`ovsdb-server`
+|`/var/log/openvswitch/ovsdb-server.log`
+
+|===
+
+
+[source,bash]
+----
+sudo ovs-appctl vlog/list                        # show current levels
+sudo ovs-appctl vlog/set ofproto:file:dbg        # debug to file
+sudo ovs-appctl vlog/set file:warn               # restore
+----
+
+=== OVN Logs
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Default Log Path
+
+|`ovn-northd`
+|`/var/log/ovn/ovn-northd.log`
+
+|`ovn-controller`
+|`/var/log/ovn/ovn-controller.log`
+
+|===
+
+
+*Common log messages:*
+
+
+[cols="1,1",options="header"]
+|===
+|Message
+|Meaning
+
+|`binding lport <port>`
+|Controller claiming a port (normal)
+
+|`releasing lport <port>`
+|Controller releasing a port (normal)
+
+|`connection attempt failed`
+|Cannot reach SB database
+
+|`full recompute`
+|Rebuilding all flows (can cause brief disruption)
+
+|===
+
+
+=== tcpdump and Wireshark
+
+[source,bash]
+----
+# OVS port capture
+sudo ovs-tcpdump -i <port-name> -nn
+
+# Geneve tunnel traffic
+sudo tcpdump -i eth0 -nn port 6081
+sudo tshark -i eth0 -f "port 6081" -V -O geneve
+
+# DHCP traffic
+sudo ovs-tcpdump -i <port> -nn "port 67 or port 68"
+
+# Between specific IPs
+sudo ovs-tcpdump -i <port> -nn "host 10.0.0.1 and host 10.0.0.2"
+----
+
+=== Performance Monitoring
+
+[source,bash]
+----
+# Performance counters
+sudo ovs-appctl coverage/show
+
+# Memory usage
+sudo ovs-appctl memory/show
+
+# Conntrack table
+sudo ovs-appctl dpctl/ct-stats-show
+sudo sysctl net.netfilter.nf_conntrack_max
+----
+
+
+[WARNING]
+====
+A full conntrack table causes new connections to be dropped. Monitor conntrack count versus maximum in environments with many ACLs or load balancers.
+====
+
+
+*OVN database monitoring:*
+
+[source,bash]
+----
+ls -lh /etc/ovn/*.db
+sudo ovn-sbctl --columns=_uuid list logical_flow | grep -c "_uuid"
+----
+
+'''
+
+== Quick Reference Cheat Sheet
+
+=== OVS Commands by Task
+
+
+[cols="1,1",options="header"]
+|===
+|Task
+|Command
+
+|Show bridge config
+|`sudo ovs-vsctl show`
+
+|List bridges
+|`sudo ovs-vsctl list-br`
+
+|Create bridge
+|`sudo ovs-vsctl add-br <name>`
+
+|Delete bridge
+|`sudo ovs-vsctl del-br <name>`
+
+|Add port
+|`sudo ovs-vsctl add-port <bridge> <port>`
+
+|Delete port
+|`sudo ovs-vsctl del-port <bridge> <port>`
+
+|List ports
+|`sudo ovs-vsctl list-ports <bridge>`
+
+|Port details
+|`sudo ovs-vsctl list interface <port>`
+
+|Find by iface-id
+|`sudo ovs-vsctl find interface external_ids:iface-id="<id>"`
+
+|Dump flows
+|`sudo ovs-ofctl dump-flows <bridge> -O OpenFlow15`
+
+|Dump table flows
+|`sudo ovs-ofctl dump-flows <bridge> -O OpenFlow15 table=<N>`
+
+|Port stats
+|`sudo ovs-ofctl dump-ports <bridge>`
+
+|Trace packet
+|`sudo ovs-appctl ofproto/trace <bridge> "<flow>"`
+
+|MAC table
+|`sudo ovs-appctl fdb/show <bridge>`
+
+|Datapath flows
+|`sudo ovs-dpctl dump-flows`
+
+|Datapath stats
+|`sudo ovs-dpctl show`
+
+|Change log level
+|`sudo ovs-appctl vlog/set <module>:<level>`
+
+|Memory usage
+|`sudo ovs-appctl memory/show`
+
+|Perf counters
+|`sudo ovs-appctl coverage/show`
+
+|Dump database
+|`sudo ovsdb-client dump`
+
+|Monitor DB
+|`sudo ovsdb-client monitor Open_vSwitch <table>`
+
+|===
+
+
+=== OVN Commands by Task
+
+
+[cols="1,1",options="header"]
+|===
+|Task
+|Command
+
+|Show NB topology
+|`sudo ovn-nbctl show`
+
+|Show SB chassis
+|`sudo ovn-sbctl show`
+
+|Create switch
+|`sudo ovn-nbctl ls-add <name>`
+
+|Delete switch
+|`sudo ovn-nbctl ls-del <name>`
+
+|Add switch port
+|`sudo ovn-nbctl lsp-add <switch> <port>`
+
+|Set port address
+|`sudo ovn-nbctl lsp-set-addresses <port> "<MAC> <IP>"`
+
+|Set port security
+|`sudo ovn-nbctl lsp-set-port-security <port> "<MAC> <IP>"`
+
+|Create router
+|`sudo ovn-nbctl lr-add <name>`
+
+|Add router port
+|`sudo ovn-nbctl lrp-add <router> <port> <MAC> <IP/prefix>`
+
+|Add static route
+|`sudo ovn-nbctl lr-route-add <router> <prefix> <nexthop>`
+
+|Add SNAT
+|`sudo ovn-nbctl lr-nat-add <router> snat <ext-ip> <subnet>`
+
+|Add DNAT
+|`sudo ovn-nbctl lr-nat-add <router> dnat_and_snat <ext-ip> <int-ip>`
+
+|Add ACL
+|`sudo ovn-nbctl acl-add <switch> <dir> <pri> '<match>' <action>`
+
+|List ACLs
+|`sudo ovn-nbctl acl-list <switch>`
+
+|Create LB
+|`sudo ovn-nbctl lb-add <name> <VIP:port> <backends>`
+
+|List LBs
+|`sudo ovn-nbctl lb-list`
+
+|List lflows
+|`sudo ovn-sbctl lflow-list [<datapath>]`
+
+|List chassis
+|`sudo ovn-sbctl chassis-list`
+
+|Find port binding
+|`sudo ovn-sbctl find port_binding logical_port="<port>"`
+
+|Logical trace
+|`sudo ovn-trace --detailed <dp> '<flow>'`
+
+|Map flows
+|`ovs-ofctl dump-flows br-int -O OpenFlow15 \
+\|ovn-detrace --ovnsb=<DB>`
+
+|Controller status
+|`sudo ovs-appctl -t ovn-controller connection-status`
+
+|CT zones
+|`sudo ovs-appctl -t ovn-controller ct-zone-list`
+
+|===
+
+
+=== Debugging Workflow Quick Reference
+
+
+[cols="1,1,1",options="header"]
+|===
+|Step
+|What to Run
+|What to Look For
+
+|1. Topology
+|`ovn-nbctl show` + `ovn-sbctl show`
+|Ports, switches, routers, bindings
+
+|2. Port binding
+|`ovn-sbctl find port_binding logical_port="<port>"`
+|Is port bound? Which chassis?
+
+|3. Logical trace
+|`ovn-trace --detailed <dp> '<flow>'`
+|Correct pipeline behavior?
+
+|4. Physical trace
+|`ovs-appctl ofproto/trace br-int "<flow>"`
+|OVS flows match logical?
+
+|5. Packet capture
+|`tcpdump` / `ovs-tcpdump`
+|Packets on the wire?
+
+|6. Flow correlation
+|`ovs-ofctl dump-flows \
+\|ovn-detrace`
+|OVS-to-OVN mapping
+
+|7. Logs
+|`journalctl -u ovn-controller`
+|Errors, warnings
+
+|8. Conntrack
+|`ovs-appctl dpctl/ct-stats-show`
+|Table full?
+
+|9. Counters
+|`ovs-appctl coverage/show`
+|Upcall failures, flow churn
+
+|===
+
+
+'''
+
+== Exercises
+
+=== Exercise 11.1: OVS Database Exploration
+
+*Objective:* Use `ovs-vsctl` to inspect the OVS configuration.
+
+. Run `sudo ovs-vsctl show` and identify all bridges and ports.
+. Use `sudo ovs-vsctl list bridge` for full database records.
+. Use `sudo ovs-vsctl find interface type=geneve` to list tunnels.
+. For each tunnel, note the remote IP and correlate with `ovn-sbctl show`.
+
+=== Exercise 11.2: Flow Table Analysis
+
+*Objective:* Analyze the flow tables on `br-int`.
+
+. Dump all flows with `sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table`.
+. Count flows per table.
+. Identify the highest-priority flow in table 0.
+. Find flows with zero packet counts.
+. Use `ovn-detrace` to annotate the flows.
+
+=== Exercise 11.3: OVN Topology Mapping
+
+*Objective:* Map the complete logical and physical topology.
+
+. List all logical switches, routers, and ports with `ovn-nbctl`.
+. List chassis and port bindings with `ovn-sbctl`.
+. Determine which chassis each port is bound to.
+. Draw the logical and physical topology.
+
+=== Exercise 11.4: ACL and Security Group Analysis
+
+*Objective:* Inspect ACLs and trace their effect.
+
+. List ACLs with `ovn-nbctl acl-list`.
+. Find corresponding logical flows with `ovn-sbctl lflow-list | grep acl`.
+. Trace a packet that should be allowed.
+. Trace a packet that should be denied.
+. Identify the decisive table and flow.
+
+=== Exercise 11.5: Runtime Diagnostics
+
+*Objective:* Assess system health with runtime commands.
+
+. Check ovn-controller connection status.
+. Run `ovs-appctl coverage/show` and identify top counters.
+. Run `ovs-appctl memory/show` and note flow rule count.
+. Check conntrack table usage.
+. Check OVN database sizes.
+. Review recent logs for warnings or errors.
+

@@ -1,0 +1,1710 @@
+= Module 02 - Open vSwitch Architecture
+
+
+== What is Open vSwitch
+
+=== Definition and Purpose
+
+*Open vSwitch (OVS)* is a production-quality, multilayer virtual switch designed to enable network automation through programmatic extension. It supports standard management interfaces and protocols, including OpenFlow, and is designed to be compatible with modern software-defined networking (SDN) architectures.
+
+In simpler terms: OVS is a software switch that runs inside a Linux host and connects virtual machines, containers, or other network endpoints. Unlike a basic switch, OVS is fully programmable - you can define exactly how every packet is handled, which makes it the foundation for modern cloud networking.
+
+
+[NOTE]
+.Key Concept
+====
+A virtual switch does the same job as a physical switch - it forwards network traffic between connected devices - but it runs entirely in software inside a host operating system. OVS takes this concept further by adding programmability through OpenFlow, making it possible to implement complex network policies, overlays, and automation that would be impossible with a basic software bridge.
+====
+
+
+*The post office analogy:* Think of OVS as a highly automated mail sorting facility. A traditional switch is like a simple mailbox - it receives letters and delivers them based on the address. OVS is like a modern sorting center with programmable rules: it can redirect mail, change addresses on envelopes, make copies, apply priority labels, tunnel mail through special routes, or drop certain mail entirely - all based on rules you define. And you can change those rules at any time without shutting down the facility.
+
+=== Brief History
+
+Understanding where OVS came from helps explain why it exists and who stands behind it.
+
+* *2009:* OVS was created at *Nicira Networks*, a startup founded by Martin Casado, Nick McKeown, and Scott Shenker - three pioneers of software-defined networking. Their vision was to decouple network control from the physical hardware and make networking as flexible as compute.
+
+* *2009-2012:* OVS matured rapidly, gaining OpenFlow support, kernel datapath acceleration, and production deployments at major cloud providers. It became the de facto virtual switch for OpenStack deployments.
+
+* *2012:* *VMware acquired Nicira* for $1.26 billion, recognizing the strategic value of software-defined networking. This acquisition brought OVS under VMware's umbrella, though it remained an open-source project.
+
+* *2016:* OVS moved to the *Linux Foundation* as part of the Open vSwitch project, ensuring vendor-neutral governance and long-term community-driven development.
+
+* *Today:* OVS is a mature, battle-tested project deployed in thousands of production environments worldwide. It is the data plane for Red Hat OpenStack Platform, a core component of OVN (used in OpenShift), and the most widely deployed open-source virtual switch.
+
+
+[NOTE]
+====
+Even though VMware acquired Nicira, OVS has always been an open-source project with contributions from many companies, including Red Hat, VMware, Intel, and others. The move to the Linux Foundation reinforced this vendor-neutral status.
+====
+
+
+=== Why Not Just Use Linux Bridge
+
+Linux includes a built-in bridge (the `bridge` module), so a fair question is: why do we need OVS? The answer comes down to programmability, visibility, and scale.
+
+*Linux bridge* is a simple L2 switch. It learns MAC addresses, forwards frames, and supports VLANs. It does its job well for simple setups. But it was designed for traditional networking, not cloud-scale software-defined networking.
+
+*OVS* was built from the ground up for the cloud era. Here is what it adds:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Feature
+|Linux Bridge
+|Open vSwitch
+
+|*OpenFlow support*
+|No
+|Yes - full OpenFlow 1.0-1.5
+
+|*Programmable pipeline*
+|No - fixed forwarding logic
+|Yes - multi-table flow pipeline
+
+|*Flow-based forwarding*
+|No - MAC learning only
+|Yes - match on any field, any action
+
+|*Tunnel encapsulation*
+|Limited
+|VXLAN, Geneve, GRE, STT built-in
+
+|*DPDK support*
+|No
+|Yes - userspace datapath for high performance
+
+|*sFlow/NetFlow*
+|No
+|Yes - built-in monitoring
+
+|*Port mirroring (SPAN)*
+|Limited
+|Full SPAN/RSPAN support
+
+|*QoS*
+|Basic tc integration
+|Built-in per-port and per-flow QoS
+
+|*Centralized management*
+|No
+|Yes - OVSDB protocol for remote management
+
+|*Connection tracking*
+|Via netfilter/iptables
+|Native conntrack integration in flow pipeline
+
+|*Bonding*
+|Via Linux bonding driver
+|Built-in bond with LACP
+
+|*Multi-node coordination*
+|Manual
+|OVSDB + tunnels enable distributed state
+
+|*REST/JSON management*
+|No
+|OVSDB JSON-RPC protocol
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+The fundamental difference is that Linux bridge makes forwarding decisions you cannot change (it always does MAC learning and forwarding), while OVS makes forwarding decisions based on rules you define. This programmability is what makes OVS suitable for cloud networking - you can implement any network policy, overlay, or service chain by writing the right flow rules.
+====
+
+
+*When Linux bridge is fine:* Simple host networking, basic VM connectivity where no advanced network policies are needed, and environments where the overhead of OVS is not justified.
+
+*When you need OVS:* Multi-tenant cloud environments, SDN deployments, overlay networks (VXLAN/Geneve), environments requiring fine-grained traffic control, telco/NFV workloads needing DPDK performance, and any deployment managed by OVN, OpenStack, or OpenShift.
+
+'''
+
+== OVS Components
+
+=== Architecture Overview
+
+OVS is not a single program - it is a system of cooperating components. Understanding how they fit together is essential for troubleshooting and for understanding how OVN works on top of OVS.
+
+----
+                         Management Tools
+               +--------+--------+----------+
+               |        |        |          |
+          ovs-vsctl  ovs-ofctl  ovs-dpctl  ovs-appctl
+               |        |        |          |
+               v        v        |          v
+         +-----+--------+--------+---------+--------+
+         |                                           |
+         |             ovs-vswitchd                  |
+         |       (Main switching daemon)             |
+         |                                           |
+         |  +-------+  +----------+  +------------+ |
+         |  | Flow   |  | OpenFlow |  | DPDK/      | |
+         |  | Tables |  | Engine   |  | Userspace  | |
+         |  +-------+  +----------+  | Datapath   | |
+         |                           +------------+ |
+         +-----+-----+------------------------------+
+               |     |
+    OVSDB      |     | Netlink
+    Protocol   |     |
+               v     v
+    +----------+  +------------------+
+    | ovsdb-   |  | Kernel Module    |
+    | server   |  | (openvswitch.ko) |
+    | (Config  |  |                  |
+    |  DB)     |  | +-------------+  |
+    +----------+  | | Flow Cache  |  |
+                  | | (Datapath)  |  |
+                  | +-------------+  |
+                  +------------------+
+                         |
+                    Physical/Virtual
+                      NICs
+----
+
+
+[NOTE]
+.Key Concept
+====
+The two most important components are `ovs-vswitchd` (the brain that decides how to forward packets) and the kernel module `openvswitch.ko` (the fast path that actually moves packets at line speed). They communicate through Netlink. The `ovsdb-server` holds configuration data and communicates with `ovs-vswitchd` via the OVSDB protocol.
+====
+
+
+=== ovs-vswitchd - The Switching Daemon
+
+`ovs-vswitchd` is the core of Open vSwitch. It is a userspace daemon that implements the actual switching logic. Think of it as the "brain" of OVS.
+
+*What it does:*
+
+* Implements the OpenFlow flow tables - the rules that determine how packets are forwarded
+* Communicates with the kernel datapath module via Netlink to install flow cache entries for fast-path forwarding
+* Communicates with `ovsdb-server` to read bridge, port, and interface configuration
+* Handles packets that do not match any cached flow in the kernel (the "slow path")
+* Supports multiple datapath types:
+** *system* (default): Uses the kernel module for fast-path forwarding. Packets that miss the kernel flow cache are sent up to userspace for `ovs-vswitchd` to process.
+** *netdev* (DPDK): Everything runs in userspace. The kernel module is not used for packet forwarding. Instead, DPDK poll-mode drivers (PMDs) handle packets entirely in userspace for maximum performance.
+
+*The restaurant analogy:* `ovs-vswitchd` is like the head chef in a restaurant kitchen. When a new type of order comes in for the first time, the head chef figures out the recipe (processes the packet, decides the actions). Then the head chef writes the recipe on a card and hands it to the line cooks (installs a flow in the kernel cache). From that point on, the line cooks handle identical orders without bothering the head chef. The head chef only gets involved when a genuinely new order arrives.
+
+[source,bash]
+----
+# Check if ovs-vswitchd is running
+systemctl status ovs-vswitchd
+
+# Check the process directly
+ps aux | grep ovs-vswitchd
+
+# View the daemon's log
+journalctl -u ovs-vswitchd -f
+----
+
+=== ovsdb-server - The Configuration Database
+
+`ovsdb-server` is the database daemon that stores all OVS configuration. It uses the *OVSDB protocol* - a JSON-RPC based protocol defined in RFC 7047 - to communicate with clients.
+
+*What it stores (key tables in the Open_vSwitch schema):*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Table
+|Purpose
+|Example Data
+
+|*Open_vSwitch*
+|Root table, global configuration
+|System version, datapath types, external IDs
+
+|*Bridge*
+|Bridge definitions
+|br-int, br-ex, br-tun with their ports
+
+|*Port*
+|Port definitions
+|VLAN tags, bonding config, port type
+
+|*Interface*
+|Physical/virtual interfaces
+|NIC names, MAC addresses, link state, statistics
+
+|*Flow_Table*
+|Flow table configuration
+|Table names, overflow policy
+
+|*QoS*
+|Quality of Service
+|Rate limiting, queue assignments
+
+|*Mirror*
+|Port mirroring
+|Source ports, destination port, filter
+
+|*Controller*
+|OpenFlow controller connections
+|Controller address, connection mode
+
+|*Manager*
+|OVSDB management connections
+|Manager address for remote management
+
+|*NetFlow/sFlow/IPFIX*
+|Monitoring protocols
+|Collector addresses, sampling rates
+
+|===
+
+
+*The filing cabinet analogy:* `ovsdb-server` is the filing cabinet in an office. It does not make any decisions itself - it just stores information that other components need. When `ovs-vswitchd` starts, it reads the filing cabinet to learn what bridges and ports exist. When you run `ovs-vsctl add-br`, you are writing a new entry in the filing cabinet. The beauty is that multiple offices (OVN, remote management tools) can read from and write to the same filing cabinet using the OVSDB protocol.
+
+[source,bash]
+----
+# Check if ovsdb-server is running
+systemctl status ovsdb-server
+
+# View the database contents in raw JSON
+ovsdb-client dump Open_vSwitch
+
+# List all tables in the schema
+ovsdb-client list-tables Open_vSwitch
+
+# List all columns in a specific table
+ovsdb-client list-columns Open_vSwitch Bridge
+
+# Monitor changes to the database in real time
+ovsdb-client monitor Open_vSwitch Bridge
+
+# Check the database file location (typically /etc/openvswitch/conf.db)
+ls -la /etc/openvswitch/conf.db
+----
+
+
+[NOTE]
+====
+The OVSDB protocol is the same protocol that OVN uses for its Northbound and Southbound databases. Understanding OVSDB here will help you understand OVN later. The protocol supports transactions, monitoring, and locking - it is essentially a purpose-built database protocol for network configuration.
+====
+
+
+=== Kernel Module (openvswitch.ko) - The Fast Path
+
+The kernel module `openvswitch.ko` is the high-performance datapath that handles the majority of packet forwarding. It operates in kernel space, which means it can process packets without the overhead of copying them to userspace.
+
+*How the kernel datapath works:*
+
+----
+  Packet arrives at NIC
+         |
+         v
+  +------+-------+
+  | Kernel Module |
+  | (datapath)    |
+  |               |
+  |  +---------+  |      Cache hit
+  |  | Exact   +--+----> Execute cached actions
+  |  | Match   |  |      (forward, modify, drop)
+  |  | Cache   |  |
+  |  +---------+  |
+  |       |       |
+  |  Cache miss   |
+  |       |       |
+  |  +---------+  |      Cache miss (less specific)
+  |  | Megaflow+--+----> Check megaflow table
+  |  | Cache   |  |
+  |  +---------+  |
+  |       |       |
+  |  Both miss    |
+  |       |       |
+  +------+-------+
+         |
+         | Netlink upcall
+         v
+  +------+-------+
+  | ovs-vswitchd |
+  | (userspace)  |
+  | Consults     |
+  | OpenFlow     |
+  | tables       |
+  +------+-------+
+         |
+         | Install cache entry
+         v
+  +------+-------+
+  | Kernel Module |
+  | (new cache   |
+  |  entry added)|
+  +-------------+
+----
+
+*Flow caching - the key to performance:*
+
+The kernel module uses a two-level flow cache:
+
+. *Exact-match cache (EMC / microflows):* A hash table that matches on the exact combination of all packet header fields. If a packet matches, the cached actions are executed immediately with no further lookup. This is the fastest path.
+
+. *Megaflow cache (datapath flows):* A wildcard flow table that matches on a subset of packet fields. For example, a megaflow might say "all packets from subnet 10.0.0.0/24 going to port 80 - forward to port 3." This reduces the number of cache entries needed because one megaflow can cover thousands of exact matches.
+
+*Why two levels?* Imagine a library. The exact-match cache is like having the book already open on your desk - instant access. The megaflow cache is like knowing which shelf the book is on - fast, but you still need to reach for it. A cache miss (going to userspace) is like having to ask the librarian to find the book in the entire library system - it works, but it is slow.
+
+[source,bash]
+----
+# View current kernel datapath flows (megaflow cache)
+ovs-dpctl dump-flows
+
+# View datapath statistics
+ovs-dpctl show
+
+# View flow cache hit/miss statistics
+ovs-appctl dpctl/show -s
+
+# View megaflow cache size
+ovs-appctl upcall/show
+----
+
+
+[WARNING]
+====
+If you see a high rate of kernel cache misses (upcalls to userspace), it means packets are hitting the slow path frequently. This indicates either a very diverse traffic pattern, insufficient megaflow coverage, or a misconfiguration. In production, you want the vast majority of packets to hit the kernel cache.
+====
+
+
+=== ovs-vsctl - Bridge and Port Management
+
+`ovs-vsctl` is the primary command-line tool for configuring OVS. It communicates with `ovsdb-server` to create, modify, and delete bridges, ports, and interfaces.
+
+*Think of it as:* The administrative interface for OVS - it is how you build and modify the switch topology.
+
+[source,bash]
+----
+# Show the current OVS configuration (most common command)
+ovs-vsctl show
+
+# Create a new bridge
+ovs-vsctl add-br br-int
+
+# Add a physical port to a bridge
+ovs-vsctl add-port br-int eth0
+
+# Add a port with a VLAN tag
+ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Delete a port
+ovs-vsctl del-port br-int eth0
+
+# Delete a bridge
+ovs-vsctl del-br br-int
+
+# List all bridges
+ovs-vsctl list-br
+
+# List all ports on a bridge
+ovs-vsctl list-ports br-int
+
+# Get a specific value
+ovs-vsctl get Interface eth0 statistics
+
+# Set external IDs (key-value metadata)
+ovs-vsctl set Interface eth0 external_ids:iface-id=my-vm-port
+
+# Create a VXLAN tunnel port
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan options:remote_ip=192.168.1.100
+
+# Create a Geneve tunnel port
+ovs-vsctl add-port br-int geneve0 -- set interface geneve0 type=geneve options:remote_ip=192.168.1.100
+
+# Create a patch port pair (connects two bridges)
+ovs-vsctl add-port br-int patch-to-ex -- set interface patch-to-ex type=patch options:peer=patch-to-int
+ovs-vsctl add-port br-ex patch-to-int -- set interface patch-to-int type=patch options:peer=patch-to-ex
+
+# Create a bond
+ovs-vsctl add-bond br-int bond0 eth0 eth1
+
+# View the full database record for a port
+ovs-vsctl list Port eth0
+
+# View the full database record for an interface
+ovs-vsctl list Interface eth0
+----
+
+
+[NOTE]
+====
+`ovs-vsctl` commands modify the persistent database. Changes survive daemon restarts and host reboots. This is different from `ovs-ofctl`, which modifies in-memory flow tables that may or may not be persistent.
+====
+
+
+=== ovs-ofctl - OpenFlow Management
+
+`ovs-ofctl` is the tool for interacting with the OpenFlow flow tables in `ovs-vswitchd`. This is where you define the actual packet forwarding rules.
+
+*Think of it as:* The traffic engineer's tool - while `ovs-vsctl` builds the roads, `ovs-ofctl` programs the traffic signals.
+
+[source,bash]
+----
+# Dump all OpenFlow flows on a bridge
+ovs-ofctl dump-flows br-int
+
+# Dump flows in a specific table
+ovs-ofctl dump-flows br-int table=0
+
+# Add a flow: forward all traffic from port 1 to port 2
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=output:2"
+
+# Add a flow with priority: drop all ARP traffic (high priority overrides default)
+ovs-ofctl add-flow br-int "table=0,priority=100,arp,actions=drop"
+
+# Add a flow with MAC address matching
+ovs-ofctl add-flow br-int "table=0,dl_dst=00:11:22:33:44:55,actions=output:3"
+
+# Add a flow with IP matching
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.0/24,actions=output:4"
+
+# Add a flow that modifies the destination MAC
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.1,actions=mod_dl_dst:00:11:22:33:44:55,output:2"
+
+# Add a flow that resubmits to another table
+ovs-ofctl add-flow br-int "table=0,actions=resubmit(,1)"
+
+# Add a table-miss flow (lowest priority, catches unmatched packets)
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Delete all flows
+ovs-ofctl del-flows br-int
+
+# Delete flows matching specific criteria
+ovs-ofctl del-flows br-int "in_port=1"
+
+# Show the bridge's OpenFlow port numbers
+ovs-ofctl show br-int
+
+# Show OpenFlow port statistics
+ovs-ofctl dump-ports br-int
+
+# Show individual port statistics
+ovs-ofctl dump-ports br-int eth0
+
+# Monitor OpenFlow messages in real time (useful for debugging)
+ovs-ofctl monitor br-int
+
+# Show flow table descriptions
+ovs-ofctl dump-table-desc br-int
+----
+
+
+[WARNING]
+====
+When OVN is managing OVS, do not manually add or delete OpenFlow flows with `ovs-ofctl`. OVN's `ovn-controller` manages the flow tables and will overwrite your manual changes. Use `ovs-ofctl dump-flows` for reading and debugging only.
+====
+
+
+=== ovs-dpctl - Datapath Management
+
+`ovs-dpctl` interacts with the kernel datapath module directly. It is most useful for viewing the kernel-level flow cache and understanding what is happening in the fast path.
+
+*Think of it as:* The inspection tool for the engine room - you rarely modify things here, but you look here to understand performance.
+
+[source,bash]
+----
+# Show all datapaths and their ports
+ovs-dpctl show
+
+# Dump all kernel datapath flows (the megaflow cache)
+ovs-dpctl dump-flows
+
+# Dump flows with statistics
+ovs-dpctl dump-flows -s
+
+# Show datapath statistics
+ovs-dpctl show -s
+
+# Delete all datapath flows (forces relearning - use with caution)
+ovs-dpctl del-flows
+
+# Add a datapath (rarely needed - ovs-vswitchd handles this)
+ovs-dpctl add-dp system@ovs-system
+----
+
+
+[NOTE]
+====
+`ovs-dpctl` shows the datapath flows, which are the cached entries the kernel uses for fast forwarding. These are different from the OpenFlow flows you see with `ovs-ofctl`. A single OpenFlow flow can produce many datapath flows (one for each unique traffic pattern matching that OpenFlow rule).
+====
+
+
+=== ovs-appctl - Runtime Management
+
+`ovs-appctl` sends commands to running OVS daemons (primarily `ovs-vswitchd`) to query runtime state, adjust logging, or trigger specific behaviors. It communicates via Unix domain sockets.
+
+*Think of it as:* The control panel for the running daemons - it lets you peek inside the engine while it is running and adjust knobs without restarting.
+
+[source,bash]
+----
+# List all available commands
+ovs-appctl list-commands
+
+# Show the number of revalidator and handler threads
+ovs-appctl upcall/show
+
+# Trace a packet through the flow tables (essential for debugging)
+ovs-appctl ofproto/trace br-int in_port=1,dl_src=00:11:22:33:44:55,dl_dst=00:66:77:88:99:aa,dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80
+
+# Show bridge memory usage
+ovs-appctl memory/show
+
+# Show coverage counters (performance metrics)
+ovs-appctl coverage/show
+
+# Change log level at runtime (no restart needed)
+ovs-appctl vlog/set dpif:dbg
+ovs-appctl vlog/set ofproto:dbg
+
+# Show current log levels
+ovs-appctl vlog/list
+
+# Force datapath flow revalidation
+ovs-appctl revalidator/purge
+
+# Show learned MAC addresses on a bridge
+ovs-appctl fdb/show br-int
+
+# Show LACP status for a bond
+ovs-appctl bond/show bond0
+
+# Show DPDK interface statistics (if using DPDK)
+ovs-appctl dpif-netdev/pmd-stats-show
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `ofproto/trace` command is one of the most powerful debugging tools in OVS. It simulates a packet going through the OpenFlow pipeline and shows you exactly which flows it matches, which actions are taken, and where the packet ends up - all without sending a real packet. Master this command and you can debug almost any OVS forwarding issue.
+====
+
+
+'''
+
+== OVS Packet Processing Pipeline
+
+=== The Big Picture
+
+When a packet arrives at an OVS bridge, it goes through a well-defined pipeline. Understanding this pipeline is critical for troubleshooting and for understanding how OVN programs OVS.
+
+----
+  Packet arrives at OVS port
+         |
+         v
+  +------+-------------------+
+  |    Table 0 (Ingress)     |
+  |  Match against all flows |
+  |  in priority order       |
+  +------+-------------------+
+         |
+    +----+----+
+    | Match?  |
+    +----+----+
+    Yes  |    No (table-miss)
+    |    |         |
+    v    |         v
+  Execute|    table-miss flow
+  actions|    (if defined)
+    |    |         |
+    +----+---------+
+         |
+         v
+  Actions may include:
+  - output:N         (send to port N)
+  - drop              (discard packet)
+  - resubmit(,T)     (go to table T)
+  - mod_dl_dst:MAC   (change dest MAC)
+  - set_field:...    (modify any field)
+  - normal            (traditional L2 learning)
+  - controller        (send to OpenFlow controller)
+  - group:N           (apply group actions)
+         |
+         v (if resubmit)
+  +------+-------------------+
+  |    Table 1               |
+  |  Same matching process   |
+  +------+-------------------+
+         |
+         v (if resubmit)
+  +------+-------------------+
+  |    Table 2               |
+  |  Same matching process   |
+  +------+-------------------+
+         |
+         v (and so on...)
+  +------+-------------------+
+  |    Table N               |
+  |  Final actions executed  |
+  +------+-------------------+
+         |
+         v
+  Packet leaves OVS port
+----
+
+
+[NOTE]
+.Key Concept
+====
+The packet processing pipeline is a series of flow tables chained together using `resubmit` actions. A packet starts at table 0 and may be sent to table 1, then table 2, and so on. Each table can match on different criteria and perform different actions. This multi-table pipeline is what makes OVS so flexible - you can decompose complex forwarding logic into stages, just like stages in a factory assembly line.
+====
+
+
+=== Flow Table Hierarchy
+
+OVS supports up to 255 flow tables (table 0 through table 254). Each table operates independently and a packet can be sent from one table to any other using the `resubmit` action.
+
+*How tables are typically used:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Table
+|Typical Purpose
+|Example
+
+|0
+|Ingress classification
+|Identify the source port and VLAN, normalize headers
+
+|1-9
+|Pre-processing
+|Validate packets, apply ingress ACLs
+
+|10-19
+|L2 forwarding
+|MAC-based forwarding decisions
+
+|20-29
+|L3 routing
+|IP-based routing decisions
+
+|30-39
+|Post-processing
+|Apply egress ACLs, modify headers
+
+|40+
+|Output
+|Final forwarding to destination port
+
+|===
+
+
+[NOTE]
+====
+These table assignments are conventions, not requirements. Different deployments use different table numbering. OVN, for example, uses a very specific table layout for its ingress and egress pipelines. Always check the actual flows with `ovs-ofctl dump-flows` rather than assuming table assignments.
+====
+
+
+[source,bash]
+----
+# See which tables have flows
+ovs-ofctl dump-flows br-int | grep "table=" | sed 's/.*table=\([0-9]*\).*/\1/' | sort -n | uniq -c
+
+# Example: a multi-table pipeline
+# Table 0: classify by input port
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=resubmit(,10)"
+ovs-ofctl add-flow br-int "table=0,in_port=2,actions=resubmit(,10)"
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Table 10: L2 forwarding
+ovs-ofctl add-flow br-int "table=10,dl_dst=00:00:00:00:00:01,actions=output:1"
+ovs-ofctl add-flow br-int "table=10,dl_dst=00:00:00:00:00:02,actions=output:2"
+ovs-ofctl add-flow br-int "table=10,priority=0,actions=drop"
+----
+
+=== OpenFlow Match Fields
+
+Every OpenFlow flow rule has a match portion that specifies which packets the rule applies to. Here are the most commonly used match fields:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Field
+|Description
+|Example
+
+|`in_port`
+|Ingress port number
+|`in_port=1`
+
+|`dl_src`
+|Source MAC address
+|`dl_src=00:11:22:33:44:55`
+
+|`dl_dst`
+|Destination MAC address
+|`dl_dst=00:11:22:33:44:55`
+
+|`dl_type`
+|EtherType
+|`dl_type=0x0800` (IPv4)
+
+|`dl_vlan`
+|VLAN ID
+|`dl_vlan=100`
+
+|`arp`
+|Shorthand for `dl_type=0x0806`
+|`arp`
+
+|`ip`
+|Shorthand for `dl_type=0x0800`
+|`ip`
+
+|`ipv6`
+|Shorthand for `dl_type=0x86dd`
+|`ipv6`
+
+|`nw_src`
+|Source IP address (with CIDR)
+|`nw_src=10.0.0.0/24`
+
+|`nw_dst`
+|Destination IP address (with CIDR)
+|`nw_dst=192.168.1.1`
+
+|`nw_proto`
+|IP protocol number
+|`nw_proto=6` (TCP)
+
+|`tcp`
+|Shorthand for `ip,nw_proto=6`
+|`tcp`
+
+|`udp`
+|Shorthand for `ip,nw_proto=17`
+|`udp`
+
+|`icmp`
+|Shorthand for `ip,nw_proto=1`
+|`icmp`
+
+|`tp_src`
+|TCP/UDP source port
+|`tp_src=80`
+
+|`tp_dst`
+|TCP/UDP destination port
+|`tp_dst=443`
+
+|`tcp_flags`
+|TCP flags
+|`tcp_flags=+syn`
+
+|`ct_state`
+|Connection tracking state
+|`ct_state=+est+trk`
+
+|`tun_id`
+|Tunnel ID (VNI)
+|`tun_id=0x100`
+
+|`tun_src`
+|Tunnel source IP
+|`tun_src=192.168.1.1`
+
+|`tun_dst`
+|Tunnel destination IP
+|`tun_dst=192.168.1.2`
+
+|`metadata`
+|Pipeline metadata register
+|`metadata=0x1`
+
+|`reg0`-`reg15`
+|General-purpose registers
+|`reg0=0x1`
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+Match fields can be combined to create very specific rules. For example, `tcp,nw_src=10.0.0.0/24,tp_dst=80` matches TCP traffic from the 10.0.0.0/24 subnet going to port 80. The more specific the match, the higher the precision of your forwarding policy.
+====
+
+
+=== OpenFlow Actions
+
+When a packet matches a flow rule, the associated actions are executed. Actions tell OVS what to do with the packet.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Action
+|Description
+|Example
+
+|`output:N`
+|Send packet to port N
+|`actions=output:3`
+
+|`drop`
+|Discard the packet
+|`actions=drop`
+
+|`normal`
+|Use traditional L2 learning/forwarding
+|`actions=normal`
+
+|`flood`
+|Send to all ports except ingress
+|`actions=flood`
+
+|`controller`
+|Send to OpenFlow controller
+|`actions=controller`
+
+|`mod_dl_src:MAC`
+|Modify source MAC
+|`actions=mod_dl_src:00:11:22:33:44:55`
+
+|`mod_dl_dst:MAC`
+|Modify destination MAC
+|`actions=mod_dl_dst:00:11:22:33:44:55`
+
+|`mod_nw_src:IP`
+|Modify source IP
+|`actions=mod_nw_src:10.0.0.1`
+
+|`mod_nw_dst:IP`
+|Modify destination IP
+|`actions=mod_nw_dst:10.0.0.2`
+
+|`mod_tp_src:PORT`
+|Modify source port
+|`actions=mod_tp_src:8080`
+
+|`mod_tp_dst:PORT`
+|Modify destination port
+|`actions=mod_tp_dst:80`
+
+|`mod_vlan_vid:VID`
+|Set VLAN tag
+|`actions=mod_vlan_vid:100`
+
+|`strip_vlan`
+|Remove VLAN tag
+|`actions=strip_vlan`
+
+|`push_vlan:0x8100`
+|Push a VLAN header
+|`actions=push_vlan:0x8100`
+
+|`set_field:V->F`
+|Set any field to a value
+|`actions=set_field:100->tun_id`
+
+|`resubmit(,T)`
+|Resubmit to table T
+|`actions=resubmit(,1)`
+
+|`ct(...)`
+|Connection tracking
+|`actions=ct(commit)`
+
+|`group:N`
+|Execute group N actions
+|`actions=group:1`
+
+|`move:F1->F2`
+|Copy one field to another
+|`actions=move:NXM_OF_ETH_SRC[]->NXM_OF_ETH_DST[]`
+
+|`load:V->F`
+|Load a value into a field
+|`actions=load:0x1->NXM_NX_REG0[]`
+
+|`conjunction(id,k/n)`
+|Part of a conjunctive match
+|`actions=conjunction(1,1/2)`
+
+|===
+
+
+[source,bash]
+----
+# Example: NAT-like flow - rewrite destination IP and MAC, then forward
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.100,actions=mod_dl_dst:00:aa:bb:cc:dd:ee,mod_nw_dst:192.168.1.10,output:5"
+
+# Example: VLAN tagging on ingress
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=mod_vlan_vid:100,resubmit(,1)"
+
+# Example: VLAN stripping on egress
+ovs-ofctl add-flow br-int "table=1,dl_vlan=100,dl_dst=00:11:22:33:44:55,actions=strip_vlan,output:1"
+----
+
+=== Flow Priority and Matching Order
+
+When a packet enters a flow table, OVS evaluates it against all flows in that table and selects the one with the *highest priority* that matches.
+
+*Rules:*
+
+. *Priority ranges from 0 to 65535.* Higher numbers mean higher priority.
+. *Default priority is 32768* if not specified.
+. If multiple flows match, the *highest priority wins.*
+. If multiple flows with the same priority match, the result is *undefined* (this is a bug in your flow rules).
+. If *no flow matches* and no table-miss flow exists, the packet is *dropped.*
+
+[source,bash]
+----
+# Table-miss flow: catch anything that does not match a higher-priority rule
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Specific flow: high priority for SSH traffic
+ovs-ofctl add-flow br-int "table=0,priority=100,tcp,tp_dst=22,actions=output:1"
+
+# General flow: medium priority for all IP traffic
+ovs-ofctl add-flow br-int "table=0,priority=50,ip,actions=output:2"
+
+# In this example:
+# - SSH traffic (TCP port 22) matches priority 100 -> goes to port 1
+# - Other IP traffic matches priority 50 -> goes to port 2
+# - Non-IP traffic matches priority 0 -> gets dropped
+----
+
+
+[WARNING]
+====
+A common mistake is forgetting the table-miss flow. Without it, packets that match no flow in a table are silently dropped. When troubleshooting, always check if a table-miss flow exists: `ovs-ofctl dump-flows br-int table=0 | grep priority=0`.
+====
+
+
+=== Kernel Fast Path and Flow Caching
+
+The kernel fast path is what makes OVS perform at near-wire speed. Understanding the caching mechanism helps you diagnose performance problems.
+
+----
+  Packet #1 (TCP SYN from 10.0.0.1:12345 to 10.0.0.2:80)
+  |
+  +-> Kernel EMC: MISS
+  +-> Kernel megaflow: MISS
+  +-> Upcall to ovs-vswitchd (SLOW PATH)
+      |
+      +-> Match in OpenFlow tables
+      +-> Determine actions
+      +-> Install megaflow in kernel:
+          "ip,nw_src=10.0.0.0/24,nw_dst=10.0.0.2,tcp,tp_dst=80
+           -> actions: output:5"
+      +-> Also install EMC entry for exact match
+      +-> Forward the original packet
+  
+  Packet #2 (TCP ACK from 10.0.0.3:54321 to 10.0.0.2:80)
+  |
+  +-> Kernel EMC: MISS (different src IP and port)
+  +-> Kernel megaflow: HIT (matches nw_src=10.0.0.0/24, nw_dst=10.0.0.2, tp_dst=80)
+  +-> Execute cached actions: output:5 (FAST PATH - no userspace involved)
+  
+  Packet #3 (TCP ACK from 10.0.0.1:12345 to 10.0.0.2:80, same as #1)
+  |
+  +-> Kernel EMC: HIT (exact same 5-tuple)
+  +-> Execute cached actions: output:5 (FASTEST PATH)
+----
+
+*Performance implications:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Path
+|Latency
+|When It Happens
+
+|EMC hit
+|~1 microsecond
+|Same exact flow seen again
+
+|Megaflow hit
+|~2-5 microseconds
+|Similar flow matching a wildcard rule
+
+|Userspace upcall
+|~100+ microseconds
+|New flow never seen before
+
+|===
+
+
+[source,bash]
+----
+# Check cache hit rates
+ovs-appctl dpctl/show -s
+
+# Look for "lost" packets (packets dropped because userspace was too busy)
+ovs-appctl upcall/show
+
+# View the number of kernel datapath flows
+ovs-dpctl dump-flows | wc -l
+
+# Check if the EMC is enabled
+ovs-appctl dpif-netdev/pmd-stats-show  # (DPDK only)
+----
+
+
+[NOTE]
+.Key Concept
+====
+In a healthy OVS deployment, 99%+ of packets should hit the kernel cache (either EMC or megaflow). If you see a high upcall rate, it usually means either the traffic pattern is very diverse (many unique flows), or the megaflow cache is being too specific (creating too many entries instead of wildcarding).
+====
+
+
+'''
+
+== OVS Bridge Types
+
+=== System Bridge
+
+A system bridge is the standard OVS bridge type. It uses the kernel datapath (`system@ovs-system`) for packet forwarding.
+
+[source,bash]
+----
+# Create a system bridge (default type)
+ovs-vsctl add-br br-int
+
+# Verify the bridge type
+ovs-vsctl get bridge br-int datapath_type
+# Output: ""   (empty string means "system" - the default)
+
+# Show the bridge
+ovs-vsctl show
+----
+
+When you create a system bridge, OVS automatically creates an "internal" port with the same name as the bridge. This internal port has a corresponding Linux network interface that the host can use to send and receive traffic through the bridge.
+
+=== Internal Ports
+
+An internal port is a virtual network interface that exists only within OVS. It creates a corresponding Linux network interface that the host's network stack can use. The bridge's default port is always an internal port.
+
+[source,bash]
+----
+# The bridge itself is an internal port
+ip addr show br-int
+
+# Create an additional internal port (useful for assigning an IP to a VLAN)
+ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Assign an IP address to the internal port
+ip addr add 10.0.100.1/24 dev vlan100
+ip link set vlan100 up
+----
+
+
+[NOTE]
+.Key Concept
+====
+Internal ports bridge the gap between OVS and the host's network stack. They allow the host to participate in OVS networking - for example, to serve as a gateway or to access management traffic on a specific VLAN.
+====
+
+
+=== Patch Ports
+
+Patch ports connect two OVS bridges together. They always come in pairs - one port on each bridge, linked to its peer.
+
+----
+  +-------------+     Patch Pair      +-------------+
+  |   br-int    |                     |   br-ex     |
+  |             |                     |             |
+  |  patch-ex --+---------------------+-- patch-int |
+  |             |                     |             |
+  +-------------+                     +-------------+
+----
+
+[source,bash]
+----
+# Create a patch port pair connecting br-int and br-ex
+ovs-vsctl add-port br-int patch-to-ex -- set interface patch-to-ex type=patch options:peer=patch-to-int
+ovs-vsctl add-port br-ex patch-to-int -- set interface patch-to-int type=patch options:peer=patch-to-ex
+
+# Verify the patch connection
+ovs-vsctl show
+----
+
+*Why use patch ports instead of a single bridge?* Patch ports let you isolate traffic domains and apply different flow rules on each bridge. In OpenStack and OVN deployments, `br-int` (integration bridge) handles internal VM traffic and `br-ex` (external bridge) handles external/provider traffic. Patch ports connect them while keeping the flow pipelines separate.
+
+
+[NOTE]
+====
+Patch port traffic stays entirely within OVS - it never touches the kernel network stack. This makes them more efficient than using a veth pair to connect two bridges.
+====
+
+
+=== Bond Ports
+
+Bond ports aggregate multiple physical interfaces into a single logical port for redundancy and/or increased bandwidth.
+
+[source,bash]
+----
+# Create a bond with two interfaces
+ovs-vsctl add-bond br-int bond0 eth0 eth1
+
+# Create a bond with LACP
+ovs-vsctl add-bond br-int bond0 eth0 eth1 lacp=active
+
+# Set the bond mode
+ovs-vsctl set port bond0 bond_mode=balance-slb      # Source Load Balancing
+ovs-vsctl set port bond0 bond_mode=balance-tcp       # TCP-based (requires LACP)
+ovs-vsctl set port bond0 bond_mode=active-backup     # Active-backup
+
+# Check bond status
+ovs-appctl bond/show bond0
+
+# Check LACP status
+ovs-appctl lacp/show bond0
+----
+
+*Bond modes:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Mode
+|Description
+|Requires LACP
+|Use Case
+
+|`active-backup`
+|One active, others standby
+|No
+|Simple redundancy
+
+|`balance-slb`
+|Hash by source MAC
+|No
+|Load distribution without LACP
+
+|`balance-tcp`
+|Hash by L3/L4 fields
+|Yes
+|Best load distribution
+
+|===
+
+
+'''
+
+== OVS Data Model
+
+=== Bridge Port Interface Hierarchy
+
+OVS uses a three-level hierarchy: *Bridge -> Port -> Interface*. Understanding this hierarchy is essential for reading `ovs-vsctl show` output and for understanding the database schema.
+
+----
+  +---------------------------------------------+
+  |                  Bridge: br-int              |
+  |                                              |
+  |  +----------------+  +-------------------+  |
+  |  |  Port: br-int  |  |  Port: eth0       |  |
+  |  |  (internal)    |  |                   |  |
+  |  | +-----------+  |  | +--------------+  |  |
+  |  | | Interface |  |  | | Interface    |  |  |
+  |  | | br-int    |  |  | | eth0         |  |  |
+  |  | | type:     |  |  | | type: system |  |  |
+  |  | | internal  |  |  | +--------------+  |  |
+  |  | +-----------+  |  +-------------------+  |
+  |  +----------------+                          |
+  |                                              |
+  |  +-------------------+  +----------------+  |
+  |  |  Port: bond0      |  |  Port: vxlan0  |  |
+  |  |  (bond)           |  |  (tunnel)      |  |
+  |  | +--------------+  |  | +-----------+  |  |
+  |  | | Interface    |  |  | | Interface |  |  |
+  |  | | eth1         |  |  | | vxlan0    |  |  |
+  |  | +--------------+  |  | | type:     |  |  |
+  |  | +--------------+  |  | | vxlan     |  |  |
+  |  | | Interface    |  |  | +-----------+  |  |
+  |  | | eth2         |  |  +----------------+  |
+  |  | +--------------+  |                      |
+  |  +-------------------+                      |
+  +---------------------------------------------+
+----
+
+*Key rules:*
+
+. A *Bridge* contains one or more *Ports.*
+. A *Port* contains one or more *Interfaces.*
+. For a normal (non-bond) port, there is exactly one Interface per Port, and they typically share the same name.
+. For a bond port, the Port contains multiple Interfaces (one per physical NIC in the bond).
+. The Bridge always has a default Port with the same name as the Bridge, with type `internal`.
+
+[source,bash]
+----
+# View the full hierarchy
+ovs-vsctl show
+
+# List all bridges
+ovs-vsctl list-br
+
+# List all ports on a bridge
+ovs-vsctl list-ports br-int
+
+# List all interfaces on a port
+ovs-vsctl list-ifaces br-int
+
+# View detailed database records
+ovs-vsctl list Bridge br-int
+ovs-vsctl list Port eth0
+ovs-vsctl list Interface eth0
+----
+
+=== Port Types
+
+
+[cols="1,1,1",options="header"]
+|===
+|Port Type
+|Description
+|Created By
+
+|*system*
+|Maps to a Linux network interface (physical or virtual)
+|`add-port br-int eth0`
+
+|*internal*
+|Creates a virtual Linux interface
+|`set interface X type=internal`
+
+|*patch*
+|Connects two OVS bridges
+|`set interface X type=patch`
+
+|*tunnel*
+|Encapsulated tunnel endpoint (VXLAN, Geneve, GRE)
+|`set interface X type=vxlan`
+
+|*bond*
+|Aggregation of multiple system interfaces
+|`add-bond br-int bond0 eth0 eth1`
+
+|===
+
+
+=== Tunnel Ports
+
+OVS supports several tunnel encapsulation protocols. These create overlay networks by wrapping packets inside outer IP/UDP headers, allowing L2 traffic to cross L3 boundaries.
+
+----
+  Host A (10.0.0.1)                    Host B (10.0.0.2)
+  +------------------+                 +------------------+
+  |  VM1             |                 |             VM2  |
+  |  10.10.0.1       |                 |       10.10.0.2  |
+  |    |              |                 |              |    |
+  |  +-+---+          |                 |          +---+-+  |
+  |  |br-int|         |                 |         |br-int|  |
+  |  +-+---+          |                 |          +---+-+  |
+  |    |              |                 |              |    |
+  |  [vxlan0]         |                 |         [vxlan0]  |
+  +----+--------------+                 +--------------+----+
+       |        Outer IP: 10.0.0.1 -> 10.0.0.2        |
+       +-----------------------------------------------+
+                    Underlay Network
+----
+
+*Tunnel type comparison:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Feature
+|VXLAN
+|Geneve
+|GRE
+
+|*Encapsulation*
+|UDP (port 4789)
+|UDP (port 6081)
+|IP protocol 47
+
+|*Header overhead*
+|50 bytes
+|50+ bytes (variable)
+|38 bytes
+
+|*Metadata*
+|24-bit VNI only
+|Extensible TLV options
+|32-bit key
+
+|*OVN support*
+|Limited (no metadata)
+|Full (preferred by OVN)
+|Not used by OVN
+
+|*Hardware offload*
+|Wide support
+|Growing support
+|Wide support
+
+|*Max segments*
+|16M (24-bit VNI)
+|16M (24-bit VNI)
+|4B (32-bit key)
+
+|*Extensibility*
+|Fixed header
+|Variable-length TLV
+|Limited
+
+|===
+
+
+[source,bash]
+----
+# Create a VXLAN tunnel
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a Geneve tunnel
+ovs-vsctl add-port br-int geneve0 -- set interface geneve0 type=geneve \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a GRE tunnel
+ovs-vsctl add-port br-int gre0 -- set interface gre0 type=gre \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a VXLAN tunnel with flow-based remote IP (for use with OpenFlow)
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan \
+  options:remote_ip=flow options:key=flow
+
+# Verify tunnel ports
+ovs-vsctl show
+----
+
+
+[NOTE]
+.Key Concept
+====
+OVN uses *Geneve* as its preferred tunnel protocol because Geneve supports extensible TLV (Type-Length-Value) metadata options. OVN uses this metadata to carry logical datapath, logical input port, and logical output port information inside the tunnel header. This is how OVN implements distributed virtual networking - the tunnel metadata tells the receiving OVS which logical pipeline to apply to the packet. VXLAN cannot carry this metadata, which is why OVN has limited functionality with VXLAN.
+====
+
+
+=== QoS and Queue Configuration
+
+OVS supports Quality of Service (QoS) to rate-limit traffic on specific ports.
+
+[source,bash]
+----
+# Set an ingress rate limit on a port (in kbps)
+ovs-vsctl set interface eth0 ingress_policing_rate=1000
+ovs-vsctl set interface eth0 ingress_policing_burst=100
+
+# Remove the rate limit
+ovs-vsctl set interface eth0 ingress_policing_rate=0
+ovs-vsctl set interface eth0 ingress_policing_burst=0
+
+# Create an egress QoS policy with queues
+ovs-vsctl set port eth0 qos=@newqos -- \
+  --id=@newqos create qos type=linux-htb other-config:max-rate=1000000000 queues=0=@q0,1=@q1 -- \
+  --id=@q0 create queue other-config:min-rate=100000000 other-config:max-rate=500000000 -- \
+  --id=@q1 create queue other-config:min-rate=500000000 other-config:max-rate=1000000000
+
+# View QoS configuration
+ovs-vsctl list qos
+ovs-vsctl list queue
+----
+
+=== Mirroring and SPAN
+
+OVS supports port mirroring (SPAN) to copy traffic from one or more ports to a monitoring port. This is essential for network troubleshooting, intrusion detection, and compliance monitoring.
+
+[source,bash]
+----
+# Mirror all traffic from port eth0 to monitor port eth2
+ovs-vsctl -- set bridge br-int mirrors=@m \
+  -- --id=@eth0 get port eth0 \
+  -- --id=@eth2 get port eth2 \
+  -- --id=@m create mirror name=mirror0 select-src-port=@eth0 select-dst-port=@eth0 output-port=@eth2
+
+# Mirror specific VLANs
+ovs-vsctl -- set bridge br-int mirrors=@m \
+  -- --id=@eth2 get port eth2 \
+  -- --id=@m create mirror name=vlan-mirror select-vlan=100 output-port=@eth2
+
+# View mirror configuration
+ovs-vsctl list mirror
+
+# Remove a mirror
+ovs-vsctl -- --id=@m find mirror name=mirror0 -- remove bridge br-int mirrors @m
+
+# Remove all mirrors from a bridge
+ovs-vsctl clear bridge br-int mirrors
+----
+
+
+[NOTE]
+====
+Unlike physical switches where SPAN can impact switch performance, OVS mirroring is implemented in the datapath and has minimal performance overhead. However, the monitoring port must have sufficient bandwidth to receive the mirrored traffic - if you mirror two 10Gbps ports to a 1Gbps monitor port, you will lose packets.
+====
+
+
+'''
+
+== OVS and DPDK
+
+=== What is DPDK
+
+*Data Plane Development Kit (DPDK)* is a set of libraries and drivers that allow network packet processing to bypass the kernel entirely and run in userspace. Instead of packets going through the kernel's network stack (with its interrupt handling, context switches, and memory copies), DPDK uses poll-mode drivers (PMDs) that continuously poll the NIC for new packets in a tight loop, processing them entirely in userspace.
+
+*The highway toll booth analogy:* The kernel network stack is like a toll booth on a highway - every car (packet) must stop, pay (be processed), and then continue. This works fine at moderate traffic, but creates a bottleneck at high volume. DPDK is like removing the toll booth and replacing it with an electronic toll system - cars drive through at full speed and are processed without ever stopping. The tradeoff is that the electronic system needs dedicated infrastructure (dedicated CPU cores, special memory) to operate.
+
+=== OVS-DPDK Architecture
+
+When OVS is configured to use DPDK (the `netdev` datapath type), the architecture changes significantly:
+
+----
+  Standard OVS (kernel datapath)         OVS-DPDK (userspace datapath)
+  ================================       ================================
+
+    ovs-vswitchd                           ovs-vswitchd
+        |                                      |
+    [OpenFlow tables]                     [OpenFlow tables]
+        |                                      |
+    Netlink                               +----+----+
+        |                                 |  PMD    |  <-- DPDK Poll Mode
+        v                                 | Threads |      Driver threads
+    Kernel module                         +----+----+
+    (openvswitch.ko)                           |
+        |                                  Userspace
+        v                                 DPDK drivers
+    NIC driver                                 |
+        |                                      v
+        v                                    NIC
+      NIC                               (direct access)
+
+  Packet path:                            Packet path:
+  NIC -> kernel -> module ->              NIC -> DPDK PMD ->
+  upcall -> vswitchd ->                   vswitchd flow tables ->
+  module -> NIC                           DPDK PMD -> NIC
+  (multiple context switches)             (ZERO context switches)
+----
+
+*Key differences:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|Kernel OVS
+|OVS-DPDK
+
+|*Datapath*
+|Kernel module (`openvswitch.ko`)
+|Userspace (DPDK libraries)
+
+|*Packet processing*
+|Kernel + userspace for misses
+|Entirely in userspace
+
+|*NIC access*
+|Through kernel NIC driver
+|Direct via DPDK PMD
+
+|*Context switches*
+|Yes (kernel/userspace)
+|No (all userspace)
+
+|*CPU usage*
+|On-demand (interrupt-driven)
+|100% on dedicated cores (polling)
+
+|*Memory*
+|Regular system memory
+|Hugepages required
+
+|*Latency*
+|Microseconds
+|Sub-microsecond possible
+
+|*Throughput*
+|Good (millions pps)
+|Excellent (tens of millions pps)
+
+|*CPU cost*
+|Proportional to traffic
+|Fixed (dedicated cores always busy)
+
+|*Setup complexity*
+|Minimal
+|Requires hugepages, CPU pinning, DPDK-bound NICs
+
+|===
+
+
+=== When to Use OVS-DPDK vs Kernel OVS
+
+*Use kernel OVS when:*
+
+* Traffic volumes are moderate (less than ~5 million packets per second)
+* CPU resources are limited and cannot be dedicated to polling
+* The workload is general-purpose cloud computing (VMs, containers)
+* Simplicity of setup and operations is a priority
+* The NIC does not have DPDK driver support
+
+*Use OVS-DPDK when:*
+
+* High throughput is required (NFV, telco workloads, network appliances)
+* Low and predictable latency is critical
+* The host has sufficient CPU cores to dedicate to DPDK
+* Hugepage memory is available
+* The deployment is NFV/telco-focused (RHOSP with NFV features)
+
+
+[NOTE]
+.Key Concept
+====
+OVS-DPDK trades CPU efficiency for packet processing performance. Kernel OVS uses CPU only when packets arrive (interrupt-driven). OVS-DPDK uses dedicated CPU cores that poll continuously at 100% utilization even when idle. This means OVS-DPDK always consumes those CPU cores, but in return, it processes packets significantly faster with lower and more predictable latency.
+====
+
+
+=== PMD Threads Hugepages and CPU Pinning
+
+Setting up OVS-DPDK requires configuring three key resources:
+
+*1. Hugepages*
+
+DPDK requires hugepages (2MB or 1GB pages) for memory allocation. Hugepages reduce TLB (Translation Lookaside Buffer) misses, which improves packet processing performance.
+
+[source,bash]
+----
+# Check current hugepage allocation
+cat /proc/meminfo | grep Huge
+
+# Allocate 1024 hugepages of 2MB each (2GB total) at boot
+# Add to kernel command line: hugepagesz=2M hugepages=1024
+
+# Or allocate at runtime
+echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+# For 1GB hugepages (better TLB performance, must be set at boot)
+# Kernel command line: hugepagesz=1G hugepages=4 default_hugepagesz=1G
+
+# Mount the hugetlbfs
+mount -t hugetlbfs none /dev/hugepages
+----
+
+*2. PMD (Poll Mode Driver) Threads*
+
+PMD threads are dedicated CPU threads that continuously poll NICs for incoming packets. They run at 100% CPU utilization by design.
+
+[source,bash]
+----
+# Configure OVS to use DPDK
+ovs-vsctl set Open_vSwitch . other_config:dpdk-init=true
+
+# Set the CPU cores for PMD threads (CPU mask)
+# Example: use cores 2 and 4 (bitmask 0x14 = binary 10100)
+ovs-vsctl set Open_vSwitch . other_config:pmd-cpu-mask=0x14
+
+# Set the number of DPDK lcore mask (for non-PMD DPDK threads)
+ovs-vsctl set Open_vSwitch . other_config:dpdk-lcore-mask=0x01
+
+# Set memory to allocate from DPDK
+ovs-vsctl set Open_vSwitch . other_config:dpdk-socket-mem="1024,1024"
+
+# Create a DPDK bridge (note the datapath_type)
+ovs-vsctl add-br br-dpdk -- set bridge br-dpdk datapath_type=netdev
+
+# Add a DPDK port
+ovs-vsctl add-port br-dpdk dpdk0 -- set interface dpdk0 type=dpdk \
+  options:dpdk-devargs=0000:03:00.0
+
+# Check PMD thread statistics
+ovs-appctl dpif-netdev/pmd-stats-show
+
+# Check PMD thread to RxQ mapping
+ovs-appctl dpif-netdev/pmd-rxq-show
+----
+
+*3. CPU Pinning*
+
+For optimal performance, PMD threads should be pinned to specific CPU cores that are isolated from the operating system scheduler. This prevents other processes from interfering with packet processing.
+
+[source,bash]
+----
+# Isolate CPUs from the OS scheduler (kernel command line)
+# isolcpus=2,3,4,5
+
+# In RHOSP/RHOSO, CPU pinning is typically configured via:
+# - TripleO parameters (RHOSP)
+# - NodeNetworkConfigurationPolicy (RHOSO)
+----
+
+
+[WARNING]
+====
+When configuring OVS-DPDK, always ensure that PMD cores, guest vCPUs, and host OS processes are on different physical cores. Sharing cores between PMD threads and other workloads will cause severe performance degradation for both. Also, be aware of NUMA topology - PMD cores and hugepages should be on the same NUMA node as the DPDK-bound NIC for optimal performance.
+====
+
+
+'''
+
+== Summary
+
+
+[cols="1,1",options="header"]
+|===
+|Concept
+|Summary
+
+|*OVS purpose*
+|Production-quality, programmable multilayer virtual switch for cloud networking
+
+|*vs Linux bridge*
+|Adds OpenFlow, programmable pipeline, tunnels, DPDK, monitoring, centralized management
+
+|*ovs-vswitchd*
+|Main switching daemon - implements OpenFlow tables, handles packet forwarding decisions
+
+|*ovsdb-server*
+|Configuration database - stores bridges, ports, interfaces in OVSDB schema
+
+|*Kernel module*
+|Fast-path datapath with two-level flow cache (EMC + megaflow) for line-speed forwarding
+
+|*ovs-vsctl*
+|CLI for bridge/port/interface management (modifies persistent database)
+
+|*ovs-ofctl*
+|CLI for OpenFlow flow management (match fields, actions, priorities)
+
+|*ovs-dpctl*
+|CLI for kernel datapath inspection (cached flows, statistics)
+
+|*ovs-appctl*
+|CLI for runtime daemon management (ofproto/trace, logging, stats)
+
+|*Packet pipeline*
+|Multi-table OpenFlow pipeline: table 0 -> resubmit -> table N, priority-based matching
+
+|*Flow caching*
+|Kernel caches flows in EMC (exact) and megaflow (wildcard) tables for fast-path forwarding
+
+|*Bridge types*
+|System (standard), internal (host interface), patch (bridge-to-bridge), bond (aggregation)
+
+|*Data model*
+|Bridge -> Port -> Interface hierarchy stored in OVSDB
+
+|*Tunnel types*
+|VXLAN (simple), Geneve (extensible, OVN preferred), GRE (legacy)
+
+|*QoS/Mirroring*
+|Built-in rate limiting, queue management, and SPAN capabilities
+
+|*OVS-DPDK*
+|Userspace datapath using poll-mode drivers for high-performance NFV workloads
+
+|*DPDK tradeoff*
+|Dedicated CPU cores and hugepages in exchange for higher throughput and lower latency
+
+|===
+
+
+'''
+
+xref:00-introduction.adoc[Previous: Module 01 - Introduction and Foundations] | xref:03-ovs-hands-on.adoc[Next: Module 03 - OVS Hands-On Lab]
+

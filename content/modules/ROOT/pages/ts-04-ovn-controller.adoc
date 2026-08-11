@@ -1,0 +1,1176 @@
+= Scenario 04: Pods Lose Network After Node Maintenance
+
+== The Problem
+
+*Customer report:* "After a node was rebooted for maintenance, pods scheduled on that node
+have no network connectivity. Other nodes work fine."
+
+The customer performed a routine kernel update on worker-3. They followed the standard
+procedure: cordon, drain, reboot, uncordon. The node came back as Ready, pods were
+rescheduled, but none of the pods on worker-3 can reach the network. Pods on all other
+worker nodes are working normally.
+
+'''
+
+== Environment
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Details
+
+|Platform
+|OCP 4.13 with OVN-Kubernetes (centralized OVN model, pre-IC mode)
+
+|Control plane nodes
+|3 (control-plane-0, control-plane-1, control-plane-2)
+
+|Worker nodes
+|8 (worker-0 through worker-7)
+
+|Affected node
+|worker-3.ocp.example.com
+
+|Node status
+|Ready (after uncordoning)
+
+|Pod network CIDR
+|10.128.0.0/14
+
+|Service CIDR
+|172.30.0.0/16
+
+|OVN SB DB
+|Runs on control plane nodes (raft cluster)
+
+|TLS authentication
+|Mutual TLS between ovn-controller and SB DB
+
+|NTP
+|chronyd (was not properly configured on worker-3)
+
+|===
+
+
+*Maintenance timeline:*
+----
+14:00 - Cordoned worker-3
+14:05 - Drained worker-3 (all pods evicted)
+14:10 - Initiated reboot for kernel update
+14:15 - Node rebooted, came back up
+14:18 - Node shows Ready in oc get nodes
+14:20 - Uncordoned worker-3
+14:22 - Pods scheduled on worker-3
+14:25 - Reports of pod network failures begin
+----
+
+'''
+
+== Step-by-Step Investigation
+
+=== Step 1: Check Pod Status on the Node
+
+*Why:* First, confirm the symptoms. We need to see which pods are affected and whether
+the issue is consistent across all pods on the node.
+
+[source,bash]
+----
+[user@bastion ~]$ oc get pods -A -o wide --field-selector spec.nodeName=worker-3.ocp.example.com | head -30
+----
+
+----
+NAMESPACE                       NAME                                      READY   STATUS    RESTARTS      AGE     IP             NODE                          NOMINATED NODE   READINESS GATES
+microservices                   web-frontend-7b9c4d5e6f-x8k2m            1/1     Running   0             8m      10.128.3.45    worker-3.ocp.example.com      <none>           <none>
+microservices                   api-gateway-8c0d5e6f7a-m3p9q             1/1     Running   0             8m      10.128.3.46    worker-3.ocp.example.com      <none>           <none>
+microservices                   backend-svc-9d1e6f7a8b-k5n2r             1/1     Running   0             7m      10.128.3.47    worker-3.ocp.example.com      <none>           <none>
+monitoring                      prometheus-node-exporter-worker3-abc12    1/1     Running   0             7m      10.0.0.33      worker-3.ocp.example.com      <none>           <none>
+openshift-dns                   dns-default-x7k9m                        2/2     Running   0             8m      10.128.3.42    worker-3.ocp.example.com      <none>           <none>
+openshift-ingress               router-default-q4w2e                     1/1     Running   0             8m      10.128.3.43    worker-3.ocp.example.com      <none>           <none>
+openshift-multus                multus-additional-cni-plugins-worker3    1/1     Running   0             8m      10.0.0.33      worker-3.ocp.example.com      <none>           <none>
+openshift-ovn-kubernetes        ovnkube-node-r5t8y                       8/8     Running   2 (6m ago)    8m      10.0.0.33      worker-3.ocp.example.com      <none>           <none>
+----
+
+*Finding:* Pods appear to be Running (from the kubelet's perspective), and the
+ovnkube-node pod has 2 restarts. The pods have IP addresses assigned, which means IPAM
+is working. The question is whether network traffic can actually flow.
+
+'''
+
+=== Step 2: Check Pod Network from Inside
+
+*Why:* We need to verify that the pods truly cannot communicate, and narrow down
+whether the issue is IP assignment, routing, or traffic forwarding.
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- ping -c 5 -W 2 10.128.3.1
+----
+
+----
+PING 10.128.3.1 (10.128.3.1) 56(84) bytes of data.
+
+--- 10.128.3.1 ping statistics ---
+5 packets transmitted, 0 received, 100% packet loss, time 4004ms
+----
+
+*Finding:* Cannot reach the gateway (10.128.3.1). 100% packet loss.
+
+Try reaching a pod on another node:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- ping -c 5 -W 2 10.128.2.100
+----
+
+----
+PING 10.128.2.100 (10.128.2.100) 56(84) bytes of data.
+
+--- 10.128.2.100 ping statistics ---
+5 packets transmitted, 0 received, 100% packet loss, time 4004ms
+----
+
+*Finding:* Cannot reach pods on other nodes either. Complete isolation.
+
+Try reaching the Kubernetes API:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- curl -sk --connect-timeout 5 https://172.30.0.1:443/healthz
+----
+
+----
+curl: (28) Connection timed out after 5001 milliseconds
+----
+
+*Finding:* Cannot reach the Kubernetes API service either.
+
+Check IP configuration inside the pod:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- ip a
+----
+
+----
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+3: eth0@if456: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UP group default
+    link/ether 0a:58:0a:80:03:2d brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.128.3.45/23 brd 10.128.3.255 scope global eth0
+       valid_lft forever preferred_lft forever
+----
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- ip route
+----
+
+----
+default via 10.128.2.1 dev eth0
+10.128.2.0/23 dev eth0 proto kernel scope link src 10.128.3.45
+----
+
+*Finding:* The pod has a valid IP address (10.128.3.45), the interface is UP, and the
+routing table looks correct with a default gateway. The problem is NOT inside the pod
+configuration - it is in the OVS/OVN datapath that should be forwarding the traffic.
+
+'''
+
+=== Step 3: Check OVN-K Pods on the Node
+
+*Why:* OVN-Kubernetes runs as a DaemonSet with one ovnkube-node pod per node. This pod
+contains ovn-controller, which is responsible for programming OVS flows. If it is unhealthy,
+no flows get programmed.
+
+[source,bash]
+----
+[user@bastion ~]$ oc get pods -n openshift-ovn-kubernetes -o wide
+----
+
+----
+NAME                                     READY   STATUS    RESTARTS      AGE    IP           NODE                             NOMINATED NODE   READINESS GATES
+ovnkube-control-plane-5b6c7d8e9f-abc12   2/2     Running   0             45d    10.0.0.10    control-plane-0.ocp.example.com  <none>           <none>
+ovnkube-control-plane-5b6c7d8e9f-def34   2/2     Running   0             45d    10.0.0.11    control-plane-1.ocp.example.com  <none>           <none>
+ovnkube-control-plane-5b6c7d8e9f-ghi56   2/2     Running   0             45d    10.0.0.12    control-plane-2.ocp.example.com  <none>           <none>
+ovnkube-node-a1b2c                       8/8     Running   0             45d    10.0.0.31    worker-0.ocp.example.com         <none>           <none>
+ovnkube-node-d3e4f                       8/8     Running   0             45d    10.0.0.32    worker-1.ocp.example.com         <none>           <none>
+ovnkube-node-g5h6i                       8/8     Running   0             45d    10.0.0.33    worker-2.ocp.example.com         <none>           <none>
+ovnkube-node-r5t8y                       8/8     Running   2 (8m ago)    10m    10.0.0.34    worker-3.ocp.example.com         <none>           <none>
+ovnkube-node-j7k8l                       8/8     Running   0             45d    10.0.0.35    worker-4.ocp.example.com         <none>           <none>
+ovnkube-node-m9n0o                       8/8     Running   0             45d    10.0.0.36    worker-5.ocp.example.com         <none>           <none>
+ovnkube-node-p1q2r                       8/8     Running   0             45d    10.0.0.37    worker-6.ocp.example.com         <none>           <none>
+ovnkube-node-s3t4u                       8/8     Running   0             45d    10.0.0.38    worker-7.ocp.example.com         <none>           <none>
+----
+
+*Finding:* The ovnkube-node pod on worker-3 (`ovnkube-node-r5t8y`) shows *2 restarts*
+and is only 10 minutes old (vs 45 days for other nodes). This is expected after a node
+reboot - the pod was recreated. The pod shows 8/8 containers Ready, so on the surface
+it looks healthy. But "Running" does not mean "functioning correctly."
+
+'''
+
+=== Step 4: Check ovnkube-node Logs
+
+*Why:* The ovnkube-node pod contains ovn-controller, which is responsible for connecting
+to the OVN Southbound DB and programming flows. If there are connection problems, the
+logs will show them.
+
+Check the ovn-controller container logs:
+
+[source,bash]
+----
+[user@bastion ~]$ oc logs -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller --tail=50
+----
+
+----
+2025-04-15T14:15:23.456Z|00001|reconnect|INFO|ssl:10.0.0.10:9642: connecting...
+2025-04-15T14:15:23.458Z|00002|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:23.458Z|00003|reconnect|INFO|ssl:10.0.0.10:9642: connection attempt failed (SSL connection error)
+2025-04-15T14:15:23.458Z|00004|reconnect|INFO|ssl:10.0.0.10:9642: waiting 1 seconds before reconnect
+2025-04-15T14:15:24.459Z|00005|reconnect|INFO|ssl:10.0.0.11:9642: connecting...
+2025-04-15T14:15:24.461Z|00006|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:24.461Z|00007|reconnect|INFO|ssl:10.0.0.11:9642: connection attempt failed (SSL connection error)
+2025-04-15T14:15:24.461Z|00008|reconnect|INFO|ssl:10.0.0.11:9642: waiting 2 seconds before reconnect
+2025-04-15T14:15:26.462Z|00009|reconnect|INFO|ssl:10.0.0.12:9642: connecting...
+2025-04-15T14:15:26.464Z|00010|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:26.464Z|00011|reconnect|INFO|ssl:10.0.0.12:9642: connection attempt failed (SSL connection error)
+2025-04-15T14:15:26.464Z|00012|reconnect|INFO|ssl:10.0.0.12:9642: waiting 4 seconds before reconnect
+2025-04-15T14:15:30.465Z|00013|reconnect|INFO|ssl:10.0.0.10:9642: connecting...
+2025-04-15T14:15:30.467Z|00014|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:30.467Z|00015|reconnect|INFO|ssl:10.0.0.10:9642: connection attempt failed (SSL connection error)
+2025-04-15T14:15:30.467Z|00016|reconnect|INFO|ssl:10.0.0.10:9642: waiting 8 seconds before reconnect
+...
+[pattern continues with exponentially increasing backoff]
+----
+
+*Finding:* This is the critical evidence. ovn-controller is trying to connect to the
+OVN Southbound DB on all three control plane nodes (10.0.0.10, 10.0.0.11, 10.0.0.12 on
+port 9642) but *TLS certificate validation is failing* every time. The error
+`certificate verify failed` means the SSL/TLS handshake cannot be completed because
+ovn-controller considers the server's certificate invalid.
+
+
+[NOTE]
+.Key Concept
+====
+OVN-Kubernetes uses mutual TLS (mTLS) for all communications between ovn-controller (on worker nodes) and the Southbound DB (on control plane nodes). Both sides present certificates, and both sides validate the other's certificate. TLS certificate validation checks several things: - Is the certificate signed by a trusted CA? - Is the certificate within its validity period (not expired, not "not yet valid")? - Does the certificate's subject match the expected identity?  If the system clock is wrong, a perfectly valid certificate may appear expired (clock too far in the future) or not yet valid (clock too far in the past).
+====
+
+
+Look for more specific error messages:
+
+[source,bash]
+----
+[user@bastion ~]$ oc logs -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller --tail=200 | grep -i "certificate\|time\|clock\|valid"
+----
+
+----
+2025-04-15T14:15:23.458Z|00002|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:23.458Z|00002|stream_ssl|ERR|Certificate verification error: certificate is not yet valid
+2025-04-15T14:15:24.461Z|00006|stream_ssl|ERR|SSL_connect: error:0A000086:SSL routines::certificate verify failed (SSL_ERROR_SSL)
+2025-04-15T14:15:24.461Z|00006|stream_ssl|ERR|Certificate verification error: certificate is not yet valid
+----
+
+*Finding:* The specific error is "*certificate is not yet valid*." This means the
+node's system clock is set to a time BEFORE the certificate's "Not Before" timestamp.
+The certificate appears to be from the future from the node's perspective.
+
+'''
+
+=== Step 5: Check ovn-controller Connection Status
+
+*Why:* We can directly query ovn-controller's connection status to confirm it is not
+connected to the SB DB.
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovn-appctl -t ovn-controller connection-status
+----
+
+----
+not connected
+----
+
+*Finding:* Confirmed - ovn-controller is *not connected* to the Southbound DB.
+
+For comparison, check a healthy node:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-a1b2c -c ovn-controller -- \
+  ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+*Finding:* Healthy nodes show "connected." Worker-3 is the only disconnected node,
+correlating with the maintenance reboot.
+
+'''
+
+=== Step 6: Check ovn-controller Status in More Detail
+
+*Why:* We need to understand the full state of ovn-controller to confirm the TLS
+connection failure is the root cause and not a symptom of another issue.
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovn-appctl -t ovn-controller version
+----
+
+----
+ovn-controller 23.06.3
+----
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovs-vsctl get open_vswitch . external_ids
+----
+
+----
+{hostname=worker-3.ocp.example.com, ovn-bridge=br-int, ovn-cms-options="enable-interconn", ovn-encap-ip="10.0.0.34", ovn-encap-type=geneve, ovn-monitor-all="true", ovn-ofctrl-wait-before-clear="8000", ovn-openflow-probe-interval="180", ovn-remote="ssl:10.0.0.10:9642,ssl:10.0.0.11:9642,ssl:10.0.0.12:9642", ovn-remote-probe-interval="10000", rundir="/var/run/openvswitch", system-id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"}
+----
+
+*Finding:* The configuration looks correct:
+
+* `ovn-remote` points to all three control plane nodes on port 9642 using SSL
+* `ovn-encap-ip` is set to worker-3's IP (10.0.0.34)
+* `ovn-encap-type` is geneve
+* `system-id` is set (this is the chassis UUID)
+
+The configuration is fine - the problem is purely the TLS connection failure.
+
+'''
+
+=== Step 7: Check Chassis Registration in SB DB
+
+*Why:* The chassis registration in the SB DB tells us whether the control plane still
+knows about worker-3. If the chassis is registered but stale, it means the node was
+previously connected but is now disconnected.
+
+In OCP 4.13 (centralized model), the SB DB runs on control plane nodes. Query any control plane pod:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-control-plane-5b6c7d8e9f-abc12 -c sbdb -- \
+  ovn-sbctl show
+----
+
+----
+Chassis "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    hostname: worker-3.ocp.example.com
+    Encap geneve
+        ip: "10.0.0.34"
+        options: {csum="true"}
+    Port_Binding "microservices_web-frontend-7b9c4d5e6f-x8k2m"
+    Port_Binding "microservices_api-gateway-8c0d5e6f7a-m3p9q"
+    Port_Binding "microservices_backend-svc-9d1e6f7a8b-k5n2r"
+    Port_Binding "openshift-dns_dns-default-x7k9m"
+    Port_Binding "openshift-ingress_router-default-q4w2e"
+Chassis "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+    hostname: worker-0.ocp.example.com
+    Encap geneve
+        ip: "10.0.0.31"
+        options: {csum="true"}
+    Port_Binding "default_nginx-deployment-6b7c8d9e0f-a1b2c"
+    Port_Binding "default_redis-master-7c8d9e0f1a-d3e4f"
+...
+Chassis "c3d4e5f6-a7b8-9012-cdef-123456789012"
+    hostname: worker-1.ocp.example.com
+    Encap geneve
+        ip: "10.0.0.32"
+        options: {csum="true"}
+...
+----
+
+*Finding:* Worker-3's chassis IS registered in the SB DB, and port bindings exist for
+the pods on that node. However, this registration may be stale from before the reboot.
+Since ovn-controller is not connected, it cannot update the chassis record or claim new
+port bindings. The SB DB thinks worker-3 is active, but worker-3's ovn-controller is not
+actually processing any flows.
+
+
+[NOTE]
+====
+The chassis registration persists even when ovn-controller disconnects. OVN does not immediately remove a chassis when its ovn-controller goes offline - it waits for a configurable inactivity probe timeout. This is by design to handle brief network interruptions, but it means a stale chassis can mislead investigators into thinking the node is functioning.
+====
+
+
+'''
+
+=== Step 8: Check Port Bindings
+
+*Why:* Port bindings in the SB DB map logical ports to physical chassis. Even though the
+bindings exist, if ovn-controller is not connected, it cannot program the flows needed to
+actually forward traffic for those ports.
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-control-plane-5b6c7d8e9f-abc12 -c sbdb -- \
+  ovn-sbctl find port_binding chassis=a1b2c3d4-e5f6-7890-abcd-ef1234567890
+----
+
+----
+_uuid               : d4e5f6a7-b8c9-0123-defg-456789012345
+chassis             : a1b2c3d4-e5f6-7890-abcd-ef1234567890
+datapath            : e5f6a7b8-c9d0-1234-efgh-567890123456
+encap               : []
+external_ids        : {namespace=microservices, pod="true"}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : microservices_web-frontend-7b9c4d5e6f-x8k2m
+mac                 : ["0a:58:0a:80:03:2d 10.128.3.45"]
+nat_addresses       : []
+options             : {iface-id-ver="a1b2c3d4", requested-chassis=worker-3.ocp.example.com}
+parent_port         : []
+tag                 : []
+tunnel_key          : 5
+type                : ""
+up                  : true
+virtual_parent      : []
+
+_uuid               : e5f6a7b8-c9d0-1234-efgh-567890123456
+chassis             : a1b2c3d4-e5f6-7890-abcd-ef1234567890
+datapath            : e5f6a7b8-c9d0-1234-efgh-567890123456
+encap               : []
+external_ids        : {namespace=microservices, pod="true"}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : microservices_api-gateway-8c0d5e6f7a-m3p9q
+mac                 : ["0a:58:0a:80:03:2e 10.128.3.46"]
+nat_addresses       : []
+options             : {iface-id-ver="b2c3d4e5", requested-chassis=worker-3.ocp.example.com}
+parent_port         : []
+tag                 : []
+tunnel_key          : 6
+type                : ""
+up                  : true
+virtual_parent      : []
+----
+
+*Finding:* Port bindings show `up: true` and are bound to worker-3's chassis. From the
+SB DB's perspective, everything looks correct. But these bindings are meaningless without
+ovn-controller actually programming the OVS flows on worker-3 to handle traffic for these
+ports.
+
+
+[NOTE]
+.Key Concept
+====
+The relationship between port bindings and OVS flows is:  1. A pod is created on a node 2. ovnkube-node creates a logical port in the OVN NB DB 3. ovn-northd creates a port binding in the SB DB 4. ovn-controller on the node *claims* the port binding (sets chassis) 5. ovn-controller installs OpenFlow rules in OVS to handle traffic for the port  Without step 5, the port binding exists but no actual forwarding occurs.
+====
+
+
+'''
+
+=== Step 9: Check OVS Flows on the Affected Node
+
+*Why:* If ovn-controller is not connected to the SB DB, it cannot receive logical flow
+updates and cannot program OpenFlow rules into OVS. The br-int bridge should have very
+few or no flows.
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l
+----
+
+----
+12
+----
+
+*Finding:* Only *12 flows* in br-int. This is catastrophically low. Compare with a
+healthy node:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-a1b2c -c ovn-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l
+----
+
+----
+3847
+----
+
+*Finding:* A healthy node has *3,847 flows* while worker-3 has only 12. The 12 flows
+are just the default drop rules that OVS creates when the bridge is initialized:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovs-ofctl dump-flows br-int
+----
+
+----
+ cookie=0x0, duration=612.345s, table=0, n_packets=45678, n_bytes=4567890, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=1, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=2, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=3, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=4, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=5, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=6, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=7, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=8, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=9, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=10, n_packets=0, n_bytes=0, priority=0 actions=drop
+ cookie=0x0, duration=612.345s, table=11, n_packets=0, n_bytes=0, priority=0 actions=drop
+----
+
+*Finding:* All flows are default `drop` actions. Table 0 has received 45,678 packets -
+these are packets from pods that were all dropped because no forwarding rules exist. This
+is why pods on worker-3 have no connectivity.
+
+
+[WARNING]
+====
+A br-int bridge with only default drop rules is the hallmark of a disconnected ovn-controller. All traffic entering br-int is dropped because there are no rules to match and forward it. This is effectively a "black hole" for network traffic.
+====
+
+
+'''
+
+=== Step 10: Check OVS Bridge Configuration
+
+*Why:* We need to verify that the OVS bridge infrastructure is intact. If br-int itself
+is missing or misconfigured, that could explain the lack of flows (though we already know
+the cause is the TLS failure).
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  ovs-vsctl show
+----
+
+----
+6a7b8c9d-0e1f-2a3b-4c5d-6e7f8a9b0c1d
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port patch-br-int-to-br-ex_worker-3.ocp.example.com
+            Interface patch-br-int-to-br-ex_worker-3.ocp.example.com
+                type: patch
+                options: {peer=patch-br-ex-to-br-int_worker-3.ocp.example.com}
+        Port "microservices_web-frontend-7b9c4d5e6f-x8k2m"
+            Interface "microservices_web-frontend-7b9c4d5e6f-x8k2m"
+        Port "microservices_api-gateway-8c0d5e6f7a-m3p9q"
+            Interface "microservices_api-gateway-8c0d5e6f7a-m3p9q"
+        Port "microservices_backend-svc-9d1e6f7a8b-k5n2r"
+            Interface "microservices_backend-svc-9d1e6f7a8b-k5n2r"
+        Port ovn-k8s-mp0
+            Interface ovn-k8s-mp0
+                type: internal
+        Port "openshift-dns_dns-default-x7k9m"
+            Interface "openshift-dns_dns-default-x7k9m"
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port ens1f0
+            Interface ens1f0
+        Port patch-br-ex-to-br-int_worker-3.ocp.example.com
+            Interface patch-br-ex-to-br-int_worker-3.ocp.example.com
+                type: patch
+                options: {peer=patch-br-int-to-br-ex_worker-3.ocp.example.com}
+    ovs_version: "3.3.0"
+----
+
+*Finding:* The bridge configuration looks correct:
+
+* br-int exists with all pod ports attached
+* br-ex exists with the physical interface (ens1f0) and patch port to br-int
+* Patch ports between br-int and br-ex are configured
+* Pod interfaces are present on br-int
+
+The OVS infrastructure is intact. The problem is purely that ovn-controller cannot program
+flows because it cannot connect to the SB DB due to TLS failure.
+
+
+[NOTE]
+====
+`fail_mode: secure` on br-int means that when ovn-controller is not connected, OVS drops ALL traffic. This is a security feature - without the controller, the switch does not fall back to learning/forwarding mode. This is why pods have zero connectivity rather than partial connectivity.
+====
+
+
+'''
+
+=== Step 11: Check System Clock (THE KEY STEP)
+
+*Why:* TLS certificate validation requires an accurate system clock because certificates
+have validity windows ("Not Before" and "Not After" timestamps). If the system clock is
+wrong, valid certificates will fail validation. This is our leading hypothesis based on the
+"certificate is not yet valid" error.
+
+Check the clock on worker-3:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host date
+----
+
+----
+Tue Mar 12 08:23:45 UTC 2024
+----
+
+Check a healthy node for comparison:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-0.ocp.example.com -- chroot /host date
+----
+
+----
+Tue Apr 15 14:28:12 UTC 2025
+----
+
+*Finding:* Worker-3's clock shows *March 12, 2024* while the actual date is **April 15,
+2025*. The clock is over *13 months in the past**. This explains the "certificate is not
+yet valid" error - the SB DB's TLS certificate was issued (or renewed) after March 2024,
+so from worker-3's perspective, the certificate is from the future and therefore "not yet
+valid."
+
+Check NTP status:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host timedatectl status
+----
+
+----
+               Local time: Tue 2024-03-12 08:24:01 UTC
+           Universal time: Tue 2024-03-12 08:24:01 UTC
+                 RTC time: Tue 2024-03-12 08:24:01 UTC
+                Time zone: UTC (UTC, +0000)
+System clock synchronized: no
+              NTP service: inactive
+          RTC in local TZ: no
+----
+
+*Finding:* NTP service is *inactive* and system clock is *not synchronized*. This
+confirms the root cause.
+
+Check chronyd:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host systemctl status chronyd
+----
+
+----
+* chronyd.service - NTP client/server
+     Loaded: loaded (/usr/lib/systemd/system/chronyd.service; disabled; preset: enabled)
+     Active: inactive (dead)
+       Docs: man:chronyd(8)
+             man:chrony.conf(5)
+----
+
+*Finding:* chronyd is *disabled and not running*. After the reboot, chronyd did not
+start because it was disabled. Without NTP, the system clock fell back to the hardware
+RTC clock, which was significantly wrong (possibly the CMOS battery is low, or the RTC
+was never set correctly).
+
+Verify the certificate validity window to confirm the mismatch:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-r5t8y -c ovn-controller -- \
+  openssl s_client -connect 10.0.0.10:9642 -servername 10.0.0.10 </dev/null 2>/dev/null | \
+  openssl x509 -noout -dates
+----
+
+----
+notBefore=Jan 15 00:00:00 2025 GMT
+notAfter=Jan 15 00:00:00 2026 GMT
+----
+
+*Finding:* The SB DB's TLS certificate is valid from *January 15, 2025* to **January 15,
+2026*. Worker-3's clock is set to *March 12, 2024**, which is BEFORE the certificate's
+"notBefore" date. This is exactly why the validation fails with "certificate is not yet
+valid."
+
+----
+Timeline:
+
+  worker-3 clock thinks it is here
+  |
+  v
+  Mar 2024 -------- Jan 2025 -------- Apr 2025 -------- Jan 2026
+                    |                  |                  |
+                    Certificate        Actual date        Certificate
+                    Not Before                            Not After
+                    
+  Worker-3 sees a certificate "from the future" -> REJECTS IT
+----
+
+
+[NOTE]
+.Key Concept
+====
+TLS certificate validation is time-dependent. Every TLS certificate has a validity window defined by `notBefore` and `notAfter` timestamps. The client (here, ovn-controller) checks its local system clock against these timestamps. If the local clock is before `notBefore`, the certificate appears "not yet valid." If the clock is after `notAfter`, the certificate appears "expired." In both cases, the TLS handshake fails. This is a critical security feature - it prevents the use of compromised or retired certificates - but it requires accurate clocks on all systems.
+====
+
+
+'''
+
+== Root Cause
+
+The root cause is a *system clock skew on worker-3* caused by a missing NTP configuration:
+
+. Worker-3 was rebooted for a kernel update.
+
+. chronyd (NTP daemon) was *disabled* on worker-3 and did not start after reboot.
+
+. Without NTP synchronization, the system clock fell back to the *hardware RTC clock*,
+   which was set to March 12, 2024 - over 13 months in the past (likely due to a depleted
+   CMOS battery or the RTC was never properly configured).
+
+. OVN-Kubernetes uses *mutual TLS* for communication between ovn-controller and the
+   Southbound DB. The SB DB's TLS certificate was valid from January 2025 to January 2026.
+
+. With worker-3's clock reading March 2024, the SB DB certificate appeared **"not yet
+   valid"** (its `notBefore` is January 2025, which is "in the future" from worker-3's
+   perspective).
+
+. ovn-controller correctly rejected the certificate and *refused to connect* to the
+   SB DB.
+
+. Without a connection to the SB DB, ovn-controller could not:
+** Receive logical flow updates from ovn-northd
+** Program OpenFlow rules into OVS br-int
+** Claim port bindings for pods on the node
+
+. br-int had only default drop rules (`fail_mode: secure`), causing **all pod traffic to
+   be dropped**.
+
+'''
+
+== Resolution
+
+=== Step 1: Fix NTP Configuration
+
+Enable and start chronyd on worker-3:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  systemctl enable --now chronyd
+----
+
+----
+Created symlink /etc/systemd/system/multi-user.target.wants/chronyd.service -> /usr/lib/systemd/system/chronyd.service.
+----
+
+Force an immediate time synchronization:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  chronyc makestep
+----
+
+----
+200 OK
+----
+
+Verify the clock is now correct:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host date
+----
+
+----
+Tue Apr 15 14:35:23 UTC 2025
+----
+
+Verify NTP synchronization:
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host chronyc tracking
+----
+
+----
+Reference ID    : A29FC801 (time.cloudflare.com)
+Stratum         : 3
+Ref time (UTC)  : Tue Apr 15 14:35:20 2025
+System time     : 0.000001234 seconds fast of NTP time
+Last offset     : -0.000000567 seconds
+RMS offset      : 0.000012345 seconds
+Frequency       : 12.345 ppm fast
+Residual freq   : -0.001 ppm
+Skew            : 0.123 ppm
+Root delay      : 0.023456789 seconds
+Root dispersion : 0.001234567 seconds
+Update interval : 64.0 seconds
+Leap status     : Normal
+----
+
+[source,bash]
+----
+[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host chronyc sources
+----
+
+----
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+===============================================================================
+^* time.cloudflare.com           2   6   377    34   -234us[ -567us] +/-   12ms
+^+ ntp.ubuntu.com                2   6   377    35   +123us[ -210us] +/-   15ms
+^+ clock.xmission.com            2   6   377    33   +456us[ +189us] +/-   18ms
+----
+
+*Finding:* Clock is now correct and synchronized.
+
+'''
+
+=== Step 2: Restart ovn-controller
+
+Now that the clock is correct, ovn-controller needs to be restarted to attempt a new TLS
+connection. The simplest way in OCP is to delete the ovnkube-node pod and let the
+DaemonSet recreate it:
+
+[source,bash]
+----
+[user@bastion ~]$ oc delete pod -n openshift-ovn-kubernetes ovnkube-node-r5t8y
+----
+
+----
+pod "ovnkube-node-r5t8y" deleted
+----
+
+Wait for the new pod to be created:
+
+[source,bash]
+----
+[user@bastion ~]$ oc get pods -n openshift-ovn-kubernetes -o wide | grep worker-3
+----
+
+----
+ovnkube-node-v9w3x                       8/8     Running   0             15s    10.0.0.34    worker-3.ocp.example.com         <none>           <none>
+----
+
+Check the ovn-controller logs for the new pod:
+
+[source,bash]
+----
+[user@bastion ~]$ oc logs -n openshift-ovn-kubernetes ovnkube-node-v9w3x -c ovn-controller --tail=20
+----
+
+----
+2025-04-15T14:36:01.234Z|00001|reconnect|INFO|ssl:10.0.0.10:9642: connecting...
+2025-04-15T14:36:01.289Z|00002|reconnect|INFO|ssl:10.0.0.10:9642: connected
+2025-04-15T14:36:01.345Z|00003|main|INFO|OVN SB database connection status: connected
+2025-04-15T14:36:01.456Z|00004|binding|INFO|Claiming lport microservices_web-frontend-7b9c4d5e6f-x8k2m
+2025-04-15T14:36:01.467Z|00005|binding|INFO|Claiming lport microservices_api-gateway-8c0d5e6f7a-m3p9q
+2025-04-15T14:36:01.478Z|00006|binding|INFO|Claiming lport microservices_backend-svc-9d1e6f7a8b-k5n2r
+2025-04-15T14:36:01.489Z|00007|binding|INFO|Claiming lport openshift-dns_dns-default-x7k9m
+2025-04-15T14:36:01.501Z|00008|ofctrl|INFO|Installed 3847 OpenFlow flows
+----
+
+*Finding:* ovn-controller is now *connected* to the SB DB, claiming port bindings,
+and installing OpenFlow flows. The message "Installed 3847 OpenFlow flows" confirms that
+the OVS pipeline is now fully programmed.
+
+'''
+
+=== Step 3: Verify Recovery
+
+Check the connection status:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-v9w3x -c ovn-controller -- \
+  ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+Verify flows are installed:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-v9w3x -c ovn-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l
+----
+
+----
+3847
+----
+
+Verify port bindings are active:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-control-plane-5b6c7d8e9f-abc12 -c sbdb -- \
+  ovn-sbctl find port_binding chassis=a1b2c3d4-e5f6-7890-abcd-ef1234567890 | grep -E "logical_port|up"
+----
+
+----
+logical_port        : microservices_web-frontend-7b9c4d5e6f-x8k2m
+up                  : true
+logical_port        : microservices_api-gateway-8c0d5e6f7a-m3p9q
+up                  : true
+logical_port        : microservices_backend-svc-9d1e6f7a8b-k5n2r
+up                  : true
+logical_port        : openshift-dns_dns-default-x7k9m
+up                  : true
+----
+
+Test pod connectivity:
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- ping -c 5 10.128.2.100
+----
+
+----
+PING 10.128.2.100 (10.128.2.100) 56(84) bytes of data.
+64 bytes from 10.128.2.100: icmp_seq=1 ttl=64 time=0.823 ms
+64 bytes from 10.128.2.100: icmp_seq=2 ttl=64 time=0.614 ms
+64 bytes from 10.128.2.100: icmp_seq=3 ttl=64 time=0.592 ms
+64 bytes from 10.128.2.100: icmp_seq=4 ttl=64 time=0.687 ms
+64 bytes from 10.128.2.100: icmp_seq=5 ttl=64 time=0.701 ms
+
+--- 10.128.2.100 ping statistics ---
+5 packets transmitted, 5 received, 0% packet loss, time 4005ms
+rtt min/avg/max/mdev = 0.592/0.683/0.823/0.078 ms
+----
+
+[source,bash]
+----
+[user@bastion ~]$ oc exec -n microservices web-frontend-7b9c4d5e6f-x8k2m -- \
+  curl -sk --connect-timeout 5 https://172.30.0.1:443/healthz
+----
+
+----
+ok
+----
+
+*Finding:* Pod connectivity is fully restored. Pods can reach other pods and the
+Kubernetes API.
+
+'''
+
+== Prevention
+
+=== 1. Ensure NTP Is Configured on All Nodes via MachineConfig
+
+Create a MachineConfig to ensure chronyd is enabled and configured on all nodes:
+
+[source,yaml]
+----
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-chrony
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,c2VydmVyIHRpbWUuY2xvdWRmbGFyZS5jb20gaWJ1cnN0CnNlcnZlciBudHAudWJ1bnR1LmNvbSBpYnVyc3QKZHJpZnRmaWxlIC92YXIvbGliL2Nocm9ueS9kcmlmdAptYWtlc3RlcCAxLjAgMwpydGNzeW5jCmxvZ2RpciAvdmFyL2xvZy9jaHJvbnk=
+        mode: 0644
+        path: /etc/chrony.conf
+    systemd:
+      units:
+      - enabled: true
+        name: chronyd.service
+----
+
+[source,bash]
+----
+[user@bastion ~]$ oc apply -f machineconfig-chrony.yaml
+----
+
+
+[NOTE]
+====
+The base64-encoded content decodes to a standard chrony.conf: ```text server time.cloudflare.com iburst server ntp.ubuntu.com iburst driftfile /var/lib/chrony/drift makestep 1.0 3 rtcsync logdir /var/log/chrony ```
+====
+
+
+=== 2. Monitor Clock Skew with Prometheus
+
+Set up an alert for clock skew:
+
+----
+# Alert if node clock is more than 10 seconds off from NTP:
+- alert: NodeClockSkewDetected
+  expr: node_timex_offset_seconds > 10 or node_timex_offset_seconds < -10
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Clock skew detected on {{ $labels.instance }}"
+    description: "Node clock offset is {{ $value }} seconds. This can break TLS certificate validation."
+
+# Alert if NTP is not synchronized:
+- alert: NodeNTPNotSynchronized
+  expr: node_timex_sync_status != 1
+  for: 15m
+  labels:
+    severity: warning
+  annotations:
+    summary: "NTP not synchronized on {{ $labels.instance }}"
+----
+
+=== 3. Include Clock/NTP Check in Node Readiness Validation
+
+Create a post-maintenance checklist:
+
+----
+Post-Maintenance Node Verification Checklist:
+[ ] 1. Node shows Ready: oc get nodes | grep <node>
+[ ] 2. Clock is correct: oc debug node/<node> -- chroot /host date
+[ ] 3. NTP is synchronized: oc debug node/<node> -- chroot /host chronyc tracking
+[ ] 4. ovnkube-node pod is Running: oc get pods -n openshift-ovn-kubernetes -o wide | grep <node>
+[ ] 5. ovn-controller is connected: oc exec <ovnkube-node-pod> -c ovn-controller -- ovn-appctl -t ovn-controller connection-status
+[ ] 6. OVS flows are installed: oc exec <ovnkube-node-pod> -c ovn-controller -- ovs-ofctl dump-flows br-int | wc -l
+[ ] 7. Pod connectivity test: oc exec <test-pod> -- ping -c 3 <pod-on-other-node>
+----
+
+=== 4. Consider Adding a Pre-check Script
+
+Create a script that runs before uncordoning a node:
+
+[source,bash]
+----
+#!/bin/bash
+# pre-uncordon-check.sh
+NODE=$1
+
+echo "=== Checking node: $NODE ==="
+
+# Check clock
+NODE_DATE=$(oc debug node/$NODE -- chroot /host date +%s 2>/dev/null)
+LOCAL_DATE=$(date +%s)
+DIFF=$((NODE_DATE - LOCAL_DATE))
+ABS_DIFF=${DIFF#-}
+
+if [ "$ABS_DIFF" -gt 60 ]; then
+    echo "FAIL: Clock skew detected: ${DIFF} seconds"
+    echo "  Fix: oc debug node/$NODE -- chroot /host chronyc makestep"
+    exit 1
+else
+    echo "PASS: Clock skew within tolerance: ${DIFF} seconds"
+fi
+
+# Check NTP
+NTP_STATUS=$(oc debug node/$NODE -- chroot /host chronyc tracking 2>/dev/null | grep "Leap status" | awk '{print $4}')
+if [ "$NTP_STATUS" != "Normal" ]; then
+    echo "FAIL: NTP not synchronized (status: $NTP_STATUS)"
+    exit 1
+else
+    echo "PASS: NTP synchronized"
+fi
+
+echo "=== All checks passed. Safe to uncordon. ==="
+----
+
+'''
+
+== Key Commands Reference
+
+
+[cols="1,1",options="header"]
+|===
+|Command
+|Purpose
+
+|`oc get pods -A -o wide --field-selector spec.nodeName=<node>`
+|List pods on specific node
+
+|`oc exec <pod> -- ping -c 5 <ip>`
+|Test connectivity from a pod
+
+|`oc logs -n openshift-ovn-kubernetes <pod> -c ovn-controller`
+|Check ovn-controller logs
+
+|`ovn-appctl -t ovn-controller connection-status`
+|Check SB DB connection status
+
+|`ovn-sbctl show`
+|Show chassis and port bindings
+
+|`ovn-sbctl find port_binding chassis=<uuid>`
+|Find ports bound to a chassis
+
+|`ovs-ofctl dump-flows br-int \
+\|wc -l`
+|Count OpenFlow flows (health indicator)
+
+|`ovs-vsctl show`
+|Show OVS bridge configuration
+
+|`date`
+|Check system clock
+
+|`timedatectl status`
+|Check NTP sync status
+
+|`systemctl status chronyd`
+|Check NTP daemon status
+
+|`chronyc tracking`
+|Show detailed NTP synchronization info
+
+|`chronyc sources`
+|Show configured NTP sources
+
+|`chronyc makestep`
+|Force immediate clock correction
+
+|`systemctl enable --now chronyd`
+|Enable and start NTP daemon
+
+|`openssl s_client -connect <host>:<port>`
+|Inspect TLS certificate
+
+|===
+
+
+'''
+
+== Key Takeaways
+
+* *System clock accuracy is critical for TLS-based systems.* OVN-Kubernetes uses mutual
+  TLS for all control plane communications. A clock skew of even a few hours can break
+  certificate validation and completely disconnect ovn-controller from the SB DB.
+
+* *"Node Ready" does not mean "node networking is functional."* Kubernetes node readiness
+  checks verify kubelet connectivity but do not check OVN-K components. A node can be
+  Ready with zero network connectivity for pods.
+
+* *Always verify NTP after a node reboot.* NTP configuration can be disabled, misconfigured,
+  or fail to start after a reboot. Include NTP verification in every post-maintenance checklist.
+
+* *br-int with fail_mode: secure drops ALL traffic when ovn-controller is disconnected.*
+  This is a safety feature, but it means any ovn-controller connection failure results in
+  complete network isolation for all pods on the node.
+
+* *Check ovn-controller connection-status as the first networking diagnostic* on any node
+  with pod connectivity issues. If it says "not connected," all other networking
+  diagnostics are secondary to fixing the connection.
+
+'''
+
+*Previous scenario:* xref:ts-03-performance.adoc[Scenario 03 - Severe Performance Degradation Under Load]
+*Back to:* xref:12-troubleshooting.adoc[Module 12 - Troubleshooting OVS and OVN]
+*Next scenario:* xref:ts-05-dhcp-failure.adoc[Scenario 05 - VMs Not Getting DHCP Addresses]
+

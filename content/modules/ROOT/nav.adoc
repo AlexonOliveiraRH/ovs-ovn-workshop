@@ -1,0 +1,29 @@
+* xref:index.adoc[Welcome]
+
+.Workshop Guide
+* xref:00-introduction.adoc[Introduction]
+* xref:01-networking-fundamentals.adoc[Networking Fundamentals]
+* xref:02-ovs-architecture.adoc[OVS Architecture]
+* xref:03-ovs-hands-on.adoc[OVS Hands-On Lab]
+* xref:04-ovn-architecture.adoc[OVN Architecture]
+* xref:05-ovn-hands-on.adoc[OVN Hands-On Lab]
+* xref:06-ovs-vs-ovn.adoc[OVS vs OVN]
+* xref:07-ovs-ovn-in-rhosp.adoc[OVS/OVN in RHOSP]
+* xref:08-ovs-ovn-in-rhoso.adoc[OVS/OVN in RHOSO]
+* xref:09-ovn-in-openshift.adoc[OVN in OpenShift]
+* xref:10-traffic-flows.adoc[Traffic Flows]
+* xref:11-management-tooling.adoc[Management Tooling]
+* xref:12-troubleshooting.adoc[Troubleshooting]
+* xref:13-limitations.adoc[Limitations]
+* xref:14-references.adoc[References]
+
+.Troubleshooting Scenarios
+* xref:ts-01-vm-connectivity.adoc[VM Connectivity]
+* xref:ts-02-overlay-issues.adoc[Overlay Issues]
+* xref:ts-03-performance.adoc[Performance]
+* xref:ts-04-ovn-controller.adoc[OVN Controller]
+* xref:ts-05-dhcp-failure.adoc[DHCP Failure]
+* xref:ts-06-floating-ip.adoc[Floating IP]
+
+.Slides
+* xref:slides.adoc[Interactive Slide Deck]

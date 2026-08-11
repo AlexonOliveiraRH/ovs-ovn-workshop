@@ -1,0 +1,10 @@
+name: modules
+title: "OVS & OVN Deep Dive - From Fundamentals to Troubleshooting"
+version: ~
+nav:
+  - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    experimental: true
+    page-pagination: true

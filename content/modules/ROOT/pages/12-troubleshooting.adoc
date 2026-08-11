@@ -1,0 +1,4593 @@
+= Module 12: Troubleshooting OVS and OVN
+
+== Overview
+
+Troubleshooting is the single most valuable skill you will use in the field. Every customer engagement eventually leads to a moment where something is broken and you need to find out why. A floating IP that stopped working after a migration, pods that cannot reach the internet, a database that takes thirty seconds to respond - these are real situations that land in support queues every day.
+
+This module is deliberately the longest and most detailed in the workshop. It is designed as a reference you keep open during live incidents. Rather than theory, it focuses on the exact commands to run, the exact output to look for, and the exact steps to resolve each problem.
+
+The module is organized from methodology (how to think about problems) through tool reference (what commands to use) to specific problem categories (what to do when X is broken) and finally real-world scenarios (complete walk-throughs of realistic support cases).
+
+
+[NOTE]
+.Key Concept
+====
+Troubleshooting is not guessing. It is a systematic process of forming hypotheses, testing them with diagnostic commands, and narrowing down the root cause. Every command you run should answer a specific question.
+====
+
+
+'''
+
+== 1. Troubleshooting Methodology
+
+=== Systematic Approach to Network Troubleshooting
+
+When a network problem is reported, resist the urge to immediately start running commands. The first few minutes spent thinking about the problem will save you hours of chasing false leads.
+
+Follow this process:
+
+. *Understand the symptom* - What exactly is failing? "The network is broken" is not a symptom. "VM A on compute-1 cannot ping VM B on compute-2, but VM C on compute-1 can reach VM B" is a symptom. Ask clarifying questions until you have a precise description.
+
+. *Determine the scope* - Is this affecting one VM, one compute node, one network, or everything? Scope immediately tells you where to look.
+
+. *Establish a timeline* - When did it start? Was anything changed? Did someone apply a configuration update, restart a service, or deploy new workloads? Changes correlate with problems.
+
+. *Form a hypothesis* - Based on the symptom, scope, and timeline, what is your best guess about where the problem is?
+
+. *Test the hypothesis* - Run specific diagnostic commands to confirm or reject your hypothesis.
+
+. *Iterate* - If your hypothesis was wrong, form a new one based on what you learned. Each test narrows the search space.
+
+=== Isolating the Problem Layer
+
+In an OVS/OVN environment, problems can exist at several layers. Before diving into OVN-specific debugging, determine which layer is involved:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Layer
+|What Lives Here
+|How to Test
+
+|Physical / Underlay
+|Cables, NICs, physical switches, IP connectivity between hosts
+|`ping` between hypervisors, `ethtool`, `ip link show`
+
+|OVS Datapath
+|Kernel module, flow cache, packet forwarding
+|`ovs-dpctl show`, `ovs-appctl dpctl/dump-flows`
+
+|OVS Daemon
+|ovs-vswitchd, ovsdb-server, bridge/port/flow config
+|`ovs-vsctl show`, `ovs-ofctl dump-flows`, `systemctl status`
+
+|OVN Southbound
+|ovn-controller, chassis registration, port bindings
+|`ovn-sbctl show`, `ovn-sbctl list chassis`, `ovn-sbctl find port_binding`
+
+|OVN Northbound
+|Logical switches, routers, ACLs, NAT rules
+|`ovn-nbctl show`, `ovn-nbctl list ACL`, `ovn-trace`
+
+|Application / Orchestrator
+|OpenStack Neutron, OpenShift SDN, Kubernetes Services
+|Orchestrator-specific commands, API checks
+
+|===
+
+
+=== Top-Down vs Bottom-Up Approach
+
+*Top-down approach* - Start at the application layer and work down. Best when:
+
+* The user reports an application-level symptom ("My web app is not reachable")
+* You suspect a configuration error in the orchestrator (OpenStack, OpenShift)
+* The physical network is known to be healthy
+
+Steps: Check orchestrator config (Neutron ports, K8s Services) -> Check OVN logical topology -> Check OVN southbound bindings -> Check OVS flows -> Check underlay connectivity.
+
+*Bottom-up approach* - Start at the physical layer and work up. Best when:
+
+* Multiple unrelated things are broken simultaneously
+* A physical change was recently made (cable replacement, switch config, NIC replacement)
+* You suspect an infrastructure-level problem
+
+Steps: Check link status and physical connectivity -> Check OVS daemons and bridge config -> Check tunnel status -> Check OVN controller -> Check OVN database -> Check orchestrator.
+
+
+[NOTE]
+.Key Concept
+====
+Use top-down when one thing is broken. Use bottom-up when many things are broken. If you are unsure, bottom-up is safer because it rules out infrastructure problems first, but it takes longer.
+====
+
+
+=== Comprehensive Troubleshooting Checklist
+
+Use this checklist to ensure you do not skip any step during an investigation. Not every step applies to every problem, but reviewing the list helps you avoid blind spots.
+
+. Confirm the exact symptom (source, destination, protocol, port, direction)
+. Check if the problem is reproducible right now or intermittent
+. Check the timeline - when did it start, what changed
+. Verify underlay connectivity between the involved hosts
+. Verify OVS daemons are running on all involved hosts
+. Verify OVN daemons are running (ovn-controller on computes, ovn-northd on controllers)
+. Check OVS bridge and port configuration on the source host
+. Check OVS bridge and port configuration on the destination host
+. Verify the logical port is bound to the correct chassis in OVN SB
+. Check OVN NB for correct logical topology (switch, router, ports, ACLs)
+. Run ovn-trace for the failing traffic path
+. Compare ovn-trace output with actual OVS flows on the datapath
+. Use tcpdump on relevant interfaces to confirm where packets are and are not seen
+. Check for recent log entries in ovn-controller, ovs-vswitchd, and the orchestrator
+. If the problem is performance-related, check CPU, memory, conntrack table size, and flow table size
+. Document your findings and resolution for the knowledge base
+
+'''
+
+== 2. Essential Diagnostic Commands Quick Reference
+
+This table is your cheat sheet. Print it, bookmark it, keep it visible during investigations.
+
+=== OVS Commands
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Tool
+|Command
+|Purpose
+|Example
+
+|ovs-vsctl
+|`ovs-vsctl show`
+|Display all bridges, ports, and interfaces
+|`sudo ovs-vsctl show`
+
+|ovs-vsctl
+|`ovs-vsctl list-br`
+|List all bridge names
+|`sudo ovs-vsctl list-br`
+
+|ovs-vsctl
+|`ovs-vsctl list-ports <bridge>`
+|List ports on a bridge
+|`sudo ovs-vsctl list-ports br-int`
+
+|ovs-vsctl
+|`ovs-vsctl get Interface <iface> ofport`
+|Get OpenFlow port number
+|`sudo ovs-vsctl get Interface tap1234 ofport`
+
+|ovs-vsctl
+|`ovs-vsctl get Interface <iface> statistics`
+|Interface counters
+|`sudo ovs-vsctl get Interface eth0 statistics`
+
+|ovs-vsctl
+|`ovs-vsctl get Open_vSwitch . external_ids`
+|System-wide external IDs
+|`sudo ovs-vsctl get Open_vSwitch . external_ids`
+
+|ovs-ofctl
+|`ovs-ofctl dump-flows <bridge>`
+|Show all OpenFlow flows
+|`sudo ovs-ofctl dump-flows br-int`
+
+|ovs-ofctl
+|`ovs-ofctl dump-flows <bridge> table=<N>`
+|Flows in a specific table
+|`sudo ovs-ofctl dump-flows br-int table=0`
+
+|ovs-ofctl
+|`ovs-ofctl dump-ports <bridge>`
+|Port statistics (counters)
+|`sudo ovs-ofctl dump-ports br-int`
+
+|ovs-ofctl
+|`ovs-ofctl show <bridge>`
+|Port-to-ofport mapping
+|`sudo ovs-ofctl show br-int`
+
+|ovs-ofctl
+|`ovs-ofctl dump-groups <bridge>`
+|OpenFlow groups
+|`sudo ovs-ofctl dump-groups br-int`
+
+|ovs-appctl
+|`ovs-appctl ofproto/trace <bridge> <flow>`
+|Trace a packet through the OVS pipeline
+|`sudo ovs-appctl ofproto/trace br-int in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,dl_type=0x0800,nw_src=10.0.0.5,nw_dst=10.0.0.10`
+
+|ovs-appctl
+|`ovs-appctl dpctl/dump-flows`
+|Dump datapath (kernel) flows
+|`sudo ovs-appctl dpctl/dump-flows`
+
+|ovs-appctl
+|`ovs-appctl dpctl/show`
+|Datapath statistics
+|`sudo ovs-appctl dpctl/show`
+
+|ovs-appctl
+|`ovs-appctl coverage/show`
+|Internal event counters
+|`sudo ovs-appctl coverage/show`
+
+|ovs-appctl
+|`ovs-appctl memory/show`
+|Memory usage breakdown
+|`sudo ovs-appctl memory/show`
+
+|ovs-appctl
+|`ovs-appctl bond/show <bond>`
+|Bond status and member info
+|`sudo ovs-appctl bond/show bond0`
+
+|ovs-appctl
+|`ovs-appctl lacp/show <port>`
+|LACP status
+|`sudo ovs-appctl lacp/show bond0`
+
+|ovs-dpctl
+|`ovs-dpctl show`
+|Show datapaths and ports
+|`sudo ovs-dpctl show`
+
+|ovs-dpctl
+|`ovs-dpctl dump-flows`
+|Dump kernel datapath flows
+|`sudo ovs-dpctl dump-flows`
+
+|ovsdb-client
+|`ovsdb-client list-dbs`
+|List available databases
+|`sudo ovsdb-client list-dbs`
+
+|ovsdb-client
+|`ovsdb-client dump <db> <table>`
+|Dump a database table
+|`sudo ovsdb-client dump Open_vSwitch Port`
+
+|ovsdb-client
+|`ovsdb-client get-schema-version <db>`
+|Database schema version
+|`sudo ovsdb-client get-schema-version Open_vSwitch`
+
+|===
+
+
+=== OVN Commands
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Tool
+|Command
+|Purpose
+|Example
+
+|ovn-nbctl
+|`ovn-nbctl show`
+|Logical topology overview
+|`sudo ovn-nbctl show`
+
+|ovn-nbctl
+|`ovn-nbctl list Logical_Switch`
+|All logical switches with details
+|`sudo ovn-nbctl list Logical_Switch`
+
+|ovn-nbctl
+|`ovn-nbctl list Logical_Router`
+|All logical routers with details
+|`sudo ovn-nbctl list Logical_Router`
+
+|ovn-nbctl
+|`ovn-nbctl list ACL`
+|All ACLs (security group rules)
+|`sudo ovn-nbctl list ACL`
+
+|ovn-nbctl
+|`ovn-nbctl list NAT`
+|All NAT rules
+|`sudo ovn-nbctl list NAT`
+
+|ovn-nbctl
+|`ovn-nbctl lsp-list <switch>`
+|Ports on a logical switch
+|`sudo ovn-nbctl lsp-list net1`
+
+|ovn-nbctl
+|`ovn-nbctl lr-route-list <router>`
+|Routes on a logical router
+|`sudo ovn-nbctl lr-route-list router1`
+
+|ovn-nbctl
+|`ovn-nbctl get Logical_Switch_Port <port> addresses`
+|Port MAC/IP addresses
+|`sudo ovn-nbctl get Logical_Switch_Port port1 addresses`
+
+|ovn-sbctl
+|`ovn-sbctl show`
+|Chassis and port bindings overview
+|`sudo ovn-sbctl show`
+
+|ovn-sbctl
+|`ovn-sbctl list Chassis`
+|All chassis with details
+|`sudo ovn-sbctl list Chassis`
+
+|ovn-sbctl
+|`ovn-sbctl find Port_Binding logical_port=<port>`
+|Where a port is bound
+|`sudo ovn-sbctl find Port_Binding logical_port=port1`
+
+|ovn-sbctl
+|`ovn-sbctl lflow-list`
+|All logical flows
+|`sudo ovn-sbctl lflow-list`
+
+|ovn-sbctl
+|`ovn-sbctl lflow-list <datapath>`
+|Logical flows for one datapath
+|`sudo ovn-sbctl lflow-list net1`
+
+|ovn-sbctl
+|`ovn-sbctl dump-flows`
+|Same as lflow-list
+|`sudo ovn-sbctl dump-flows`
+
+|ovn-sbctl
+|`ovn-sbctl list Connection`
+|Database connection status
+|`sudo ovn-sbctl list Connection`
+
+|ovn-trace
+|`ovn-trace <datapath> '<flow>'`
+|Trace packet through OVN logical pipeline
+|`sudo ovn-trace net1 'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==fa:16:3e:dd:ee:ff && ip4.src==10.0.0.5 && ip4.dst==10.0.0.10 && ip.ttl==64'`
+
+|ovn-trace
+|`ovn-trace --detailed <datapath> '<flow>'`
+|Detailed trace with every flow matched
+|`sudo ovn-trace --detailed net1 'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && ip4.dst==10.0.0.10'`
+
+|ovn-detrace
+|pipe flows through `ovn-detrace`
+|Correlate OVS flows with OVN logical flows
+|`sudo ovs-ofctl dump-flows br-int
+\|ovn-detrace`
+
+|ovn-appctl
+|`ovn-appctl -t ovn-controller debug/status`
+|ovn-controller debug status
+|`sudo ovn-appctl -t ovn-controller debug/status`
+
+|ovn-appctl
+|`ovn-appctl -t ovn-controller connection-status`
+|Connection to SB database
+|`sudo ovn-appctl -t ovn-controller connection-status`
+
+|===
+
+
+=== System Commands
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Tool
+|Command
+|Purpose
+|Example
+
+|tcpdump
+|`tcpdump -i <iface> -nn`
+|Capture packets on an interface
+|`sudo tcpdump -i br-int -nn -c 20`
+
+|tcpdump
+|`tcpdump -i <iface> port <N>`
+|Filter by port (e.g., Geneve 6081)
+|`sudo tcpdump -i eth0 port 6081 -nn`
+
+|tcpdump
+|`tcpdump -i <iface> -w <file>`
+|Save capture to file
+|`sudo tcpdump -i br-int -w /tmp/capture.pcap`
+
+|ip
+|`ip link show`
+|Network interface status
+|`ip link show`
+
+|ip
+|`ip addr show`
+|IP addresses on all interfaces
+|`ip addr show`
+
+|ip
+|`ip route show`
+|Routing table
+|`ip route show`
+
+|ip
+|`ip netns list`
+|List network namespaces
+|`sudo ip netns list`
+
+|ip
+|`ip netns exec <ns> <cmd>`
+|Run command in a namespace
+|`sudo ip netns exec ovnmeta-<uuid> ip addr show`
+
+|conntrack
+|`conntrack -L`
+|List conntrack entries
+|`sudo conntrack -L`
+
+|conntrack
+|`conntrack -C`
+|Count conntrack entries
+|`sudo conntrack -C`
+
+|conntrack
+|`conntrack -D -s <ip>`
+|Delete conntrack entries for source IP
+|`sudo conntrack -D -s 10.0.0.5`
+
+|journalctl
+|`journalctl -u ovs-vswitchd`
+|OVS daemon logs
+|`sudo journalctl -u ovs-vswitchd --since "1 hour ago"`
+
+|journalctl
+|`journalctl -u ovn-controller`
+|ovn-controller logs
+|`sudo journalctl -u ovn-controller --since "30 min ago"`
+
+|ss
+|`ss -tlnp`
+|Listening TCP sockets
+|`ss -tlnp \
+\|grep 6641`
+
+|===
+
+
+'''
+
+== 3. OVS Troubleshooting
+
+=== Bridge and Port Configuration Problems
+
+==== Port Not Showing in Bridge
+
+*Symptoms:*
+
+* Traffic to/from a VM or container is completely dead
+* `ovs-vsctl show` does not list the expected port on the bridge
+* The VM or container appears to have no network connectivity at all
+
+*Diagnosis Steps:*
+
+First, check what ports are currently on the bridge:
+
+[source,bash]
+----
+sudo ovs-vsctl show
+----
+
+----
+a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br-int
+        fail_mode: secure
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "ovn-node2-0"
+            Interface "ovn-node2-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.16.0.2"}
+    ovs_version: "3.1.0"
+----
+
+Notice that the expected port (for example `tap12345678-90`) is not listed. Verify the interface exists at the OS level:
+
+[source,bash]
+----
+ip link show tap12345678-90
+----
+
+----
+15: tap12345678-90: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
+    link/ether fe:16:3e:aa:bb:cc brd ff:ff:ff:ff:ff:ff
+----
+
+The interface exists but is not attached to the bridge. Check if it was recently removed or never added:
+
+[source,bash]
+----
+sudo journalctl -u ovs-vswitchd --since "1 hour ago" | grep "tap12345678-90"
+----
+
+----
+Aug 05 14:32:10 compute-1 ovs-vswitchd[1234]: bridge br-int: added interface tap12345678-90 on port 15
+Aug 05 14:45:22 compute-1 ovs-vswitchd[1234]: bridge br-int: deleting interface tap12345678-90
+----
+
+Check whether the orchestrator (e.g., Neutron, ovnkube) requested the port to be removed:
+
+[source,bash]
+----
+sudo ovs-vsctl --columns=name,external_ids find Interface name=tap12345678-90
+----
+
+If it returns nothing, the port was indeed removed from OVS.
+
+*Common Causes:*
+
+* The VM or container was migrated or restarted and the port was not re-created
+* The orchestrator agent (neutron-ovn-metadata-agent, ovnkube-node) crashed before creating the port
+* A manual `ovs-vsctl del-port` command was accidentally run
+* The interface name does not match what the orchestrator expects (naming mismatch)
+
+*Resolution:*
+
+If the port should exist and was accidentally removed, re-add it:
+
+[source,bash]
+----
+sudo ovs-vsctl add-port br-int tap12345678-90
+----
+
+If the port needs specific external_ids for OVN to claim it:
+
+[source,bash]
+----
+sudo ovs-vsctl set Interface tap12345678-90 \
+  external_ids:iface-id="12345678-1234-1234-1234-123456789012"
+----
+
+However, in most production environments, you should not manually add ports. Instead, restart the orchestrator agent so it re-creates the port with the correct configuration:
+
+[source,bash]
+----
+# For RHOSP
+sudo systemctl restart tripleo_neutron_ovn_metadata_agent
+
+# For OpenShift
+oc delete pod -n openshift-ovn-kubernetes <ovnkube-node-pod>
+----
+
+==== Interface Shows Error or Down State
+
+*Symptoms:*
+
+* Port is present on the bridge but traffic does not flow
+* `ovs-vsctl show` shows the port but `ovs-ofctl show` shows the port as `state: LINK_DOWN`
+
+*Diagnosis Steps:*
+
+[source,bash]
+----
+sudo ovs-ofctl show br-int | grep -A 2 "tap12345678"
+----
+
+----
+ 15(tap12345678-90): addr:fe:16:3e:aa:bb:cc
+     config:     0
+     state:      LINK_DOWN
+----
+
+The port is LINK_DOWN in OpenFlow. Check the Linux interface state:
+
+[source,bash]
+----
+ip link show tap12345678-90
+----
+
+----
+15: tap12345678-90: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000
+    link/ether fe:16:3e:aa:bb:cc brd ff:ff:ff:ff:ff:ff
+----
+
+The interface is DOWN (no UP flag). Check if the backing VM or container is actually running:
+
+[source,bash]
+----
+sudo virsh list --all | grep instance-00001234
+----
+
+----
+ 15    instance-00001234              shut off
+----
+
+*Common Causes:*
+
+* The VM is shut off or suspended
+* The container is not running
+* The tap interface was created but never brought up
+* The QEMU process died
+
+*Resolution:*
+
+If the VM should be running, start it:
+
+[source,bash]
+----
+sudo virsh start instance-00001234
+----
+
+If the interface simply needs to be brought up:
+
+[source,bash]
+----
+sudo ip link set tap12345678-90 up
+----
+
+==== VLAN Mismatch
+
+*Symptoms:*
+
+* Connectivity works within a single host but not across hosts
+* Traffic between VMs on different networks within the same host works, but cross-host traffic for a specific network fails
+* tcpdump on the physical interface shows VLAN-tagged packets with an unexpected tag
+
+*Diagnosis Steps:*
+
+Check the VLAN configuration on the port:
+
+[source,bash]
+----
+sudo ovs-vsctl show | grep -A 5 "Port.*phy"
+----
+
+----
+        Port phy-br-ex
+            Interface phy-br-ex
+                type: patch
+                options: {peer=int-br-ex}
+----
+
+Check if VLAN trunking is correctly configured on the physical bridge:
+
+[source,bash]
+----
+sudo ovs-vsctl get port eth1 tag
+sudo ovs-vsctl get port eth1 trunks
+----
+
+----
+[]
+[100, 200, 300]
+----
+
+If the port expects VLAN 150 but the trunk only allows 100, 200, 300, traffic for VLAN 150 will be silently dropped.
+
+Check what VLAN tags OVN is using internally:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "dl_vlan"
+----
+
+*Common Causes:*
+
+* Physical switch trunking configuration does not include the required VLAN
+* OVS port `tag` or `trunks` configuration is wrong
+* The provider network VLAN configured in OpenStack does not match the physical switch
+
+*Resolution:*
+
+Add the missing VLAN to the trunk:
+
+[source,bash]
+----
+sudo ovs-vsctl set port eth1 trunks=[100,150,200,300]
+----
+
+Or if this is a provider network issue, ensure the physical switch port is configured as a trunk carrying the required VLAN.
+
+
+[WARNING]
+====
+In OVN-managed environments, OVN uses internal VLAN tags on br-int to identify traffic from different logical networks on the same host. These internal tags are not related to the physical VLAN tags. Do not confuse the two. The internal tags are managed entirely by ovn-controller and should not be manually modified.
+====
+
+
+'''
+
+=== Flow Table Problems
+
+==== Missing Flows
+
+*Symptoms:*
+
+* Traffic is dropped at the OVS level
+* `ovs-appctl ofproto/trace` shows the packet being dropped at a specific table
+* Flow table has fewer entries than expected
+
+*Diagnosis Steps:*
+
+First, trace the packet through the OVS pipeline to find where it is dropped:
+
+[source,bash]
+----
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,dl_type=0x0800,nw_src=10.0.0.5,nw_dst=10.0.0.10,nw_proto=1"
+----
+
+----
+Flow: in_port=5,dl_vlan=0,dl_vlan_pcp=0,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,dl_type=0x0800,nw_src=10.0.0.5,nw_dst=10.0.0.10,nw_proto=1,nw_tos=0,nw_ecn=0,nw_ttl=64
+
+bridge("br-int")
+-----------------
+    0. in_port=5,vlan_tci=0x0000/0x1fff, priority 9000, cookie 0xdeadbeef
+        set_field:0x5->reg13
+        set_field:0x3->reg11
+        set_field:0x2->reg12
+        set_field:0x1->metadata
+        set_field:0x1->reg14
+        resubmit(,8)
+    8. metadata=0x1,dl_src=fa:16:3e:aa:bb:cc, priority 50, cookie 0xdeadbeef
+        resubmit(,9)
+    9. No match.
+        drop
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,dl_type=0x0800
+Datapath actions: drop
+----
+
+The packet reaches table 9 and there is no matching flow - it gets dropped. Check what flows exist in table 9:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int table=9
+----
+
+----
+ cookie=0xdeadbeef, duration=86400.123s, table=9, n_packets=0, n_bytes=0, priority=0,metadata=0x1 actions=resubmit(,10)
+----
+
+There is a table-miss flow (priority 0) that should catch all traffic for this metadata value and send it to table 10. But our trace said "No match" at table 9. This could mean the metadata was set differently than expected, or the flow expired.
+
+Check if ovn-controller is running and programming flows:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller debug/status
+----
+
+If ovn-controller is connected but flows are missing, force a recompute:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller recompute
+----
+
+Then re-check the flows:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int table=9 | wc -l
+----
+
+*Common Causes:*
+
+* ovn-controller crashed or disconnected and flows were not reprogrammed after restart
+* A flow recompute is needed after a database change
+* The OVN southbound database is missing the logical flows for this datapath
+* A race condition during port creation - the port was bound before its flows were fully installed
+
+*Resolution:*
+
+Force ovn-controller to recompute all flows:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller recompute
+----
+
+If that does not work, restart ovn-controller:
+
+[source,bash]
+----
+sudo systemctl restart ovn-controller
+----
+
+If flows are still missing after restart, the problem is likely in the OVN southbound database. Check the logical flows:
+
+[source,bash]
+----
+sudo ovn-sbctl lflow-list <datapath-name> | head -50
+----
+
+==== Flow Loops
+
+*Symptoms:*
+
+* High CPU usage on ovs-vswitchd
+* Packets are endlessly resubmitted between tables
+* `ovs-appctl ofproto/trace` output is very long and shows the same tables being visited repeatedly
+
+*Diagnosis Steps:*
+
+Run a trace and look for repeated table visits:
+
+[source,bash]
+----
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,dl_type=0x0800,nw_src=10.0.0.5,nw_dst=10.0.0.10" 2>&1 | grep "resubmit" | head -30
+----
+
+If you see the same table numbers appearing repeatedly (e.g., table 20 -> table 25 -> table 20 -> table 25), there is a flow loop.
+
+*Common Causes:*
+
+* Manual flow insertion that conflicts with OVN-programmed flows
+* Bug in ovn-controller flow generation (rare, but it happens)
+* Two different OVN controllers programming conflicting flows on the same bridge
+
+*Resolution:*
+
+Check if there are manually added flows:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "cookie=0x0"
+----
+
+Flows with cookie=0x0 (or a cookie that does not match OVN's pattern) are likely manually added. Remove them:
+
+[source,bash]
+----
+sudo ovs-ofctl del-flows br-int cookie=0x0/-1
+----
+
+
+[WARNING]
+====
+Never manually add flows to br-int in an OVN-managed environment. ovn-controller is the sole owner of the flows on br-int. Manually added flows will conflict with OVN's flow programming and cause unpredictable behavior.
+====
+
+
+'''
+
+=== Tunnel Connectivity Issues
+
+==== Geneve/VXLAN Tunnel Not Established
+
+*Symptoms:*
+
+* Cross-host connectivity is completely broken
+* Traffic within a single host works fine
+* `ovs-vsctl show` shows the tunnel port but traffic does not flow through it
+
+*Diagnosis Steps:*
+
+Check the tunnel port configuration:
+
+[source,bash]
+----
+sudo ovs-vsctl show | grep -A 5 "type: geneve"
+----
+
+----
+        Port "ovn-node2-0"
+            Interface "ovn-node2-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.16.0.2"}
+----
+
+Verify connectivity to the remote tunnel endpoint:
+
+[source,bash]
+----
+ping -c 3 172.16.0.2
+----
+
+----
+PING 172.16.0.2 (172.16.0.2) 56(84) bytes of data.
+From 172.16.0.1 icmp_seq=1 Destination Host Unreachable
+From 172.16.0.1 icmp_seq=2 Destination Host Unreachable
+From 172.16.0.1 icmp_seq=3 Destination Host Unreachable
+
+--- 172.16.0.2 ping statistics ---
+3 packets transmitted, 0 received, +3 errors, 100% packet loss, time 2003ms
+----
+
+The underlay is broken. Check the local network configuration:
+
+[source,bash]
+----
+ip addr show | grep 172.16.0
+----
+
+----
+    inet 172.16.0.1/24 brd 172.16.0.255 scope global eth0
+----
+
+Check routing:
+
+[source,bash]
+----
+ip route show | grep 172.16.0
+----
+
+----
+172.16.0.0/24 dev eth0 proto kernel scope link src 172.16.0.1
+----
+
+If the underlay ping succeeds but the tunnel still does not work, check the Geneve port:
+
+[source,bash]
+----
+sudo ss -ulnp | grep 6081
+----
+
+----
+UNCONN 0      0            0.0.0.0:6081       0.0.0.0:*    users:(("ovs-vswitchd",pid=1234,fd=45))
+----
+
+OVS is listening on UDP port 6081 (Geneve). Verify the remote side is also listening:
+
+[source,bash]
+----
+ssh node2 "sudo ss -ulnp | grep 6081"
+----
+
+Check if a firewall is blocking Geneve traffic:
+
+[source,bash]
+----
+sudo iptables -L -n | grep 6081
+sudo nft list ruleset | grep 6081
+----
+
+Use tcpdump to see if Geneve packets are leaving or arriving:
+
+[source,bash]
+----
+sudo tcpdump -i eth0 -nn port 6081 -c 10
+----
+
+----
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+14:35:22.123456 IP 172.16.0.1.52345 > 172.16.0.2.6081: Geneve, Flags [C], vni 0x3, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4, length 98: 10.0.0.5 > 10.0.0.10: ICMP echo request, id 1234, seq 1, length 64
+----
+
+If you see packets leaving but no responses, the problem is on the remote side or in the physical network between the hosts.
+
+*Common Causes:*
+
+* Underlay network connectivity broken (cable, switch, routing)
+* Firewall blocking UDP port 6081 (Geneve) or 4789 (VXLAN)
+* MTU too small for encapsulated traffic (see next section)
+* Wrong remote_ip configured on the tunnel port
+* OVS not listening on the tunnel port (daemon not running or crashed)
+
+*Resolution:*
+
+For firewall issues:
+
+[source,bash]
+----
+# Using firewalld
+sudo firewall-cmd --add-port=6081/udp --permanent
+sudo firewall-cmd --reload
+
+# Using iptables
+sudo iptables -I INPUT -p udp --dport 6081 -j ACCEPT
+----
+
+For wrong remote_ip:
+
+[source,bash]
+----
+# OVN manages tunnel ports - fix the IP on the chassis registration
+sudo ovs-vsctl set Open_vSwitch . external_ids:ovn-encap-ip=<correct-ip>
+sudo systemctl restart ovn-controller
+----
+
+==== Tunnel MTU Problems
+
+*Symptoms:*
+
+* Small packets (pings with default size) work, but large packets fail
+* TCP connections establish (SYN/SYN-ACK are small) but stall when data transfer begins
+* `ping -s 1400 <destination>` fails but `ping -s 100 <destination>` succeeds
+
+*Diagnosis Steps:*
+
+Test with different packet sizes to find the MTU boundary:
+
+[source,bash]
+----
+# Inside the VM or container
+ping -c 3 -M do -s 1400 10.0.0.10
+----
+
+----
+PING 10.0.0.10 (10.0.0.10) 1400(1428) bytes of data.
+From 10.0.0.5 icmp_seq=1 Frag needed and DF set (mtu = 1442)
+
+--- 10.0.0.10 ping statistics ---
+1 packets transmitted, 0 received, +1 errors, 100% packet loss, time 0ms
+----
+
+The kernel is telling us the path MTU is 1442. Geneve encapsulation adds approximately 58 bytes of overhead (14 Ethernet + 20 IP + 8 UDP + 8 Geneve + 8 options). If the physical network MTU is 1500, the maximum VM MTU is 1500 - 58 = 1442.
+
+Check the physical interface MTU:
+
+[source,bash]
+----
+ip link show eth0 | grep mtu
+----
+
+----
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
+----
+
+Check the tunnel interface MTU:
+
+[source,bash]
+----
+ip link show genev_sys_6081 | grep mtu
+----
+
+----
+3: genev_sys_6081: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 65000 qdisc noqueue master ovs-system state UNKNOWN mode DEFAULT group default qlen 1000
+----
+
+*Common Causes:*
+
+* Physical network MTU is 1500 but no adjustment was made for tunnel overhead
+* Some physical switches in the path have a smaller MTU
+* Jumbo frames were configured on some links but not all
+
+*Resolution:*
+
+Option 1: Increase physical network MTU to accommodate tunnel overhead:
+
+[source,bash]
+----
+# On all hypervisors and physical switches in the tunnel network path
+sudo ip link set eth0 mtu 9000
+----
+
+Option 2: Decrease VM/container MTU to fit inside the physical MTU:
+
+For OpenStack, set the network MTU:
+
+[source,bash]
+----
+openstack network set --mtu 1442 my-network
+----
+
+For OVN DHCP, ensure the MTU option is advertised:
+
+[source,bash]
+----
+sudo ovn-nbctl set Logical_Switch_Port <port> options:mtu=1442
+----
+
+
+[NOTE]
+.Key Concept
+====
+The golden rule of tunnel MTU: inner MTU + tunnel overhead must be less than or equal to outer MTU. For Geneve, the overhead is typically 58 bytes. For VXLAN, it is 50 bytes. If you are unsure, set the inner MTU to 1400 - it is conservative but safe.
+====
+
+
+'''
+
+=== Performance Problems
+
+==== High CPU on ovs-vswitchd
+
+*Symptoms:*
+
+* `top` shows ovs-vswitchd consuming a high percentage of CPU
+* Packet forwarding latency increases
+* Flow setup rate decreases
+
+*Diagnosis Steps:*
+
+Check CPU usage:
+
+[source,bash]
+----
+top -bn1 | grep ovs-vswitchd
+----
+
+----
+ 1234 root     10  -10  512340  45600  12300 R  95.0  1.1  45:12.34 ovs-vswitchd
+----
+
+Check what ovs-vswitchd is doing:
+
+[source,bash]
+----
+sudo ovs-appctl coverage/show | head -30
+----
+
+----
+Event coverage, avg rate over last: 5s, 1min, 1hr, runtime:
+           name                 total    5s      1min    1hr     runtime
+           ---------------------------------------------------------------
+  flow_mod                     152834   1523.4   892.1   245.3   52.1
+  handler_upcalls              894523   8234.2  4521.3  1234.5   305.2
+  revalidate_flows             234521   2134.8  1234.5   456.7   80.1
+  ...
+----
+
+High `handler_upcalls` means the datapath is sending many packets to userspace because they are not matching kernel flows. High `revalidate_flows` means flows are being revalidated excessively, often due to rapid configuration changes.
+
+Check the datapath flow count:
+
+[source,bash]
+----
+sudo ovs-appctl dpctl/dump-flows | wc -l
+----
+
+----
+125432
+----
+
+If the flow count is very high, the flow table is large and revalidation is expensive. Check what is causing the upcalls:
+
+[source,bash]
+----
+sudo ovs-appctl upcall/show
+----
+
+----
+system@ovs-system:
+  flows         : (current 125432) (avg 98234) (max 145000) (limit 200000)
+  offloaded flows : 0
+  dump duration : 234ms
+  ufid enabled : true
+
+  handler threads:
+    handler 0: (requests: 8234) (avg 234us) (max 12ms)
+    handler 1: (requests: 7821) (avg 198us) (max 15ms)
+    handler 2: (requests: 8012) (avg 245us) (max 18ms)
+    handler 3: (requests: 7956) (avg 212us) (max 11ms)
+----
+
+*Common Causes:*
+
+* Too many microflows (each unique traffic pattern creates a kernel flow)
+* Rapid ARP storms or broadcast loops creating upcalls
+* Frequent flow revalidation due to configuration churn (e.g., many VMs being created/destroyed)
+* Port scan or DDoS traffic creating unique flows faster than they can be installed
+* Insufficient handler threads for the workload
+
+*Resolution:*
+
+Increase the number of handler and revalidator threads:
+
+[source,bash]
+----
+sudo ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=4
+sudo ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=4
+----
+
+If the flow count is excessively high, consider adjusting the flow eviction policy:
+
+[source,bash]
+----
+sudo ovs-vsctl set Open_vSwitch . other_config:flow-limit=100000
+----
+
+Check for broadcast storms or loops:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "dl_dst=ff:ff:ff:ff:ff:ff" | sort -t',' -k4 -rn | head -5
+----
+
+==== Conntrack Table Exhaustion
+
+*Symptoms:*
+
+* New connections fail while existing connections continue to work
+* `dmesg` shows `nf_conntrack: table full, dropping packet`
+* Stateful ACLs / security groups stop allowing new connections
+
+*Diagnosis Steps:*
+
+Check the conntrack table size:
+
+[source,bash]
+----
+sudo conntrack -C
+----
+
+----
+262144
+----
+
+Check the conntrack table limit:
+
+[source,bash]
+----
+sudo sysctl net.netfilter.nf_conntrack_max
+----
+
+----
+net.netfilter.nf_conntrack_max = 262144
+----
+
+The table is full. Check what is filling it:
+
+[source,bash]
+----
+sudo conntrack -L | awk '{print $3}' | sort | uniq -c | sort -rn | head -10
+----
+
+----
+ 185234 tcp
+  52341 udp
+  24569 icmp
+----
+
+Find the top talkers:
+
+[source,bash]
+----
+sudo conntrack -L -p tcp | awk '{print $5}' | sort | uniq -c | sort -rn | head -10
+----
+
+----
+  45234 src=10.0.0.5
+  32145 src=10.0.0.12
+  18976 src=10.0.0.8
+----
+
+Check for stale entries with long timeouts:
+
+[source,bash]
+----
+sudo conntrack -L -p tcp --state TIME_WAIT | wc -l
+----
+
+*Common Causes:*
+
+* Application opening many short-lived connections without closing them properly
+* Port scan or DDoS creating many conntrack entries
+* Conntrack timeout too long (default TCP ESTABLISHED is 5 days)
+* Conntrack limit too low for the workload
+* OVN zone-based conntrack creating duplicate entries
+
+*Resolution:*
+
+Increase the conntrack table limit:
+
+[source,bash]
+----
+sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+echo "net.netfilter.nf_conntrack_max = 524288" | sudo tee -a /etc/sysctl.d/99-conntrack.conf
+----
+
+Reduce the TCP ESTABLISHED timeout:
+
+[source,bash]
+----
+sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_established=43200
+----
+
+Flush stale entries for a specific source:
+
+[source,bash]
+----
+sudo conntrack -D -s 10.0.0.5
+----
+
+
+[NOTE]
+====
+In OVN environments, conntrack is used by the logical firewall (ACLs/security groups). Every connection that passes through an ACL with `ct_state` matching creates a conntrack entry. High-throughput workloads with security groups can exhaust the conntrack table quickly.
+====
+
+
+==== Packet Drops on OVS Interfaces
+
+*Symptoms:*
+
+* Intermittent connectivity issues
+* Application performance is degraded
+* Interface counters show drops
+
+*Diagnosis Steps:*
+
+Check interface statistics:
+
+[source,bash]
+----
+sudo ovs-vsctl get Interface tap12345678-90 statistics
+----
+
+----
+{collisions=0, rx_bytes=1234567890, rx_crc_err=0, rx_dropped=0, rx_errors=0, rx_frame_err=0, rx_missed_errors=0, rx_over_err=0, rx_packets=9876543, tx_bytes=987654321, tx_dropped=4523, tx_errors=0, tx_packets=7654321}
+----
+
+There are 4523 tx_dropped packets. Check OpenFlow port statistics:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-ports br-int tap12345678-90
+----
+
+----
+  port "tap12345678-90": rx pkts=9876543, bytes=1234567890, drop=0, errs=0, frame=0, over=0, crc=0
+                         tx pkts=7654321, bytes=987654321, drop=4523, errs=0, coll=0
+----
+
+Check the datapath statistics:
+
+[source,bash]
+----
+sudo ovs-appctl dpctl/show --statistics
+----
+
+----
+  system@ovs-system:
+        lookups: hit:123456789 missed:234567 lost:1234
+        flows: 45678
+        masks: hit:234567890 total:1234 hit/pkt:1.90
+        port 0: ovs-system (internal)
+        port 1: br-int (internal)
+              RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:0 errors:0 dropped:0 overruns:0 carrier:0 collisions:0
+        port 5: tap12345678-90
+              RX packets:9876543 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:7654321 errors:0 dropped:4523 overruns:0 carrier:0 collisions:0
+----
+
+The `lost` counter (1234) shows packets that were lost in upcall processing. Check if there is a queue overflow:
+
+[source,bash]
+----
+sudo ovs-appctl coverage/show | grep -i "upcall\|lost\|drop"
+----
+
+*Common Causes:*
+
+* TX ring buffer full on the destination interface (VM/container is not reading fast enough)
+* Upcall queue overflow (too many packets being sent to userspace)
+* Interface MTU mismatch causing oversized packets to be dropped
+* QoS or rate limiting configured on the port
+
+*Resolution:*
+
+Increase the TX queue length:
+
+[source,bash]
+----
+sudo ip link set tap12345678-90 txqueuelen 10000
+----
+
+Check if QoS is configured and adjust if needed:
+
+[source,bash]
+----
+sudo ovs-vsctl list QoS
+sudo ovs-vsctl list Queue
+----
+
+'''
+
+=== Daemon Problems
+
+==== ovs-vswitchd Crash or Restart
+
+*Symptoms:*
+
+* Temporary complete loss of network connectivity
+* `systemctl status ovs-vswitchd` shows the service restarted
+* Core dump files present in `/var/log/openvswitch/` or `/var/lib/openvswitch/`
+
+*Diagnosis Steps:*
+
+Check the service status:
+
+[source,bash]
+----
+sudo systemctl status ovs-vswitchd
+----
+
+----
+ovs-vswitchd.service - Open vSwitch Forwarding Unit
+   Loaded: loaded (/usr/lib/systemd/system/ovs-vswitchd.service; enabled)
+   Active: active (running) since Thu 2025-08-05 15:45:22 UTC; 2min ago
+  Process: 5678 ExecStart=/usr/share/openvswitch/scripts/ovs-ctl --no-ovsdb-server start (code=exited, status=0/SUCCESS)
+ Main PID: 5890 (ovs-vswitchd)
+    Tasks: 12 (limit: 4915)
+   Memory: 234.5M
+----
+
+Notice it was restarted 2 minutes ago. Check the logs for the crash:
+
+[source,bash]
+----
+sudo journalctl -u ovs-vswitchd --since "10 minutes ago" | grep -i "crash\|segfault\|abort\|signal\|fatal"
+----
+
+----
+Aug 05 15:45:10 compute-1 ovs-vswitchd[1234]: |EMER|ovs-vswitchd: received signal 11 (Segmentation fault)
+Aug 05 15:45:10 compute-1 ovs-vswitchd[1234]: |EMER|ovs-vswitchd: backtrace: /usr/sbin/ovs-vswitchd(+0x1a2b3c)[0x5678deadbeef]
+----
+
+Check for core dumps:
+
+[source,bash]
+----
+ls -la /var/log/openvswitch/ovs-vswitchd.*.core* 2>/dev/null
+ls -la /var/lib/systemd/coredump/ 2>/dev/null
+coredumpctl list ovs-vswitchd 2>/dev/null
+----
+
+----
+TIME                          PID   UID   GID SIG COREFILE   EXE
+Thu 2025-08-05 15:45:10 UTC  1234     0     0  11 present    /usr/sbin/ovs-vswitchd
+----
+
+Get the backtrace:
+
+[source,bash]
+----
+sudo coredumpctl info ovs-vswitchd
+----
+
+*Common Causes:*
+
+* Bug in OVS triggered by a specific traffic pattern or configuration
+* Memory corruption due to hardware issues
+* Running out of memory (OOM killer)
+* Bug in a third-party OpenFlow controller sending malformed messages
+
+*Resolution:*
+
+Check if OOM killed the process:
+
+[source,bash]
+----
+sudo dmesg | grep -i "oom\|killed" | tail -10
+----
+
+If OOM killed it, increase the memory limit or reduce the workload.
+
+For a genuine crash (SIGSEGV, SIGABRT), collect the core dump and logs for a bug report:
+
+[source,bash]
+----
+# Collect everything needed for a bug report
+sudo sosreport --only-plugins=openvswitch
+----
+
+If the crash is recurring, check if a specific flow or port is triggering it:
+
+[source,bash]
+----
+sudo journalctl -u ovs-vswitchd --since "1 hour ago" | grep -B 5 "signal 11"
+----
+
+==== ovsdb-server Unresponsive
+
+*Symptoms:*
+
+* `ovs-vsctl` commands hang or timeout
+* `ovs-vsctl show` takes more than a few seconds
+* ovn-controller logs show connection errors to the local OVS database
+
+*Diagnosis Steps:*
+
+Test ovsdb-server responsiveness:
+
+[source,bash]
+----
+timeout 5 sudo ovs-vsctl show > /dev/null 2>&1
+echo "Exit code: $?"
+----
+
+----
+Exit code: 124
+----
+
+Exit code 124 means the command timed out. Check the ovsdb-server process:
+
+[source,bash]
+----
+sudo systemctl status ovsdb-server
+----
+
+[source,bash]
+----
+ps aux | grep ovsdb-server
+----
+
+----
+root      1100  0.5  0.3  45123  12345 ?        Ss   Aug04  12:34 ovsdb-server /etc/openvswitch/conf.db -vconsole:emer -vsyslog:err -vfile:info --remote=punix:/var/run/openvswitch/db.sock --private-key=db:Open_vSwitch,SSL,private_key --certificate=db:Open_vSwitch,SSL,certificate --bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert --no-chdir --log-file=/var/log/openvswitch/ovsdb-server.log --pidfile=/var/run/openvswitch/ovsdb-server.pid --unixctl=/var/run/openvswitch/ovsdb-server.ctl
+----
+
+Check if the database file is excessively large:
+
+[source,bash]
+----
+ls -lh /etc/openvswitch/conf.db
+----
+
+----
+-rw-r--r--. 1 openvswitch openvswitch 245M Aug  5 15:45 /etc/openvswitch/conf.db
+----
+
+245 MB is very large for the OVS database (normal is a few hundred KB to a few MB). It needs compaction:
+
+[source,bash]
+----
+sudo ovs-appctl -t ovsdb-server ovsdb-server/compact
+----
+
+Check if the socket file exists:
+
+[source,bash]
+----
+ls -la /var/run/openvswitch/db.sock
+----
+
+*Common Causes:*
+
+* Database file has grown very large and needs compaction
+* Too many connected clients making rapid queries
+* Disk I/O issues causing slow database reads/writes
+* The Unix socket file was deleted or has wrong permissions
+* ovsdb-server is in a busy loop processing a large transaction
+
+*Resolution:*
+
+Compact the database:
+
+[source,bash]
+----
+sudo ovs-appctl -t ovsdb-server ovsdb-server/compact
+----
+
+Verify the file size decreased:
+
+[source,bash]
+----
+ls -lh /etc/openvswitch/conf.db
+----
+
+If ovsdb-server is completely stuck, restart it as a last resort:
+
+[source,bash]
+----
+sudo systemctl restart openvswitch
+----
+
+
+[WARNING]
+====
+Restarting openvswitch restarts both ovsdb-server and ovs-vswitchd. This causes a brief network interruption for all VMs/containers on the host. The datapath (kernel module) keeps forwarding packets using cached flows during the restart, so established connections usually survive, but new connections will fail until the daemons are back up.
+====
+
+
+'''
+
+== 4. OVN Troubleshooting
+
+=== Logical Network Not Working
+
+==== Port Not Bound to Chassis
+
+*Symptoms:*
+
+* VM or container has no connectivity at all
+* `ovn-sbctl show` does not show the logical port bound to any chassis
+* The port appears in OVN NB but has no chassis binding in SB
+
+*Diagnosis Steps:*
+
+Check the OVN NB for the logical port:
+
+[source,bash]
+----
+sudo ovn-nbctl show | grep -A 3 "port1"
+----
+
+----
+    port port1
+        addresses: ["fa:16:3e:aa:bb:cc 10.0.0.5"]
+----
+
+The port exists in the northbound database. Check the southbound binding:
+
+[source,bash]
+----
+sudo ovn-sbctl find Port_Binding logical_port=port1
+----
+
+----
+_uuid               : a1b2c3d4-e5f6-7890-abcd-ef1234567890
+chassis             : []
+datapath            : b2c3d4e5-f6a7-8901-bcde-f12345678901
+logical_port        : "port1"
+mac                 : ["fa:16:3e:aa:bb:cc 10.0.0.5"]
+type                : ""
+up                  : false
+----
+
+The `chassis` field is empty (`[]`) and `up` is `false`. This means no ovn-controller has claimed this port. For ovn-controller to claim a port, the corresponding OVS interface must have the matching `iface-id` in its external_ids.
+
+Check the OVS interface on the compute node where the VM is running:
+
+[source,bash]
+----
+sudo ovs-vsctl find Interface external_ids:iface-id="port1"
+----
+
+----
+(no output)
+----
+
+No interface has `iface-id=port1`. Check what interfaces are present:
+
+[source,bash]
+----
+sudo ovs-vsctl list Interface | grep -A 1 "external_ids"
+----
+
+Look for the interface that should have this iface-id:
+
+[source,bash]
+----
+sudo ovs-vsctl show | grep -B 2 "tap"
+----
+
+----
+        Port "tap12345678-90"
+            Interface "tap12345678-90"
+----
+
+Check its external_ids:
+
+[source,bash]
+----
+sudo ovs-vsctl get Interface tap12345678-90 external_ids
+----
+
+----
+{attached-mac="fa:16:3e:aa:bb:cc", iface-id="different-port-id", iface-status=active}
+----
+
+The `iface-id` is set to a different value than the OVN logical port name.
+
+*Common Causes:*
+
+* Mismatch between the OVN logical port name and the OVS interface iface-id
+* The orchestrator created the OVN logical port but failed to set the iface-id on the OVS interface
+* The VM was migrated and the port was not properly re-bound on the new host
+* ovn-controller is not running on the compute node
+
+*Resolution:*
+
+Fix the iface-id:
+
+[source,bash]
+----
+sudo ovs-vsctl set Interface tap12345678-90 external_ids:iface-id="port1"
+----
+
+Verify the port is now bound:
+
+[source,bash]
+----
+sudo ovn-sbctl find Port_Binding logical_port=port1 | grep -E "chassis|up"
+----
+
+----
+chassis             : c3d4e5f6-a7b8-9012-cdef-123456789012
+up                  : true
+----
+
+==== Port Security Blocking Traffic
+
+*Symptoms:*
+
+* VM can receive traffic but cannot send certain types
+* Only traffic matching the VM's configured MAC/IP addresses passes
+* ARP or DHCP works but other traffic is dropped
+
+*Diagnosis Steps:*
+
+Check the port security configuration:
+
+[source,bash]
+----
+sudo ovn-nbctl get Logical_Switch_Port port1 port_security
+----
+
+----
+["fa:16:3e:aa:bb:cc 10.0.0.5"]
+----
+
+Port security is configured to allow only traffic from MAC `fa:16:3e:aa:bb:cc` with IP `10.0.0.5`. If the VM is trying to use a different IP (e.g., it has multiple IPs or is doing NAT), the traffic will be dropped.
+
+Trace the traffic through OVN to see where port security drops it:
+
+[source,bash]
+----
+sudo ovn-trace --detailed net1 \
+  'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==fa:16:3e:dd:ee:ff && ip4.src==10.0.0.99 && ip4.dst==10.0.0.10 && ip.ttl==64'
+----
+
+----
+ingress(dp="net1", inport="port1")
+-----------------------------------
+ 0. ls_in_check_port_sec (northd.c:8234): 1, priority 50, uuid 12345678
+    reg0[15] = check_in_port_sec(inport);
+    next;
+ 1. ls_in_apply_port_sec (northd.c:8256): reg0[15] == 1, priority 50, uuid 23456789
+    /* Packet fails port security check. */
+    drop;
+    /* output to "port1" */
+----
+
+The trace confirms that port security is dropping the packet because the source IP `10.0.0.99` does not match the allowed IP `10.0.0.5`.
+
+*Common Causes:*
+
+* VM has multiple IP addresses but only one is configured in port security
+* VM is doing source NAT
+* VM has a floating IP and the VM's actual IP does not match what port security expects
+* Allowed address pairs were not configured for additional addresses
+
+*Resolution:*
+
+Add additional allowed addresses:
+
+[source,bash]
+----
+sudo ovn-nbctl lsp-set-port-security port1 \
+  "fa:16:3e:aa:bb:cc 10.0.0.5 10.0.0.99"
+----
+
+Or disable port security entirely (use with caution):
+
+[source,bash]
+----
+sudo ovn-nbctl lsp-set-port-security port1
+----
+
+In OpenStack, use allowed address pairs:
+
+[source,bash]
+----
+openstack port set --allowed-address ip-address=10.0.0.99 <port-id>
+----
+
+'''
+
+=== Routing Not Working
+
+==== Missing Routes in Logical Router
+
+*Symptoms:*
+
+* Traffic between two different subnets fails
+* VMs on different logical switches cannot communicate even though a logical router connects them
+* `ovn-trace` shows the packet being dropped at the routing stage
+
+*Diagnosis Steps:*
+
+Check the logical router configuration:
+
+[source,bash]
+----
+sudo ovn-nbctl show | grep -A 20 "router"
+----
+
+----
+router router1 (d4e5f6a7-b8c9-0123-def0-123456789012)
+    port router1-net1
+        mac: "fa:16:3e:11:22:33"
+        networks: ["10.0.0.1/24"]
+    port router1-net2
+        mac: "fa:16:3e:44:55:66"
+        networks: ["10.0.1.1/24"]
+----
+
+The router has ports on both subnets. Check the routes:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-list router1
+----
+
+----
+IPv4 Routes
+             10.0.0.0/24              10.0.0.1 dst-ip
+             10.0.1.0/24              10.0.1.1 dst-ip
+----
+
+These are the connected routes. If traffic needs to reach an external network (e.g., 192.168.0.0/16), there needs to be a route for it:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-list router1 | grep "0.0.0.0"
+----
+
+If this returns nothing, there is no default route. Trace the packet:
+
+[source,bash]
+----
+sudo ovn-trace --detailed net1 \
+  'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==fa:16:3e:11:22:33 && ip4.src==10.0.0.5 && ip4.dst==192.168.1.100 && ip.ttl==64'
+----
+
+----
+ingress(dp="net1", inport="port1")
+-----------------------------------
+ ...
+ 24. ls_in_l2_lkup (northd.c:9234): eth.dst == fa:16:3e:11:22:33, priority 50, uuid abcdef12
+     outport = "net1-router1";
+     output;
+
+ingress(dp="router1", inport="router1-net1")
+----------------------------------------------
+ ...
+  8. lr_in_ip_routing (northd.c:10234): 1, priority 0, uuid 34567890
+     /* No route found. */
+     drop;
+----
+
+The trace shows the packet reaching the router but being dropped at the `lr_in_ip_routing` stage because there is no matching route.
+
+*Common Causes:*
+
+* Missing default route on the logical router
+* The logical router does not have a port connected to the external/provider network
+* The next-hop IP is unreachable
+* Static routes were deleted or never created
+
+*Resolution:*
+
+Add a default route:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-add router1 "0.0.0.0/0" 172.16.0.1
+----
+
+Verify:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-list router1
+----
+
+----
+IPv4 Routes
+             10.0.0.0/24              10.0.0.1 dst-ip
+             10.0.1.0/24              10.0.1.1 dst-ip
+                0.0.0.0/0            172.16.0.1 dst-ip
+----
+
+==== NAT vs Routing Confusion
+
+*Symptoms:*
+
+* External traffic reaches the VMs but responses do not go back
+* Packets leave the VM with a private IP source, which gets dropped by the upstream router
+* Asymmetric routing - traffic comes in through the NAT path but goes out through a non-NAT path
+
+*Diagnosis Steps:*
+
+Check NAT configuration on the logical router:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-list router1
+----
+
+----
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+snat             172.16.0.100       10.0.0.0/24
+dnat_and_snat    172.16.0.101       10.0.0.5              fa:16:3e:aa:bb:cc    port1
+----
+
+There is an SNAT rule for the entire subnet and a DNAT+SNAT (floating IP) for a specific VM. Trace an outbound packet to verify NAT is applied:
+
+[source,bash]
+----
+sudo ovn-trace --detailed net1 \
+  'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==fa:16:3e:11:22:33 && ip4.src==10.0.0.5 && ip4.dst==8.8.8.8 && ip.ttl==64'
+----
+
+Look for the NAT stage in the output:
+
+----
+ingress(dp="router1", inport="router1-net1")
+----------------------------------------------
+ ...
+ 12. lr_in_dnat (northd.c:11234): ip, priority 0, uuid 45678901
+     next;
+ ...
+ 16. lr_in_snat (northd.c:11456): ip4.src == 10.0.0.5 && outport == "router1-external", priority 33, uuid 56789012
+     ct_snat(172.16.0.101);
+----
+
+The trace shows SNAT being applied to change the source IP from 10.0.0.5 to 172.16.0.101. If the SNAT step is missing, NAT is not configured for this traffic path.
+
+*Common Causes:*
+
+* SNAT rule is missing or covers the wrong subnet
+* The router does not have a gateway port connected to the external network
+* The NAT rule references the wrong logical port or external IP
+* Distributed NAT is configured but the gateway chassis is not set
+
+*Resolution:*
+
+If SNAT is missing:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.0.0/24
+----
+
+If the gateway port is missing, add it:
+
+[source,bash]
+----
+sudo ovn-nbctl lrp-add router1 router1-external fa:16:3e:77:88:99 172.16.0.100/24
+----
+
+'''
+
+=== ACLs Blocking Traffic
+
+==== Security Groups Too Restrictive
+
+*Symptoms:*
+
+* Certain types of traffic are blocked while others work
+* ICMP works but TCP does not (or vice versa)
+* Traffic works in one direction but not the other
+
+*Diagnosis Steps:*
+
+List all ACLs on the logical switch:
+
+[source,bash]
+----
+sudo ovn-nbctl acl-list net1
+----
+
+----
+from-lport  1002 (inport == "port1" && ip4) allow-related
+from-lport  1002 (inport == "port1" && ip6) allow-related
+from-lport  1001 (inport == "port1" && ip4 && ip4.dst == 10.0.0.0/24 && tcp && tcp.dst == 80) allow-related
+  to-lport  1002 (outport == "port1" && ip4 && ip4.src == 10.0.0.0/8) allow-related
+  to-lport  1001 (outport == "port1" && ip4) drop
+----
+
+Read these ACLs carefully:
+
+* From-lport (egress from the VM) with priority 1002: allow-related for all IPv4/IPv6
+* From-lport with priority 1001: allow-related for TCP port 80 to 10.0.0.0/24
+* To-lport (ingress to the VM) with priority 1002: allow-related from 10.0.0.0/8
+* To-lport with priority 1001: drop all other IPv4 ingress
+
+The problem here is the priority ordering. Priority 1002 rules are evaluated before priority 1001 rules. The to-lport allow-related rule at priority 1002 allows return traffic from 10.0.0.0/8, and the drop at priority 1001 drops everything else.
+
+If the VM needs to receive traffic from outside 10.0.0.0/8, there is no allow rule for that.
+
+Trace the failing traffic:
+
+[source,bash]
+----
+sudo ovn-trace --detailed net1 \
+  'inport=="external-port" && eth.src==fa:16:3e:xx:yy:zz && eth.dst==fa:16:3e:aa:bb:cc && ip4.src==192.168.1.100 && ip4.dst==10.0.0.5 && tcp.dst==22 && ip.ttl==64'
+----
+
+----
+ ...
+ 16. ls_in_acl_eval (northd.c:12345): outport == "port1" && ip4, priority 1001, uuid 67890123
+     /* drop */
+     reg8[16] = 1;
+     next;
+ 17. ls_in_acl_action (northd.c:12456): reg8[16] == 1, priority 100, uuid 78901234
+     drop;
+----
+
+The trace confirms the packet is being dropped by the ACL at priority 1001.
+
+*Common Causes:*
+
+* Missing allow rule for the required traffic
+* Using `allow` instead of `allow-related` (breaks return traffic for stateful connections)
+* Wrong direction (from-lport vs to-lport)
+* Priority conflicts - a lower-priority allow is shadowed by a higher-priority drop
+
+*Resolution:*
+
+Add the missing ACL rule:
+
+[source,bash]
+----
+sudo ovn-nbctl acl-add net1 to-lport 1002 \
+  'outport == "port1" && ip4 && tcp && tcp.dst == 22' allow-related
+----
+
+In OpenStack, add a security group rule:
+
+[source,bash]
+----
+openstack security group rule create --protocol tcp --dst-port 22 --remote-ip 0.0.0.0/0 <security-group>
+----
+
+==== Missing allow-related
+
+*Symptoms:*
+
+* Outbound traffic from the VM works (SYN goes out)
+* Return traffic (SYN-ACK) is dropped
+* Unidirectional connectivity
+
+*Diagnosis Steps:*
+
+This is a classic stateful firewall issue. Check if the ACLs use `allow` instead of `allow-related`:
+
+[source,bash]
+----
+sudo ovn-nbctl acl-list net1 | grep "allow$"
+----
+
+----
+from-lport  1002 (inport == "port1" && ip4 && tcp && tcp.dst == 80) allow
+----
+
+This rule uses `allow` instead of `allow-related`. The `allow` action permits the outgoing packet but does not create a conntrack entry for the return traffic. The return SYN-ACK packet will need its own explicit allow rule in the to-lport direction.
+
+*Common Causes:*
+
+* ACL was created with `allow` instead of `allow-related`
+* Misunderstanding of stateful vs stateless ACLs in OVN
+
+*Resolution:*
+
+Change the ACL to use `allow-related`:
+
+[source,bash]
+----
+# Remove the old rule
+sudo ovn-nbctl acl-del net1 from-lport 1002 \
+  'inport == "port1" && ip4 && tcp && tcp.dst == 80'
+
+# Add the corrected rule
+sudo ovn-nbctl acl-add net1 from-lport 1002 \
+  'inport == "port1" && ip4 && tcp && tcp.dst == 80' allow-related
+----
+
+
+[NOTE]
+.Key Concept
+====
+In OVN, `allow-related` creates a conntrack entry for the matched traffic and automatically allows return traffic that belongs to the same connection. Always use `allow-related` for stateful traffic (TCP, UDP with reply). Use `allow` only for stateless traffic like broadcasts or when you explicitly want one-way rules.
+====
+
+
+'''
+
+=== DHCP Not Working
+
+==== OVN DHCP Not Responding
+
+*Symptoms:*
+
+* VMs get no IP address via DHCP
+* `dhclient` or `NetworkManager` log shows DHCPDISCOVER being sent but no DHCPOFFER received
+* The VM gets stuck at "Waiting for network configuration"
+
+*Diagnosis Steps:*
+
+Check if DHCP options are configured on the logical switch:
+
+[source,bash]
+----
+sudo ovn-nbctl list DHCP_Options
+----
+
+----
+_uuid               : e5f6a7b8-c9d0-1234-ef01-234567890abc
+cidr                : "10.0.0.0/24"
+external_ids        : {subnet_id="abcdef12-3456-7890-abcd-ef1234567890"}
+options             : {dns_server="{8.8.8.8, 8.8.4.4}", lease_time="43200", mtu="1442", router="10.0.0.1", server_id="10.0.0.1", server_mac="fa:16:3e:11:22:33"}
+----
+
+DHCP options exist. Check if the logical switch port has DHCP enabled:
+
+[source,bash]
+----
+sudo ovn-nbctl get Logical_Switch_Port port1 dhcpv4_options
+----
+
+----
+e5f6a7b8-c9d0-1234-ef01-234567890abc
+----
+
+Good, DHCP options are linked. Now trace a DHCP discover packet:
+
+[source,bash]
+----
+sudo ovn-trace --detailed net1 \
+  'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==ff:ff:ff:ff:ff:ff && ip4.src==0.0.0.0 && ip4.dst==255.255.255.255 && udp && udp.src==68 && udp.dst==67 && ip.ttl==64'
+----
+
+----
+ingress(dp="net1", inport="port1")
+-----------------------------------
+ ...
+ 22. ls_in_dhcp_options (northd.c:13456): inport == "port1" && eth.src == fa:16:3e:aa:bb:cc && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 100, uuid 89012345
+     reg0[3] = put_dhcp_opts(offerip = 10.0.0.5, dns_server = {8.8.8.8, 8.8.4.4}, lease_time = 43200, mtu = 1442, router = 10.0.0.1, server_id = 10.0.0.1);
+     next;
+ 23. ls_in_dhcp_response (northd.c:13567): inport == "port1" && eth.src == fa:16:3e:aa:bb:cc && ip4 && udp && reg0[3], priority 100, uuid 90123456
+     eth.dst = eth.src;
+     eth.src = fa:16:3e:11:22:33;
+     ip4.src = 10.0.0.1;
+     ip4.dst = 10.0.0.5;
+     udp.src = 67;
+     udp.dst = 68;
+     outport = inport;
+     flags.loopback = 1;
+     output;
+----
+
+The trace shows OVN is correctly configured to respond to DHCP. If the trace looks correct but DHCP still does not work in practice, the problem might be at the OVS flow level. Check if the flows are installed:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "udp,.*tp_dst=67"
+----
+
+If there are no flows matching DHCP traffic, ovn-controller has not programmed them. Check ovn-controller status:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+*Common Causes:*
+
+* DHCP options not configured on the logical switch
+* Logical switch port not linked to DHCP options (dhcpv4_options is empty)
+* Port security blocking DHCP discovery (though OVN normally exempts DHCP)
+* ovn-controller not running or not connected, so DHCP response flows are not installed
+* Conflicting native DHCP server on the same network
+
+*Resolution:*
+
+If DHCP options are not configured:
+
+[source,bash]
+----
+# Create DHCP options
+DHCP_UUID=$(sudo ovn-nbctl create DHCP_Options cidr="10.0.0.0/24" \
+  options='"server_id"="10.0.0.1" "server_mac"="fa:16:3e:11:22:33" "router"="10.0.0.1" "dns_server"="{8.8.8.8}" "lease_time"="43200"')
+
+# Link to the port
+sudo ovn-nbctl lsp-set-dhcpv4-options port1 $DHCP_UUID
+----
+
+If there is a conflicting native DHCP server, disable it or ensure it is not on the same broadcast domain.
+
+==== Native DHCP vs OVN DHCP Conflict
+
+*Symptoms:*
+
+* VMs sometimes get the correct IP and sometimes get an unexpected IP
+* DHCP responses come from two different server MACs
+* IP conflicts reported by the operating system
+
+*Diagnosis Steps:*
+
+Capture DHCP traffic on the VM's interface:
+
+[source,bash]
+----
+sudo tcpdump -i tap12345678-90 -nn port 67 or port 68 -v
+----
+
+----
+15:30:01.123456 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:aa:bb:cc, length 300
+15:30:01.234567 IP 10.0.0.1.67 > 10.0.0.5.68: BOOTP/DHCP, Reply, length 300
+15:30:01.345678 IP 10.0.0.254.67 > 10.0.0.5.68: BOOTP/DHCP, Reply, length 300
+----
+
+Two DHCP replies from different servers (10.0.0.1 and 10.0.0.254). OVN's DHCP responds from 10.0.0.1, and a native DHCP server on 10.0.0.254 also responds.
+
+*Common Causes:*
+
+* A native DHCP server (dnsmasq, dhcpd) is running on the network
+* A router or appliance on the provider network has DHCP enabled
+* Multiple orchestrators managing the same network
+
+*Resolution:*
+
+Disable the conflicting DHCP server. If the native DHCP server is intentional and you want to use it instead of OVN DHCP:
+
+[source,bash]
+----
+# Remove OVN DHCP options from the port
+sudo ovn-nbctl lsp-set-dhcpv4-options port1 []
+----
+
+'''
+
+=== NAT/Floating IP Problems
+
+==== SNAT Not Working
+
+*Symptoms:*
+
+* VMs on private networks cannot reach the internet
+* Packets leave the VM with the correct private IP but never get NATted
+* tcpdump on the external interface shows no outbound traffic from the expected public IP
+
+*Diagnosis Steps:*
+
+Check the NAT rules:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-list router1
+----
+
+----
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+----
+
+No NAT rules at all. That is the problem. Or if there are SNAT rules, verify they cover the correct subnet.
+
+Check the gateway router port:
+
+[source,bash]
+----
+sudo ovn-nbctl show router1
+----
+
+----
+router router1 (a1234567-...)
+    port router1-net1
+        mac: "fa:16:3e:11:22:33"
+        networks: ["10.0.0.1/24"]
+    port router1-external
+        mac: "fa:16:3e:77:88:99"
+        networks: ["172.16.0.100/24"]
+        gateway chassis: []
+----
+
+The `gateway chassis` is empty. For centralized NAT (SNAT), a gateway chassis must be configured so OVN knows which chassis should perform the NAT.
+
+*Common Causes:*
+
+* No SNAT rule configured
+* Gateway chassis not set on the router port
+* The external network port on the router does not have connectivity to the upstream gateway
+* OVN gateway chassis node is down
+
+*Resolution:*
+
+Add the SNAT rule:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.0.0/24
+----
+
+Set the gateway chassis:
+
+[source,bash]
+----
+sudo ovn-nbctl lrp-set-gateway-chassis router1-external node1 20
+----
+
+Verify:
+
+[source,bash]
+----
+sudo ovn-nbctl show router1 | grep -A 2 "gateway"
+----
+
+==== Floating IP Not Working After Migration
+
+*Symptoms:*
+
+* Floating IP was working before VM migration, stopped working after
+* External clients cannot reach the VM via the floating IP
+* The VM can still reach the internet (SNAT works)
+
+*Diagnosis Steps:*
+
+Check where the port is now bound:
+
+[source,bash]
+----
+sudo ovn-sbctl find Port_Binding logical_port=port1 | grep chassis
+----
+
+----
+chassis             : d5e6f7a8-b9c0-1234-def0-567890123456
+----
+
+[source,bash]
+----
+sudo ovn-sbctl get Chassis d5e6f7a8-b9c0-1234-def0-567890123456 name
+----
+
+----
+"compute-2"
+----
+
+The port migrated to compute-2. Check the NAT rule:
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-list router1 | grep "10.0.0.5"
+----
+
+----
+dnat_and_snat    172.16.0.101       10.0.0.5              fa:16:3e:aa:bb:cc    port1
+----
+
+The NAT rule exists and references `port1` in the `logical_port` column - this is for distributed NAT. Check the gateway chassis:
+
+[source,bash]
+----
+sudo ovn-nbctl list Gateway_Chassis | grep -A 3 "router1-external"
+----
+
+Check if the gateway chassis is aware of the migration. Verify that gratuitous ARP was sent for the floating IP:
+
+[source,bash]
+----
+# On the gateway chassis node, check recent ARP activity
+sudo tcpdump -i br-ex -nn arp | grep 172.16.0.101
+----
+
+If no gratuitous ARP was sent, the upstream physical network still has the old ARP entry pointing to the previous host.
+
+*Common Causes:*
+
+* Gratuitous ARP not sent after migration, so the upstream switch has a stale ARP entry
+* The NAT rule's logical_port was not updated (in some older versions)
+* The gateway chassis is not reachable from the new compute node
+* The external bridge (br-ex) is not properly configured on the new compute node
+
+*Resolution:*
+
+Force a gratuitous ARP from OVN:
+
+[source,bash]
+----
+# Trigger a port update to refresh ARP
+sudo ovn-nbctl set Logical_Switch_Port port1 options:requested-chassis=compute-2
+----
+
+If the upstream router has a stale ARP cache, clear it on the upstream router or wait for the ARP timeout.
+
+Verify the external bridge connectivity on the new compute node:
+
+[source,bash]
+----
+# On compute-2
+sudo ovs-vsctl show | grep -A 5 "br-ex"
+----
+
+
+[NOTE]
+.Key Concept
+====
+When a VM with a floating IP (DNAT) migrates, the upstream physical network needs to learn that the floating IP is now reachable through a different host. OVN sends a gratuitous ARP for this purpose, but if the gratuitous ARP is lost or the upstream switch does not honor it, external traffic continues to be sent to the old host.
+====
+
+
+'''
+
+=== Database Issues
+
+==== NB/SB Database Out of Sync
+
+*Symptoms:*
+
+* Changes made in the northbound database (e.g., creating a logical switch) do not appear in the southbound database
+* `ovn-northd` logs show errors or warnings
+* New logical resources are created but never become functional
+
+*Diagnosis Steps:*
+
+Check if ovn-northd is running:
+
+[source,bash]
+----
+sudo systemctl status ovn-northd
+----
+
+----
+ovn-northd.service - Open Virtual Network northbound daemon
+   Loaded: loaded (/usr/lib/systemd/system/ovn-northd.service; enabled)
+   Active: active (running) since Thu 2025-08-05 10:00:00 UTC; 5h ago
+----
+
+Check ovn-northd logs:
+
+[source,bash]
+----
+sudo journalctl -u ovn-northd --since "30 minutes ago" | grep -i "error\|warn"
+----
+
+----
+Aug 05 15:12:34 controller-1 ovn-northd[2345]: |WARN|idl: transaction error: {"details":"Transaction causes multiple rows in \"MAC_Binding\" table to have identical values...","error":"constraint violation"}
+----
+
+Check the NB/SB database connection:
+
+[source,bash]
+----
+sudo ovn-nbctl get NB_Global . nb_cfg
+----
+
+----
+145
+----
+
+[source,bash]
+----
+sudo ovn-sbctl get SB_Global . nb_cfg
+----
+
+----
+143
+----
+
+The NB is at version 145 but the SB is at 143. This means ovn-northd has not processed the last 2 NB changes. Check if ovn-northd is stuck:
+
+[source,bash]
+----
+# Wait a few seconds and check again
+sleep 10
+sudo ovn-sbctl get SB_Global . nb_cfg
+----
+
+If the SB nb_cfg does not increase, ovn-northd is stuck.
+
+*Common Causes:*
+
+* ovn-northd crashed or is stuck
+* Database constraint violation blocking a transaction
+* Network partition between ovn-northd and the databases
+* Database compaction needed, causing slow transactions
+* Raft cluster lost quorum (in HA setups)
+
+*Resolution:*
+
+Restart ovn-northd:
+
+[source,bash]
+----
+sudo systemctl restart ovn-northd
+----
+
+If the database is large, compact both databases:
+
+[source,bash]
+----
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+----
+
+==== Raft Cluster Issues
+
+*Symptoms:*
+
+* OVN API calls are slow or timeout
+* ovn-northd or ovn-controller logs show "database connection failed"
+* Only one controller node can write to the database
+
+*Diagnosis Steps:*
+
+Check the Raft cluster status:
+
+[source,bash]
+----
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+----
+
+----
+2345
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234-5678-90ab-cdef-1234567890ab)
+Server ID: 1234 (12345678-9012-3456-7890-123456789012)
+Address: ssl:172.16.0.1:6643
+Status: cluster member
+Role: leader
+Term: 45
+Leader: self
+Vote: self
+
+Last Election started 12345678 ms ago, reason: timeout
+Last Election won 12345678 ms ago
+
+Election timer: 16000
+Log: [1234, 5678]
+Entries not yet committed: 0
+Entries not yet applied: 0
+
+Connections:
+  ssl:172.16.0.2:6643 (1235): last msg 1234 ms ago
+  ssl:172.16.0.3:6643 (1236): last msg 999999 ms ago   <-- PROBLEM
+----
+
+The third member (`172.16.0.3`) has not communicated in a very long time (999999 ms). This node may be down or disconnected.
+
+Check the southbound database cluster as well:
+
+[source,bash]
+----
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+----
+
+*Common Causes:*
+
+* One or more Raft members are down or unreachable
+* Network partition between controller nodes
+* Clock skew between controller nodes affecting Raft timers
+* Database file corruption on one member
+
+*Resolution:*
+
+If a member is down, restart its database service:
+
+[source,bash]
+----
+ssh controller-3 "sudo systemctl restart ovn-dbs"
+----
+
+If a member is permanently gone, remove it from the cluster:
+
+[source,bash]
+----
+# Get the server ID of the failed member
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound | grep "172.16.0.3"
+----
+
+[source,bash]
+----
+# Remove the failed member (use the server ID)
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/kick OVN_Northbound 1236
+----
+
+
+[WARNING]
+====
+Removing a Raft member is a permanent operation. The removed member cannot rejoin with its existing data - it must be re-initialized. Only remove a member if you are sure it will not come back, or if you plan to reinitialize it.
+====
+
+
+==== High Latency Database Queries
+
+*Symptoms:*
+
+* `ovn-nbctl` and `ovn-sbctl` commands take several seconds or more to return
+* API operations in the orchestrator (OpenStack, OpenShift) are slow
+* Users report slow VM creation or slow pod scheduling
+
+*Diagnosis Steps:*
+
+Time a simple query:
+
+[source,bash]
+----
+time sudo ovn-nbctl show > /dev/null
+----
+
+----
+real    0m8.234s
+user    0m0.012s
+sys     0m0.004s
+----
+
+8 seconds for a simple show is far too slow. Check the database sizes:
+
+[source,bash]
+----
+ls -lh /var/lib/ovn/*.db 2>/dev/null
+ls -lh /var/lib/openvswitch/*.db 2>/dev/null
+ls -lh /etc/ovn/*.db 2>/dev/null
+----
+
+----
+-rw-r--r--. 1 root root 1.2G Aug  5 15:45 /var/lib/ovn/ovnnb_db.db
+-rw-r--r--. 1 root root 3.4G Aug  5 15:45 /var/lib/ovn/ovnsb_db.db
+----
+
+These are extremely large. A healthy NB database is typically under 100 MB and the SB database under 500 MB. The databases need compaction.
+
+Check the number of logical flows:
+
+[source,bash]
+----
+sudo ovn-sbctl --columns=_uuid list Logical_Flow | wc -l
+----
+
+----
+2345678
+----
+
+Over 2 million logical flows is very high. This could be caused by a very large number of ports and ACLs, or by orphaned entries from deleted resources.
+
+*Common Causes:*
+
+* Databases have never been compacted and have accumulated transaction history
+* Orphaned database entries from resources that were deleted in the orchestrator but not cleaned up in OVN
+* Very large deployment with thousands of ports and security group rules
+* Excessive logging or monitoring tools making frequent queries
+
+*Resolution:*
+
+Compact both databases:
+
+[source,bash]
+----
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+----
+
+Verify the file sizes decreased:
+
+[source,bash]
+----
+ls -lh /var/lib/ovn/*.db
+----
+
+If compaction does not help enough, check for orphaned entries and clean them up.
+
+'''
+
+=== ovn-controller Problems
+
+==== ovn-controller Not Connecting to SB Database
+
+*Symptoms:*
+
+* No flows on br-int (beyond the default table-miss flows)
+* All VMs/containers on the host have no connectivity
+* ovn-controller logs show connection errors
+
+*Diagnosis Steps:*
+
+Check the connection status:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+not connected
+----
+
+Check the configured SB database connection:
+
+[source,bash]
+----
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote
+----
+
+----
+"ssl:172.16.0.1:6642"
+----
+
+Test connectivity to the SB database:
+
+[source,bash]
+----
+sudo ss -tnp | grep 6642
+----
+
+----
+(no output)
+----
+
+No connection to port 6642. Test if the port is reachable:
+
+[source,bash]
+----
+timeout 3 bash -c "echo > /dev/tcp/172.16.0.1/6642" 2>&1
+echo "Exit code: $?"
+----
+
+----
+Exit code: 1
+----
+
+The port is not reachable. Check if it is a firewall issue or if the SB database is not listening:
+
+[source,bash]
+----
+ssh controller-1 "sudo ss -tlnp | grep 6642"
+----
+
+----
+LISTEN   0    128   172.16.0.1:6642       *:*    users:(("ovsdb-server",pid=3456,fd=15))
+----
+
+The SB database is listening. Check if there is a firewall between them:
+
+[source,bash]
+----
+sudo traceroute -p 6642 172.16.0.1
+----
+
+*Common Causes:*
+
+* Firewall blocking the SB database port (TCP 6642)
+* Wrong SB database address configured in OVS external_ids
+* SSL certificate issues (expired, wrong CA, hostname mismatch)
+* SB database not listening or not started
+* Network partition between compute node and controller
+
+*Resolution:*
+
+For firewall issues:
+
+[source,bash]
+----
+sudo firewall-cmd --add-port=6642/tcp --permanent
+sudo firewall-cmd --reload
+----
+
+For wrong address:
+
+[source,bash]
+----
+sudo ovs-vsctl set Open_vSwitch . external_ids:ovn-remote="ssl:172.16.0.1:6642"
+sudo systemctl restart ovn-controller
+----
+
+For SSL issues, check the certificates:
+
+[source,bash]
+----
+sudo ovs-vsctl get Open_vSwitch . external_ids | grep -i ssl
+ls -la /etc/openvswitch/ovn*.pem 2>/dev/null
+ls -la /etc/ovn/*.pem 2>/dev/null
+----
+
+==== ovn-controller High CPU
+
+*Symptoms:*
+
+* ovn-controller consuming 100% CPU on a compute node
+* Other VMs on the same host experience increased latency
+* Flow programming is delayed
+
+*Diagnosis Steps:*
+
+[source,bash]
+----
+top -bn1 | grep ovn-controller
+----
+
+----
+ 2345 root     10  -10  345678  123456  45678 R  99.5  3.0  234:56.78 ovn-controller
+----
+
+Check what ovn-controller is doing:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller coverage/show | head -20
+----
+
+----
+Event coverage, avg rate over last: 5s, 1min, 1hr, runtime:
+           name                 total    5s      1min    1hr     runtime
+           ---------------------------------------------------------------
+  lflow_run                    234567   123.4    98.7    45.6    12.3
+  flow_mod                     345678   234.5   187.6    89.0    23.4
+  pinctrl_run                  456789   345.6   234.5   123.4    34.5
+----
+
+High `lflow_run` and `flow_mod` rates indicate ovn-controller is recomputing and reprogramming flows very frequently. This usually happens when the SB database is changing rapidly.
+
+Check the SB database change rate:
+
+[source,bash]
+----
+for i in 1 2 3 4 5; do
+  sudo ovn-sbctl get SB_Global . nb_cfg
+  sleep 2
+done
+----
+
+If the nb_cfg value is changing rapidly, many configuration changes are being applied.
+
+*Common Causes:*
+
+* Rapid creation/deletion of ports or ACLs (e.g., a script creating hundreds of VMs simultaneously)
+* SB database flapping (repeated disconnect/reconnect)
+* Bug in ovn-controller causing repeated recomputation
+* Very large number of logical flows to process
+* ovn-controller monitoring too many datapaths
+
+*Resolution:*
+
+If the issue is transient (caused by a burst of operations), wait for the operations to complete and ovn-controller to stabilize.
+
+If ovn-controller is stuck in a recompute loop, restart it:
+
+[source,bash]
+----
+sudo systemctl restart ovn-controller
+----
+
+If the problem persists, reduce the scope by limiting the datapaths ovn-controller monitors:
+
+[source,bash]
+----
+# Check how many ports are bound to this chassis
+sudo ovn-sbctl find Port_Binding chassis=$(sudo ovn-sbctl get Chassis $(hostname) _uuid) | grep logical_port | wc -l
+----
+
+'''
+
+== 5. Product-Specific Troubleshooting
+
+=== RHOSP (Red Hat OpenStack Platform)
+
+In RHOSP, OVN services run as containers managed by Podman. The troubleshooting approach differs from a standard OVN installation because you need to exec into containers to run commands.
+
+==== Finding OVN Containers
+
+[source,bash]
+----
+sudo podman ps --format "{{.Names}}" | grep -i ovn
+----
+
+----
+ovn_cluster_north_db_server
+ovn_cluster_south_db_server
+ovn-dbs-bundle-podman-0
+ovn_controller
+ovn_metadata_agent
+----
+
+==== Executing Commands Inside Containers
+
+[source,bash]
+----
+# OVN northbound commands
+sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only show
+
+# OVN southbound commands
+sudo podman exec -it ovn_cluster_south_db_server ovn-sbctl --no-leader-only show
+
+# ovn-controller commands on compute nodes
+sudo podman exec -it ovn_controller ovn-appctl -t ovn-controller connection-status
+----
+
+==== Checking Container Logs
+
+[source,bash]
+----
+sudo podman logs ovn_controller --tail 50
+sudo podman logs ovn_cluster_north_db_server --tail 50
+----
+
+==== Pacemaker-Managed Resources
+
+In HA RHOSP deployments, OVN database services are managed by Pacemaker:
+
+[source,bash]
+----
+sudo pcs status | grep -i ovn
+----
+
+----
+  * ovn-dbs-bundle-0       (ocf::ovn:ovndb-servers):    Master controller-0
+  * ovn-dbs-bundle-1       (ocf::ovn:ovndb-servers):    Slave  controller-1
+  * ovn-dbs-bundle-2       (ocf::ovn:ovndb-servers):    Slave  controller-2
+----
+
+Check Pacemaker resource status:
+
+[source,bash]
+----
+sudo pcs resource show ovn-dbs-bundle
+----
+
+If the resource is in a failed state:
+
+[source,bash]
+----
+sudo pcs resource cleanup ovn-dbs-bundle
+----
+
+==== Collecting sosreport for OVN
+
+[source,bash]
+----
+sudo sosreport --only-plugins=openvswitch,ovn,networking,pacemaker -k openvswitch.dump_flows=on
+----
+
+This collects all OVS/OVN configuration, flows, database dumps, and logs in a single archive for offline analysis.
+
+==== Neutron-OVN Agent Sync Issues
+
+When Neutron and OVN are out of sync, resources created in OpenStack do not appear in OVN:
+
+[source,bash]
+----
+# Check the Neutron OVN sync status
+sudo podman exec -it neutron_api neutron-ovn-db-sync-util --ovn-neutron_sync_mode repair
+----
+
+Compare Neutron ports with OVN ports:
+
+[source,bash]
+----
+# List Neutron ports
+openstack port list --network my-network -c ID -c "MAC Address" -c "Fixed IP Addresses"
+
+# List OVN ports
+sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only lsp-list neutron-<network-uuid>
+----
+
+
+[NOTE]
+====
+In RHOSP, the OVN logical switch name for a Neutron network is `neutron-<network-uuid>`. The OVN logical port name for a Neutron port is the port's UUID.
+====
+
+
+==== Common RHOSP-Specific Symptoms
+
+
+[cols="1,1,1",options="header"]
+|===
+|Symptom
+|Likely Cause
+|Quick Check
+
+|All VMs on one compute lost connectivity
+|ovn-controller container down
+|`sudo podman ps \| grep ovn_controller`
+
+|New VMs get no network
+|Neutron-OVN sync issue
+|Check neutron-server and ovn-northd logs
+
+|Floating IP not reachable
+|Gateway chassis misconfigured
+|`ovn-nbctl lrp-get-gateway-chassis <lrp>`
+
+|Metadata service not working
+|Metadata agent container down
+|`sudo podman ps \| grep metadata`
+
+|API calls very slow
+|OVN database needs compaction
+|Check DB file sizes
+
+|===
+
+
+'''
+
+=== RHOSO (Red Hat OpenStack Services on OpenShift)
+
+In RHOSO, OpenStack services run as pods on OpenShift, and the compute nodes (EDPM nodes) run OVN services directly. This split architecture requires different troubleshooting approaches depending on whether the problem is on the control plane (OpenShift) or the data plane (EDPM).
+
+==== Finding OVN Pods on the Control Plane
+
+[source,bash]
+----
+oc get pods -n openstack -l service=ovn
+----
+
+----
+NAME                              READY   STATUS    RESTARTS   AGE
+ovsdbserver-nb-0                  1/1     Running   0          5d
+ovsdbserver-sb-0                  1/1     Running   0          5d
+ovn-northd-5b8f6c9d7f-x2k4m      1/1     Running   0          5d
+----
+
+==== Executing Commands in OVN Pods
+
+[source,bash]
+----
+# OVN NB commands
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl show
+
+# OVN SB commands
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show
+
+# ovn-northd logs
+oc logs -n openstack ovn-northd-5b8f6c9d7f-x2k4m --tail 50
+----
+
+==== EDPM Node Troubleshooting
+
+EDPM nodes run OVN services via systemd or Podman, depending on the configuration:
+
+[source,bash]
+----
+# SSH to the EDPM node
+ssh root@edpm-compute-0
+
+# Check OVN services
+sudo systemctl status ovn-controller
+sudo systemctl status openvswitch
+
+# Or if containerized
+sudo podman ps | grep -i ovn
+----
+
+Check the connection from the EDPM node to the SB database on OpenShift:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+If not connected, verify the SB database endpoint:
+
+[source,bash]
+----
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote
+----
+
+The address should point to the OpenShift service exposing the SB database.
+
+==== Operator Logs and Events
+
+[source,bash]
+----
+# Check the OpenStack operator logs
+oc logs -n openstack-operators deployment/openstack-operator --tail 100
+
+# Check OpenStackControlPlane events
+oc get events -n openstack --sort-by='.lastTimestamp' | tail -20
+
+# Check the OVN-specific custom resources
+oc get ovndbcluster -n openstack
+oc describe ovndbcluster -n openstack
+----
+
+==== Common RHOSO-Specific Symptoms
+
+
+[cols="1,1,1",options="header"]
+|===
+|Symptom
+|Likely Cause
+|Quick Check
+
+|EDPM node cannot connect to SB DB
+|Service endpoint not exposed or wrong certificate
+|Check ovn-remote value and SB service on OCP
+
+|OVN NB pod restarting
+|Persistent volume issue or memory limit
+|`oc describe pod ovsdbserver-nb-0`
+
+|Neutron API errors about OVN
+|ovn-northd not running
+|`oc get pods -n openstack \
+\|grep northd`
+
+|New compute node not joining
+|EDPM provisioning incomplete
+|Check EDPM operator logs
+
+|===
+
+
+'''
+
+=== OCP (Red Hat OpenShift Container Platform)
+
+OpenShift uses OVN-Kubernetes as its sole CNI plugin (OpenShift SDN was removed in OCP 4.17). Since OCP 4.14, OVN-K runs in *Interconnect (IC) mode* by default, where each node has its own independent NB/SB DB, northd, and ovn-controller. OVN components run as DaemonSets and Deployments in the `openshift-ovn-kubernetes` namespace.
+
+==== Finding OVN Pods
+
+[source,bash]
+----
+oc get pods -n openshift-ovn-kubernetes -o wide
+----
+
+----
+NAME                                     READY   STATUS    RESTARTS   AGE   IP            NODE
+ovnkube-control-plane-6b8f9d7c5-abc12    1/1     Running   0          5d    10.0.0.1      master-0
+ovnkube-control-plane-6b8f9d7c5-def34    1/1     Running   0          5d    10.0.0.2      master-1
+ovnkube-control-plane-6b8f9d7c5-ghi56    1/1     Running   0          5d    10.0.0.3      master-2
+ovnkube-node-abc12                       8/8     Running   0          5d    10.0.0.1      master-0
+ovnkube-node-def34                       8/8     Running   0          5d    10.0.0.2      master-1
+ovnkube-node-ghi56                       8/8     Running   0          5d    10.0.0.3      master-2
+ovnkube-node-jkl78                       8/8     Running   0          5d    10.0.0.4      worker-0
+ovnkube-node-mno90                       8/8     Running   0          5d    10.0.0.5      worker-1
+----
+
+* `ovnkube-control-plane` pods coordinate cluster-wide resources (EgressIP, zone management).
+* `ovnkube-node` pods run on every node (DaemonSet) and contain the full OVN stack in IC mode: nbdb, sbdb, northd, ovn-controller, and ovnkube-controller.
+
+[WARNING]
+====
+In IC mode, each node has its own NB/SB DB. You must query the specific node's `ovnkube-node` pod to see that node's OVN topology. There is no single centralized database to query.
+====
+
+==== Running OVN Commands in OpenShift (IC Mode - OCP 4.14+)
+
+[source,bash]
+----
+# Get the OVN NB database contents (query from the specific node's pod)
+oc exec -n openshift-ovn-kubernetes ovnkube-node-jkl78 \
+  -c nbdb -- ovn-nbctl show
+
+# Get the OVN SB database contents
+oc exec -n openshift-ovn-kubernetes ovnkube-node-jkl78 \
+  -c sbdb -- ovn-sbctl show
+
+# Check ovn-controller on a specific node
+oc exec -n openshift-ovn-kubernetes ovnkube-node-jkl78 \
+  -c ovn-controller -- ovn-appctl -t ovn-controller connection-status
+
+# Check OVS flows on a specific node
+oc exec -n openshift-ovn-kubernetes ovnkube-node-jkl78 \
+  -c ovn-controller -- ovs-ofctl dump-flows br-int | head -30
+----
+
+==== Using oc debug for Host-Level Access
+
+[source,bash]
+----
+# Debug a specific node
+oc debug node/worker-0
+
+# Inside the debug pod
+chroot /host
+ovs-vsctl show
+ovs-ofctl dump-flows br-int | wc -l
+journalctl -u ovs-vswitchd --since "1 hour ago" | tail -20
+----
+
+==== Collecting must-gather
+
+[source,bash]
+----
+oc adm must-gather --image=registry.redhat.io/openshift4/network-tools-rhel8
+----
+
+This collects all OVN and OVS configuration, logs, flows, and database dumps from every node. It is the equivalent of sosreport for OpenShift networking.
+
+==== Common OCP Networking Symptoms
+
+*Pod-to-pod connectivity failure:*
+
+[source,bash]
+----
+# Check if both pods are running
+oc get pods -o wide | grep <pod-name>
+
+# Check the logical switch port for each pod (query the SOURCE node's ovnkube-node pod)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-nbctl find Logical_Switch_Port \
+  external_ids:pod=true | grep -A 5 "<pod-namespace>/<pod-name>"
+
+# Trace the traffic (from the SOURCE node's ovnkube-node pod)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-trace <switch> \
+  'inport=="<src-port>" && eth.src==<src-mac> && ip4.dst==<dst-ip>'
+----
+
+*Service not reachable:*
+
+[source,bash]
+----
+# Check the Service and Endpoints
+oc get svc <service-name> -o yaml
+oc get endpoints <service-name>
+
+# Check the OVN load balancer (from the node where the service client pod runs)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-nbctl list Load_Balancer | grep -A 10 "<service-cluster-ip>"
+----
+
+*Egress traffic not working:*
+
+[source,bash]
+----
+# Check EgressIP configuration
+oc get egressip
+
+# Check if the EgressIP is assigned to a node
+oc get egressip <egressip-name> -o yaml | grep -A 5 status
+
+# Check the NAT rules for the EgressIP (from the node hosting the EgressIP)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-nbctl lr-nat-list <router>
+----
+
+
+[cols="1,1,1",options="header"]
+|===
+|Symptom
+|Likely Cause
+|Quick Check
+
+|Pod cannot reach any other pod
+|ovnkube-node pod crashing
+|`oc get pods -n openshift-ovn-kubernetes`
+
+|Service ClusterIP not working
+|Stale OVN load balancer
+|Check OVN LB for the Service VIP
+
+|Pod cannot reach external network
+|Missing SNAT or EgressIP
+|Check NAT rules on the router
+
+|New node has no networking
+|ovnkube-node DaemonSet not scheduled
+|Check node labels and DaemonSet selector
+
+|DNS resolution failing
+|CoreDNS or OVN Service LB issue
+|Check CoreDNS pods and OVN LB for DNS VIP
+
+|===
+
+
+'''
+
+== 6. Real-World Scenarios
+
+=== Scenario 1: VM-to-VM Connectivity Failure Across Compute Nodes
+
+*Customer Report:*
+
+"We have two VMs - vm-web (10.0.0.5 on compute-1) and vm-db (10.0.0.10 on compute-2) - both on the same network 'internal-net'. They were communicating fine until yesterday afternoon. Now vm-web cannot ping vm-db. Both VMs can ping their default gateway (10.0.0.1). Other VMs on the same network can reach vm-db from compute-2 but not from compute-1. We did not make any changes."
+
+*Investigation Steps:*
+
+Step 1: Verify the symptom and scope.
+
+[source,bash]
+----
+# From inside vm-web
+ping -c 3 10.0.0.10
+----
+
+----
+PING 10.0.0.10 (10.0.0.10) 56(84) bytes of data.
+From 10.0.0.5 icmp_seq=1 Destination Host Unreachable
+From 10.0.0.5 icmp_seq=2 Destination Host Unreachable
+From 10.0.0.5 icmp_seq=3 Destination Host Unreachable
+----
+
+Confirmed. Can vm-web reach its gateway?
+
+[source,bash]
+----
+ping -c 3 10.0.0.1
+----
+
+----
+PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.
+64 bytes from 10.0.0.1: icmp_seq=1 ttl=254 time=0.345 ms
+64 bytes from 10.0.0.1: icmp_seq=2 ttl=254 time=0.234 ms
+----
+
+Gateway is reachable. Since both VMs are on the same L2 network, traffic should go directly through the tunnel without routing. This points to a tunnel issue between compute-1 and compute-2.
+
+Step 2: Check the tunnel from compute-1 to compute-2.
+
+[source,bash]
+----
+# On compute-1
+sudo ovs-vsctl show | grep -A 4 "compute-2\|node2"
+----
+
+----
+        Port "ovn-comput-0"
+            Interface "ovn-comput-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.16.0.2"}
+----
+
+The tunnel port exists and points to 172.16.0.2. Test underlay connectivity:
+
+[source,bash]
+----
+ping -c 3 172.16.0.2
+----
+
+----
+PING 172.16.0.2 (172.16.0.2) 56(84) bytes of data.
+64 bytes from 172.16.0.2: icmp_seq=1 ttl=64 time=0.456 ms
+64 bytes from 172.16.0.2: icmp_seq=2 ttl=64 time=0.345 ms
+----
+
+Underlay connectivity is fine. So the tunnel endpoint is reachable but VM traffic is not flowing.
+
+Step 3: Check if Geneve traffic is being sent and received.
+
+[source,bash]
+----
+# On compute-1, capture Geneve traffic to compute-2
+sudo tcpdump -i eth0 -nn "host 172.16.0.2 and port 6081" -c 5
+----
+
+While tcpdump is running, send a ping from vm-web:
+
+----
+15:45:01.123456 IP 172.16.0.1.55432 > 172.16.0.2.6081: Geneve, Flags [C], vni 0x5, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4, length 98: 10.0.0.5 > 10.0.0.10: ICMP echo request, id 1234, seq 1, length 64
+----
+
+Packets are leaving compute-1 over the tunnel. Check if they arrive on compute-2:
+
+[source,bash]
+----
+# On compute-2
+sudo tcpdump -i eth0 -nn "host 172.16.0.1 and port 6081" -c 5
+----
+
+----
+(no output - no packets captured)
+----
+
+Geneve packets are leaving compute-1 but not arriving at compute-2. This means something in the physical network between compute-1 and compute-2 is dropping the packets.
+
+Step 4: Check the physical network path.
+
+[source,bash]
+----
+traceroute -n 172.16.0.2
+----
+
+----
+traceroute to 172.16.0.2 (172.16.0.2), 30 hops max, 60 byte packets
+ 1  172.16.0.254 (172.16.0.254)  0.345 ms  0.234 ms  0.123 ms
+ 2  172.16.0.2 (172.16.0.2)  0.456 ms  0.345 ms  0.234 ms
+----
+
+The path goes through 172.16.0.254, which is a physical switch/router. The ICMP traceroute works (small packets), but Geneve packets do not. This suggests an MTU issue or a firewall on the intermediate device.
+
+Step 5: Test with different packet sizes.
+
+[source,bash]
+----
+ping -c 3 -M do -s 1450 172.16.0.2
+----
+
+----
+PING 172.16.0.2 (172.16.0.2) 1450(1478) bytes of data.
+From 172.16.0.254 icmp_seq=1 Frag needed and DF set (mtu = 1400)
+----
+
+The intermediate switch has an MTU of only 1400. Geneve-encapsulated packets (which are at least 1500 + 58 = 1558 bytes for full-size inner packets) are being dropped because they exceed the path MTU.
+
+*Root Cause:*
+
+The physical switch at 172.16.0.254 was replaced yesterday during maintenance ("we did not make any changes" often means "we did not make any changes to the virtual infrastructure"). The replacement switch has a default MTU of 1400 instead of 9000 (jumbo frames) like the old switch.
+
+*Resolution:*
+
+Option 1 (preferred): Configure the physical switch to support jumbo frames:
+
+----
+# On the physical switch (example for Cisco)
+interface GigabitEthernet0/1
+  mtu 9000
+----
+
+Option 2 (temporary): Reduce the VM MTU to accommodate the smaller physical MTU:
+
+[source,bash]
+----
+# Calculate: 1400 (physical) - 58 (Geneve overhead) = 1342
+openstack network set --mtu 1342 internal-net
+
+# Update DHCP options
+sudo ovn-nbctl set DHCP_Options <uuid> options:mtu="1342"
+----
+
+*Prevention:*
+
+* Document the required physical network MTU for tunnel traffic
+* Add MTU validation to infrastructure change procedures
+* Monitor encapsulated packet drop counts on physical switches
+* Set up end-to-end MTU probes between all compute nodes
+
+[IMPORTANT]
+.Key Diagnostic Insight: ovn-trace Shows Success, But Packets Still Fail
+====
+`ovn-trace` operates at the *logical layer only*. It traces packets through OVN logical flows and shows successful delivery to the output port. But it has *no visibility* into the physical transport layer (Geneve tunnels, host firewall rules, MTU issues).
+
+When `ovn-trace` says the packet is delivered but connectivity fails, the problem is between the logical and physical layers. Use *BFD (Bidirectional Forwarding Detection)* to bridge this gap:
+
+[source]
+----
+# Check BFD status on a compute node (real output from RHOSP 17.1)
+sudo ovs-vsctl show | grep -A 5 "bfd_status"
+
+    Port ovn-36ab4d-0
+        Interface ovn-36ab4d-0
+            type: geneve
+            options: {csum="true", key=flow, remote_ip="172.20.0.35"}
+            bfd_status: {diagnostic="Control Detection Time Expired",
+                         flap_count="2", forwarding="false",
+                         remote_state=down, state=down}           <1>
+----
+<1> `state=down` and `forwarding=false` - BFD detected the tunnel is down even though the Geneve port exists
+
+*Diagnostic decision tree when ovn-trace succeeds but traffic fails:*
+
+. `ovn-trace` shows output -> logical layer OK
+. `ping` fails -> physical layer problem
+. Check BFD status (`ovs-vsctl show | grep -A 5 bfd_status`) -> tunnel health
+. If BFD is down: check `iptables -L -n | grep 6081`, MTU, physical network path
+. If no BFD: `tcpdump -i <NIC> -nn udp port 6081` to verify Geneve packets
+====
+
+'''
+
+=== Scenario 2: Floating IP Not Working After Migration
+
+*Customer Report:*
+
+"VM 'app-server' had floating IP 172.16.0.101 and was working fine on compute-1. We live-migrated it to compute-2. After migration, the VM can reach the internet (outbound works), but nobody can reach the VM via the floating IP from outside. The old compute-1 still responds to ARP for 172.16.0.101 even though the VM is no longer there."
+
+*Investigation Steps:*
+
+Step 1: Confirm where the VM is running now.
+
+[source,bash]
+----
+openstack server show app-server -c name -c "OS-EXT-SRV-ATTR:host" -c addresses
+----
+
+----
++----------------------+-------------------------------------+
+| Field                | Value                               |
++----------------------+-------------------------------------+
+| name                 | app-server                          |
+| OS-EXT-SRV-ATTR:host | compute-2                           |
+| addresses            | internal-net=10.0.0.5, 172.16.0.101 |
++----------------------+-------------------------------------+
+----
+
+The VM is on compute-2 and the floating IP is still associated.
+
+Step 2: Check OVN port binding.
+
+[source,bash]
+----
+sudo ovn-sbctl find Port_Binding logical_port=<port-uuid> | grep -E "chassis|logical_port"
+----
+
+----
+chassis             : e6f7a8b9-c0d1-2345-ef01-678901234567
+logical_port        : "abcdef12-3456-7890-abcd-ef1234567890"
+----
+
+[source,bash]
+----
+sudo ovn-sbctl get Chassis e6f7a8b9-c0d1-2345-ef01-678901234567 name
+----
+
+----
+"compute-2"
+----
+
+Good, the port is bound to compute-2. Now check the NAT configuration:
+
+Step 3: Check the NAT rule and gateway chassis.
+
+[source,bash]
+----
+sudo ovn-nbctl lr-nat-list neutron-<router-uuid> | grep 172.16.0.101
+----
+
+----
+dnat_and_snat    172.16.0.101       10.0.0.5              fa:16:3e:aa:bb:cc    abcdef12-3456-7890-abcd-ef1234567890
+----
+
+The DNAT+SNAT rule exists. Check the gateway chassis:
+
+[source,bash]
+----
+sudo ovn-nbctl lrp-get-gateway-chassis lrp-<external-port-uuid>
+----
+
+----
+lrp-<external-port-uuid>_compute-1    20
+lrp-<external-port-uuid>_compute-2    10
+----
+
+The gateway chassis priority shows compute-1 at priority 20 and compute-2 at priority 10. Since this is a distributed floating IP (the DNAT rule has a `logical_port` set), the NAT should be performed on the chassis where the VM resides. But something is going wrong.
+
+Step 4: Check ARP on the external network.
+
+[source,bash]
+----
+# On the gateway/external network, or on compute-2's br-ex
+sudo tcpdump -i br-ex -nn arp | grep 172.16.0.101
+----
+
+----
+15:50:01.123456 ARP, Request who-has 172.16.0.101 tell 172.16.0.254, length 28
+15:50:01.234567 ARP, Reply 172.16.0.101 is-at fa:16:3e:77:88:99, length 28
+----
+
+On compute-2, the ARP reply is being sent. Now check compute-1:
+
+[source,bash]
+----
+# On compute-1
+sudo tcpdump -i br-ex -nn arp | grep 172.16.0.101
+----
+
+----
+15:50:02.345678 ARP, Request who-has 172.16.0.101 tell 172.16.0.254, length 28
+15:50:02.456789 ARP, Reply 172.16.0.101 is-at fa:16:3e:99:aa:bb, length 28
+----
+
+Compute-1 is also replying to ARP for 172.16.0.101 with a different MAC. This is the problem - both compute nodes are answering ARP for the floating IP.
+
+Step 5: Check why compute-1 is still responding.
+
+[source,bash]
+----
+# On compute-1
+sudo ovs-ofctl dump-flows br-ex | grep "172.16.0.101"
+----
+
+----
+ cookie=0xdead1234, table=0, priority=100,arp,arp_tpa=172.16.0.101 actions=move:NXM_OF_ETH_SRC[]->NXM_OF_ETH_DST[],mod_dl_src:fa:16:3e:99:aa:bb,load:0x2->NXM_OF_ARP_OP[],move:NXM_NX_ARP_SHA[]->NXM_NX_ARP_THA[],load:0xfa163e99aabb->NXM_NX_ARP_SHA[],move:NXM_OF_ARP_SPA[]->NXM_OF_ARP_TPA[],load:0xac100065->NXM_OF_ARP_SPA[],IN_PORT
+----
+
+There are stale ARP responder flows on compute-1 for the floating IP. ovn-controller on compute-1 did not remove them after the migration.
+
+*Root Cause:*
+
+ovn-controller on compute-1 did not clean up the ARP responder flows for the floating IP after the VM migrated away. This can happen if ovn-controller was temporarily disconnected from the SB database during the migration, or if a flow recompute did not run after the port binding changed.
+
+*Resolution:*
+
+Force ovn-controller on compute-1 to recompute its flows:
+
+[source,bash]
+----
+# On compute-1
+sudo ovn-appctl -t ovn-controller recompute
+----
+
+Verify the stale flows are gone:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-ex | grep "172.16.0.101"
+----
+
+----
+(no output)
+----
+
+If the flows persist after recompute, restart ovn-controller:
+
+[source,bash]
+----
+sudo systemctl restart ovn-controller
+----
+
+To clear the stale ARP entry on the upstream router immediately (rather than waiting for timeout):
+
+[source,bash]
+----
+# On the upstream router, or ask the network team to clear the ARP cache for 172.16.0.101
+----
+
+*Prevention:*
+
+* Monitor ovn-controller connection status with alerting
+* After live migrations, verify floating IP reachability as part of the migration validation
+* Ensure ovn-controller has stable connectivity to the SB database during migrations
+* Consider configuring a shorter ARP cache timeout on the upstream router
+
+'''
+
+=== Scenario 3: OpenShift Pod Cannot Reach External Network
+
+*Customer Report:*
+
+"We have a pod in the 'production' namespace that needs to reach an external API at 203.0.113.50:443. The pod can reach other pods and services within the cluster, but any connection to external IPs times out. Other namespaces can reach external networks fine. We recently configured EgressIP for the 'production' namespace."
+
+*Investigation Steps:*
+
+Step 1: Verify the pod can reach cluster-internal destinations.
+
+[source,bash]
+----
+oc exec -n production app-pod-abc123 -- curl -s --connect-timeout 5 http://kubernetes.default.svc:443
+----
+
+----
+(connection successful or certificate error - either way it connected)
+----
+
+Step 2: Verify the pod cannot reach external.
+
+[source,bash]
+----
+oc exec -n production app-pod-abc123 -- curl -s --connect-timeout 5 https://203.0.113.50:443
+----
+
+----
+curl: (28) Connection timed out after 5001 milliseconds
+----
+
+Step 3: Check the EgressIP configuration.
+
+[source,bash]
+----
+oc get egressip -o yaml
+----
+
+----
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: production-egress
+spec:
+  egressIPs:
+  - 10.0.0.200
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: production
+status:
+  items:
+  - egressIP: 10.0.0.200
+    node: worker-0
+----
+
+The EgressIP 10.0.0.200 is assigned to worker-0. Check if the pod is on worker-0:
+
+[source,bash]
+----
+oc get pod -n production app-pod-abc123 -o wide | awk '{print $7}'
+----
+
+----
+worker-1
+----
+
+The pod is on worker-1, but the EgressIP is on worker-0. This means traffic must transit from worker-1 to worker-0 for SNAT, then exit to the external network from worker-0.
+
+Step 4: Check OVN NAT rules.
+
+[source,bash]
+----
+# Query from the node hosting the EgressIP (worker-0)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod-on-worker-0> \
+  -c nbdb -- ovn-nbctl lr-nat-list GR_worker-0
+----
+
+----
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+snat             10.0.0.200         10.128.2.0/23
+----
+
+The SNAT rule exists for the pod subnet of the production namespace (10.128.2.0/23) to use EgressIP 10.0.0.200.
+
+Step 5: Check if worker-0 can reach the external network.
+
+[source,bash]
+----
+oc debug node/worker-0
+chroot /host
+ping -c 3 203.0.113.50
+----
+
+----
+PING 203.0.113.50 (203.0.113.50) 56(84) bytes of data.
+64 bytes from 203.0.113.50: icmp_seq=1 ttl=48 time=15.234 ms
+----
+
+worker-0 can reach the external network. Step 6: Check if traffic from the pod reaches worker-0.
+
+[source,bash]
+----
+# On worker-0, capture traffic destined for 203.0.113.50
+oc debug node/worker-0
+chroot /host
+tcpdump -i br-ex -nn "host 203.0.113.50" -c 10
+----
+
+While tcpdump is running, run the curl from the pod again. If no packets appear, the traffic is not reaching worker-0.
+
+Step 7: Check the OVN logical flows for the EgressIP reroute.
+
+[source,bash]
+----
+# Query the SB DB from the worker-0 ovnkube-node pod
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod-on-worker-0> \
+  -c sbdb -- ovn-sbctl lflow-list | grep "10.0.0.200"
+----
+
+Check if there is an issue with the reroute flow:
+
+[source,bash]
+----
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-nbctl lr-policy-list ovn_cluster_router | grep -i "10.128.2"
+----
+
+----
+(no output)
+----
+
+There is no reroute policy for the production namespace pod subnet. The EgressIP was configured but the reroute policy was not created.
+
+Step 8: Check the ovnkube-controller logs for errors.
+
+[source,bash]
+----
+oc logs -n openshift-ovn-kubernetes $(oc get pods -n openshift-ovn-kubernetes -l app=ovnkube-control-plane -o jsonpath='{.items[0].metadata.name}') \
+  -c ovnkube-cluster-manager --tail 100 | grep -i "egress\|error"
+----
+
+----
+E0805 15:30:45.123456  1 egressip.go:567] failed to add logical router policy for EgressIP 10.0.0.200: transaction error: constraint violation
+----
+
+There is an error adding the logical router policy.
+
+*Root Cause:*
+
+The EgressIP controller in ovnkube-controller encountered a database constraint violation when trying to create the reroute policy. This can happen when there is a conflict with an existing policy, or when the database has a stale entry from a previous EgressIP configuration. The SNAT rule was created successfully, but the reroute policy (which redirects traffic from the pod's node to the EgressIP node) was not, so traffic from pods on other nodes never reaches worker-0 for SNAT.
+
+*Resolution:*
+
+Delete and recreate the EgressIP:
+
+[source,bash]
+----
+oc delete egressip production-egress
+----
+
+Wait a few seconds for cleanup:
+
+[source,bash]
+----
+sleep 10
+----
+
+Recreate:
+
+[source,bash]
+----
+oc apply -f - <<EOF
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: production-egress
+spec:
+  egressIPs:
+  - 10.0.0.200
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: production
+EOF
+----
+
+Verify the reroute policy was created:
+
+[source,bash]
+----
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c nbdb -- ovn-nbctl lr-policy-list ovn_cluster_router | grep "10.128.2"
+----
+
+----
+100 ip4.src == 10.128.2.0/23 reroute 100.64.0.4
+----
+
+Test from the pod:
+
+[source,bash]
+----
+oc exec -n production app-pod-abc123 -- curl -s --connect-timeout 5 https://203.0.113.50:443
+----
+
+*Prevention:*
+
+* After configuring EgressIP, always verify both the SNAT rule and the reroute policy are created
+* Monitor ovnkube-controller logs for errors during EgressIP operations
+* Keep OVN databases compacted to reduce constraint violation risks
+
+'''
+
+=== Scenario 4: OVN Database High Latency Causing Slow API Responses
+
+*Customer Report:*
+
+"All OpenStack API operations are extremely slow. Creating a VM takes 5 minutes instead of 30 seconds. Listing networks takes 45 seconds. The environment has been running for 6 months without issues, and we have about 500 VMs across 20 compute nodes."
+
+*Investigation Steps:*
+
+Step 1: Confirm the API slowness.
+
+[source,bash]
+----
+time openstack network list > /dev/null
+----
+
+----
+real    0m42.345s
+----
+
+42 seconds for listing networks is far too slow.
+
+Step 2: Check if the problem is Neutron or OVN.
+
+[source,bash]
+----
+time sudo ovn-nbctl --timeout=60 show > /dev/null
+----
+
+----
+real    0m38.123s
+----
+
+OVN NB queries are also very slow. The problem is at the OVN database level.
+
+Step 3: Check the OVN database sizes.
+
+[source,bash]
+----
+sudo podman exec -it ovn_cluster_north_db_server ls -lh /etc/ovn/ovnnb_db.db
+sudo podman exec -it ovn_cluster_south_db_server ls -lh /etc/ovn/ovnsb_db.db
+----
+
+----
+-rw-r--r--. 1 root root 2.1G Aug  5 16:00 /etc/ovn/ovnnb_db.db
+-rw-r--r--. 1 root root 5.8G Aug  5 16:00 /etc/ovn/ovnsb_db.db
+----
+
+2.1 GB NB database and 5.8 GB SB database. These are extremely bloated for a 500-VM environment (expected sizes would be around 20-50 MB for NB and 100-300 MB for SB).
+
+Step 4: Check the Raft cluster health.
+
+[source,bash]
+----
+sudo podman exec -it ovn_cluster_north_db_server \
+  ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+----
+
+----
+2345
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234-...)
+Server ID: 1234 (12345678-...)
+Address: ssl:172.16.0.1:6643
+Status: cluster member
+Role: leader
+Term: 234
+Leader: self
+Vote: self
+
+Election timer: 16000
+Log: [1, 8923456]
+Entries not yet committed: 0
+Entries not yet applied: 0
+
+Connections:
+  ssl:172.16.0.2:6643 (1235): last msg 123 ms ago
+  ssl:172.16.0.3:6643 (1236): last msg 456 ms ago
+----
+
+The Raft log goes from index 1 to 8923456. This means the Raft log has never been compacted - it contains the entire history of all database changes since the cluster was created 6 months ago.
+
+Step 5: Check disk I/O.
+
+[source,bash]
+----
+iostat -x 1 3 | grep -A 5 "Device"
+----
+
+----
+Device            r/s     w/s   rkB/s   wkB/s  %util
+sda             45.23   234.56  1234.5  56789.0  98.7
+----
+
+The disk is at 98.7% utilization. The enormous database files are causing heavy I/O.
+
+Step 6: Verify that compaction has never been run.
+
+[source,bash]
+----
+sudo podman exec -it ovn_cluster_north_db_server \
+  ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory/show
+----
+
+*Root Cause:*
+
+The OVN Raft databases have never been compacted in 6 months of operation. The transaction log has accumulated millions of entries, causing the database files to grow to multi-gigabyte sizes. Every query must now read through or index against this enormous dataset, causing the severe latency.
+
+*Resolution:*
+
+Compact both databases:
+
+[source,bash]
+----
+# Compact NB database
+sudo podman exec -it ovn_cluster_north_db_server \
+  ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+
+# Compact SB database
+sudo podman exec -it ovn_cluster_south_db_server \
+  ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+----
+
+Wait for compaction to complete (this can take several minutes for very large databases):
+
+[source,bash]
+----
+# Monitor the file size
+watch -n 5 'sudo podman exec ovn_cluster_north_db_server ls -lh /etc/ovn/ovnnb_db.db'
+----
+
+After compaction:
+
+----
+-rw-r--r--. 1 root root 34M Aug  5 16:15 /etc/ovn/ovnnb_db.db
+-rw-r--r--. 1 root root 186M Aug  5 16:18 /etc/ovn/ovnsb_db.db
+----
+
+Verify the improvement:
+
+[source,bash]
+----
+time openstack network list > /dev/null
+----
+
+----
+real    0m1.234s
+----
+
+From 42 seconds to 1.2 seconds.
+
+*Prevention:*
+
+* Set up automatic database compaction via a cron job or systemd timer
+* Monitor database file sizes with alerting (alert if NB exceeds 200 MB or SB exceeds 1 GB)
+* In RHOSP, file a proactive recommendation to enable automatic compaction
+* Consider setting the `ovsdb-server/compact` interval in the database configuration
+
+[source,bash]
+----
+# Example cron job for automatic compaction (adjust paths for your environment)
+echo "0 3 * * * root podman exec ovn_cluster_north_db_server ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact && podman exec ovn_cluster_south_db_server ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact" | sudo tee /etc/cron.d/ovn-compact
+----
+
+'''
+
+=== Scenario 5: Security Group Rules Not Taking Effect
+
+*Customer Report:*
+
+"We added a new security group rule to allow TCP port 8080 to our web server VM about 30 minutes ago. The rule shows up in 'openstack security group rule list' but the traffic is still blocked. We have tried removing and re-adding the rule. Other security group changes in the past have worked fine."
+
+*Investigation Steps:*
+
+Step 1: Confirm the security group rule exists in OpenStack.
+
+[source,bash]
+----
+openstack security group rule list web-sg --long -c ID -c Direction -c Protocol -c "Port Range" -c "Remote IP Prefix"
+----
+
+----
++------+----------+----------+------------+------------------+
+| ID   | Direction | Protocol | Port Range | Remote IP Prefix |
++------+----------+----------+------------+------------------+
+| abc1 | ingress   | tcp      | 22:22      | 0.0.0.0/0        |
+| abc2 | ingress   | tcp      | 80:80      | 0.0.0.0/0        |
+| abc3 | ingress   | tcp      | 8080:8080  | 0.0.0.0/0        |
+| abc4 | egress    | None     | None       | 0.0.0.0/0        |
++------+----------+----------+------------+------------------+
+----
+
+The rule for TCP 8080 (abc3) exists.
+
+Step 2: Check if the ACL exists in OVN NB.
+
+[source,bash]
+----
+sudo ovn-nbctl acl-list neutron-<network-uuid> | grep 8080
+----
+
+----
+  to-lport  1002 (outport == "@pg_<security-group-uuid>" && ip4 && tcp && tcp.dst == 8080) allow-related
+----
+
+The ACL is present in OVN NB.
+
+Step 3: Check the OVN SB logical flows.
+
+[source,bash]
+----
+sudo ovn-sbctl lflow-list | grep "tcp.dst == 8080"
+----
+
+----
+  table=7 (ls_in_acl_eval    ), priority=2002, match=(reg0[8] == 1 && outport == @pg_<security-group-uuid> && ip4 && tcp && tcp.dst == 8080), action=(reg8[16] = 0; ct_commit; next;)
+----
+
+The logical flow exists in the SB database. Step 4: Check if the flow is programmed on the compute node.
+
+[source,bash]
+----
+# On the compute node where the VM is running
+sudo ovs-ofctl dump-flows br-int | grep "tp_dst=8080"
+----
+
+----
+(no output)
+----
+
+The flow is not programmed on OVS. The SB database has the logical flow, but ovn-controller has not translated it to an OpenFlow flow on this host.
+
+Step 5: Check ovn-controller status.
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+Connected, but maybe it has stale state. Check the last recompute time:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller coverage/show | grep "lflow_run\|recompute"
+----
+
+----
+  lflow_run                    12345    0.0     0.0     0.2     0.0
+  recompute                        2    0.0     0.0     0.0     0.0
+----
+
+`lflow_run` rate is 0.0 in the last 5 seconds and 1 minute. ovn-controller is not processing logical flows. It may have missed the SB database update notification.
+
+Step 6: Force a recompute.
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller recompute
+----
+
+Check again:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "tp_dst=8080"
+----
+
+----
+ cookie=0xdeadbeef, duration=2.345s, table=44, n_packets=0, n_bytes=0, priority=2002,ct_state=+est+trk,tcp,reg15=0x3,metadata=0x5,tp_dst=8080 actions=load:0->NXM_NX_XXREG0[97],resubmit(,45)
+----
+
+The flow is now installed.
+
+Step 7: Test the connectivity.
+
+[source,bash]
+----
+curl --connect-timeout 5 http://<vm-floating-ip>:8080
+----
+
+----
+(connection successful)
+----
+
+*Root Cause:*
+
+ovn-controller on the compute node missed the SB database change notification for the new ACL. This can happen when ovn-controller's OVSDB monitor connection experiences a transient issue - the connection stays up, but a change notification is lost. Without the notification, ovn-controller does not know to recompute its flows. This is a known edge case that can occur after network jitter or brief database congestion.
+
+*Resolution:*
+
+The `recompute` command forced ovn-controller to re-read all logical flows from the SB database and reprogram the OVS flows. This resolved the immediate issue.
+
+*Prevention:*
+
+* Set up periodic flow validation that compares SB logical flows with actual OVS flows
+* Monitor the `nb_cfg` value on each chassis - if a chassis's `nb_cfg` falls behind the SB global `nb_cfg` for more than a few minutes, it indicates a sync issue
+* Consider restarting ovn-controller on a schedule (e.g., weekly) to force a full recompute
+
+[source,bash]
+----
+# Check nb_cfg sync status across all chassis
+sudo ovn-sbctl list Chassis | grep -E "name|nb_cfg"
+----
+
+----
+name                : "compute-1"
+nb_cfg              : 143
+name                : "compute-2"
+nb_cfg              : 145
+----
+
+If compute-1 is behind (143 vs 145), it has not processed the latest changes.
+
+'''
+
+=== Scenario 6: Performance Degradation After Scale-Up
+
+*Customer Report:*
+
+"We scaled our OpenStack environment from 200 VMs to 800 VMs over the last week. Since then, network performance has degraded significantly. Ping latency between VMs has gone from sub-millisecond to 5-10ms. Some TCP connections take a long time to establish. This affects all VMs, not just the new ones."
+
+*Investigation Steps:*
+
+Step 1: Confirm the latency increase.
+
+[source,bash]
+----
+# From inside a VM
+ping -c 10 10.0.0.10
+----
+
+----
+--- 10.0.0.10 ping statistics ---
+10 packets transmitted, 10 received, 0% packet loss, time 9012ms
+rtt min/avg/max/mdev = 3.234/7.456/12.345/2.567 ms
+----
+
+7.4ms average for same-host or same-rack VMs is indeed too high (expected sub-millisecond).
+
+Step 2: Check OVS daemon CPU usage across compute nodes.
+
+[source,bash]
+----
+for node in compute-{1..10}; do
+  echo -n "$node: "
+  ssh $node "top -bn1 | grep ovs-vswitchd | awk '{print \$9}'"
+done
+----
+
+----
+compute-1: 85.2
+compute-2: 92.1
+compute-3: 78.5
+compute-4: 95.3
+compute-5: 88.7
+...
+----
+
+ovs-vswitchd is consuming 78-95% CPU on all compute nodes.
+
+Step 3: Check the conntrack table.
+
+[source,bash]
+----
+for node in compute-{1..10}; do
+  echo -n "$node conntrack: "
+  ssh $node "sudo conntrack -C"
+  echo -n "  limit: "
+  ssh $node "sudo sysctl -n net.netfilter.nf_conntrack_max"
+done
+----
+
+----
+compute-1 conntrack: 261890  limit: 262144
+compute-2 conntrack: 262144  limit: 262144
+compute-3 conntrack: 258934  limit: 262144
+compute-4 conntrack: 262144  limit: 262144
+...
+----
+
+Multiple compute nodes have conntrack tables at or near the limit of 262144.
+
+Step 4: Check for conntrack table full messages.
+
+[source,bash]
+----
+ssh compute-2 "dmesg | grep conntrack | tail -5"
+----
+
+----
+[1234567.890123] nf_conntrack: table full, dropping packet.
+[1234567.891234] nf_conntrack: table full, dropping packet.
+[1234567.892345] nf_conntrack: table full, dropping packet.
+----
+
+Confirmed - conntrack table is full and packets are being dropped.
+
+Step 5: Check OVS flow table size.
+
+[source,bash]
+----
+for node in compute-{1..5}; do
+  echo -n "$node flows: "
+  ssh $node "sudo ovs-ofctl dump-flows br-int | wc -l"
+done
+----
+
+----
+compute-1 flows: 45678
+compute-2 flows: 52341
+compute-3 flows: 48923
+compute-4 flows: 55123
+compute-5 flows: 51234
+----
+
+[source,bash]
+----
+for node in compute-{1..5}; do
+  echo -n "$node dp-flows: "
+  ssh $node "sudo ovs-appctl dpctl/dump-flows | wc -l"
+done
+----
+
+----
+compute-1 dp-flows: 234567
+compute-2 dp-flows: 298432
+compute-3 dp-flows: 256789
+compute-4 dp-flows: 312456
+compute-5 dp-flows: 278901
+----
+
+The datapath flow counts (234K-312K) are very high. Each unique traffic pattern creates a kernel-level flow, and with 800 VMs communicating with each other and external services, the number of unique flows has exploded.
+
+Step 6: Check OVS coverage counters for flow revalidation.
+
+[source,bash]
+----
+ssh compute-2 "sudo ovs-appctl coverage/show" | grep -E "revalidate|upcall|handler"
+----
+
+----
+  handler_upcalls              234567   1234.5   987.6   456.7   123.4
+  revalidate_flows             345678   2345.6  1876.5   876.5   345.6
+  flow_mod                     456789   345.6   234.5   123.4    56.7
+----
+
+Very high upcall and revalidation rates. The ovs-vswitchd is spending most of its CPU time handling upcalls (packets that do not match any kernel flow and need to be sent to userspace) and revalidating existing flows.
+
+*Root Cause:*
+
+Two related problems caused by the 4x scale-up:
+
+. *Conntrack table exhaustion*: The default conntrack limit of 262144 was sufficient for 200 VMs but not for 800 VMs. When the table is full, new connections are dropped, causing TCP connection establishment delays and packet loss.
+
+. *Datapath flow explosion*: With 800 VMs, the number of unique traffic patterns (microflows) has grown to exceed 200K entries per compute node. This causes excessive upcall rates (because new flows cannot be cached) and revalidation storms (because revalidating 200K+ flows is CPU-intensive). The high CPU consumption on ovs-vswitchd adds latency to all packet processing.
+
+*Resolution:*
+
+Address the conntrack table on all compute nodes:
+
+[source,bash]
+----
+# Increase conntrack limit
+for node in compute-{1..20}; do
+  ssh $node "sudo sysctl -w net.netfilter.nf_conntrack_max=1048576"
+  ssh $node "echo 'net.netfilter.nf_conntrack_max = 1048576' | sudo tee -a /etc/sysctl.d/99-conntrack.conf"
+done
+----
+
+Reduce conntrack timeouts for faster entry recycling:
+
+[source,bash]
+----
+for node in compute-{1..20}; do
+  ssh $node "sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_established=43200"
+  ssh $node "sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_time_wait=30"
+  ssh $node "echo 'net.netfilter.nf_conntrack_tcp_timeout_established = 43200' | sudo tee -a /etc/sysctl.d/99-conntrack.conf"
+  ssh $node "echo 'net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30' | sudo tee -a /etc/sysctl.d/99-conntrack.conf"
+done
+----
+
+Address the datapath flow explosion:
+
+[source,bash]
+----
+# Increase handler and revalidator threads
+for node in compute-{1..20}; do
+  ssh $node "sudo ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=4"
+  ssh $node "sudo ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=4"
+done
+----
+
+Optionally, reduce the maximum number of datapath flows to force faster eviction of idle flows:
+
+[source,bash]
+----
+for node in compute-{1..20}; do
+  ssh $node "sudo ovs-vsctl set Open_vSwitch . other_config:flow-limit=200000"
+done
+----
+
+Verify the improvement:
+
+[source,bash]
+----
+# After applying changes, check CPU usage
+ssh compute-2 "top -bn1 | grep ovs-vswitchd | awk '{print \$9}'"
+----
+
+----
+45.3
+----
+
+[source,bash]
+----
+# Check conntrack usage
+ssh compute-2 "sudo conntrack -C && sudo sysctl -n net.netfilter.nf_conntrack_max"
+----
+
+----
+312456
+1048576
+----
+
+The conntrack table now has plenty of headroom. Ping latency should return to sub-millisecond within a few minutes as the system stabilizes.
+
+*Prevention:*
+
+* Plan conntrack and flow table capacity as part of scale-up planning
+* Set conntrack limits proportional to the expected number of VMs and connections
+* Monitor conntrack usage, OVS CPU usage, and flow table sizes with alerting
+* Perform load testing before production scale-up to identify bottlenecks
+* Document the conntrack and OVS tuning parameters for each environment size
+
+'''
+
+== 7. Exercises
+
+=== Exercise 1: Diagnose a Missing Port
+
+*Objective:* Practice diagnosing why a VM has no network connectivity due to a missing port binding.
+
+*Setup:*
+
+If you have a lab environment with OVN, create a logical switch and port, but deliberately do not set the `iface-id` on the OVS interface:
+
+[source,bash]
+----
+# Create the logical topology
+sudo ovn-nbctl ls-add exercise-switch
+sudo ovn-nbctl lsp-add exercise-switch exercise-port
+sudo ovn-nbctl lsp-set-addresses exercise-port "fa:16:3e:01:02:03 192.168.100.5"
+
+# Create an OVS internal port (simulating a VM interface) but with wrong iface-id
+sudo ovs-vsctl add-port br-int exercise-iface -- set Interface exercise-iface type=internal
+sudo ovs-vsctl set Interface exercise-iface external_ids:iface-id="wrong-port-name"
+----
+
+*Tasks:*
+
+. Use `ovn-sbctl find Port_Binding logical_port=exercise-port` to check the binding status. What does the `chassis` field show?
+. Use `ovs-vsctl find Interface external_ids:iface-id="exercise-port"` to check if any OVS interface claims the port. What do you find?
+. Find the actual OVS interface that should claim this port and fix its `iface-id`.
+. Verify the port is now bound by re-checking the Port_Binding.
+
+*Cleanup:*
+
+[source,bash]
+----
+sudo ovn-nbctl ls-del exercise-switch
+sudo ovs-vsctl del-port br-int exercise-iface
+----
+
+'''
+
+=== Exercise 2: Trace a Blocked Packet Through OVN
+
+*Objective:* Practice using `ovn-trace` to diagnose why traffic is being blocked by ACLs.
+
+*Setup:*
+
+[source,bash]
+----
+# Create topology
+sudo ovn-nbctl ls-add trace-switch
+sudo ovn-nbctl lsp-add trace-switch trace-port1
+sudo ovn-nbctl lsp-set-addresses trace-port1 "fa:16:3e:10:20:30 192.168.200.10"
+sudo ovn-nbctl lsp-add trace-switch trace-port2
+sudo ovn-nbctl lsp-set-addresses trace-port2 "fa:16:3e:40:50:60 192.168.200.20"
+
+# Add a restrictive ACL that blocks ICMP
+sudo ovn-nbctl acl-add trace-switch to-lport 1001 'outport == "trace-port2" && ip4 && icmp4' drop
+sudo ovn-nbctl acl-add trace-switch to-lport 1000 'outport == "trace-port2" && ip4' allow-related
+----
+
+*Tasks:*
+
+. Use `ovn-trace` to trace an ICMP packet from trace-port1 to trace-port2. Identify at which stage the packet is dropped.
+. Use `ovn-trace` to trace a TCP packet (port 80) from trace-port1 to trace-port2. Does it pass?
+. What is the priority relationship between the two ACLs? Why does ICMP get blocked but TCP does not?
+. Modify the ACL to allow ICMP as well, then re-trace to verify.
+
+*Example trace command:*
+
+[source,bash]
+----
+sudo ovn-trace --detailed trace-switch \
+  'inport=="trace-port1" && eth.src==fa:16:3e:10:20:30 && eth.dst==fa:16:3e:40:50:60 && ip4.src==192.168.200.10 && ip4.dst==192.168.200.20 && icmp4 && ip.ttl==64'
+----
+
+*Cleanup:*
+
+[source,bash]
+----
+sudo ovn-nbctl ls-del trace-switch
+----
+
+'''
+
+=== Exercise 3: Investigate a Tunnel Problem
+
+*Objective:* Practice diagnosing tunnel connectivity issues using tcpdump and OVS commands.
+
+*Setup (requires two nodes):*
+
+On both nodes, ensure OVN is running and the tunnel between them is established. Then simulate a tunnel problem by adding a firewall rule:
+
+[source,bash]
+----
+# On node-1, block Geneve traffic from node-2
+sudo iptables -I INPUT -p udp --sport 6081 -s <node-2-ip> -j DROP
+----
+
+*Tasks:*
+
+. From a VM on node-1, try to ping a VM on node-2. What happens?
+. Use `tcpdump` on node-1's physical interface to capture Geneve traffic. Do you see outgoing packets? Do you see incoming packets?
+. Check `ovs-ofctl dump-ports br-int` on both nodes. Do you see TX counters increasing on the tunnel port on node-1 but RX counters not increasing on node-2's tunnel port?
+. Use `iptables -L -n -v` to identify the firewall rule causing the drop.
+. Remove the firewall rule and verify connectivity is restored.
+
+*Cleanup:*
+
+[source,bash]
+----
+sudo iptables -D INPUT -p udp --sport 6081 -s <node-2-ip> -j DROP
+----
+
+'''
+
+=== Exercise 4: Diagnose and Fix an OVN DHCP Problem
+
+*Objective:* Practice troubleshooting OVN DHCP by creating a misconfigured DHCP setup.
+
+*Setup:*
+
+[source,bash]
+----
+# Create a logical switch with DHCP
+sudo ovn-nbctl ls-add dhcp-switch
+sudo ovn-nbctl lsp-add dhcp-switch dhcp-port1
+sudo ovn-nbctl lsp-set-addresses dhcp-port1 "fa:16:3e:aa:bb:01 dynamic"
+
+# Create DHCP options - deliberately with a wrong server_mac
+DHCP_UUID=$(sudo ovn-nbctl create DHCP_Options cidr="192.168.50.0/24" \
+  options='"server_id"="192.168.50.1" "server_mac"="00:00:00:00:00:00" "router"="192.168.50.1" "lease_time"="3600"')
+
+# Link DHCP to the port
+sudo ovn-nbctl lsp-set-dhcpv4-options dhcp-port1 $DHCP_UUID
+----
+
+*Tasks:*
+
+. Use `ovn-nbctl list DHCP_Options` to examine the DHCP configuration. What looks wrong?
+. Use `ovn-trace` to trace a DHCP Discover packet from dhcp-port1. Does OVN generate a DHCP response? What MAC address does the response use?
+. Fix the `server_mac` to a proper MAC address (e.g., `fa:16:3e:ff:ff:01`).
+. Re-trace the DHCP Discover to verify the fix.
+
+*Cleanup:*
+
+[source,bash]
+----
+sudo ovn-nbctl ls-del dhcp-switch
+sudo ovn-nbctl destroy DHCP_Options $DHCP_UUID
+----
+
+'''
+
+=== Exercise 5: Performance Investigation
+
+*Objective:* Practice investigating OVS performance issues using coverage counters and datapath statistics.
+
+*Setup:*
+
+This exercise does not require deliberate misconfiguration - it uses the existing environment to practice reading performance metrics.
+
+*Tasks:*
+
+. Run `sudo ovs-appctl coverage/show` and identify the top 5 events by rate in the last 5 seconds. What do these events mean?
+
+. Run `sudo ovs-appctl dpctl/show --statistics` and answer:
+** How many datapath flows are currently installed?
+** What is the hit-to-missed ratio? (A ratio above 100:1 is healthy.)
+** Are there any `lost` packets? What do they indicate?
+
+. Run `sudo ovs-appctl memory/show` and check:
+** Total memory usage of ovs-vswitchd
+** Number of active handlers
+** Any signs of memory pressure
+
+. Check the conntrack table:
+[source,bash]
+----
+   sudo conntrack -C
+   sudo sysctl net.netfilter.nf_conntrack_max
+----
+   What percentage of the conntrack table is in use? At what percentage should you be concerned (recommended threshold: 75%)?
+
+. Run `sudo ovs-ofctl dump-flows br-int | wc -l` to count the OpenFlow flows and `sudo ovs-appctl dpctl/dump-flows | wc -l` to count the datapath flows. What is the ratio between them? (Typically datapath flows are 5-20x more than OpenFlow flows because each OpenFlow flow can generate multiple microflow entries in the datapath.)
+
+Write a brief performance assessment based on your findings. Note any values that suggest a potential problem and what action you would recommend.
+
+
+[NOTE]
+====
+In a production environment, you would collect these metrics over time (e.g., every 5 minutes) to identify trends. A one-time snapshot tells you the current state but not whether things are getting better or worse. Consider setting up monitoring with Prometheus or similar tools to track these metrics continuously.
+====
+
+
+'''
+
+== Summary
+
+Troubleshooting OVS and OVN is a skill that improves with practice. The key principles to remember:
+
+. *Be systematic* - Follow a methodology. Do not guess randomly.
+. *Isolate the layer* - Determine if the problem is physical, OVS, OVN, or application.
+. *Use the right tool* - `ovn-trace` for logical pipeline issues, `ovs-appctl ofproto/trace` for OVS flow issues, `tcpdump` for packet-level verification.
+. *Check the basics first* - Is the daemon running? Is the port bound? Is the tunnel up? 90% of problems are configuration issues.
+. *Document everything* - Keep notes on what you checked, what you found, and what you changed. This helps when the problem recurs and when handing off to another engineer.
+. *Know your environment* - RHOSP, RHOSO, and OCP each have different deployment patterns. Know where to find logs and how to access OVN commands in each.
+
+The diagnostic commands and scenarios in this module cover the vast majority of issues you will encounter in the field. Use this module as a reference during live investigations - it was designed to give you the exact command to run for each situation.
+
+'''
+
+*Previous module:* xref:11-management-tooling.adoc[Module 11 - Management and Tooling Reference]
+
+*Next module:* xref:13-limitations.adoc[Module 13 - Limitations and Considerations]
+

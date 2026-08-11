@@ -1,0 +1,1824 @@
+= Module 08 - OVS and OVN in Red Hat OpenStack Services on OpenShift (RHOSO)
+
+. What is RHOSO
+. Networking Architecture in RHOSO
+. OVN in RHOSO
+. Key Differences from RHOSP
+. Hands-On: Exploring OVN in RHOSO
+. Tracing a Packet in RHOSO
+. Troubleshooting RHOSO-Specific Issues
+. Summary
+
+'''
+
+== What is RHOSO
+
+Red Hat OpenStack Services on OpenShift (RHOSO) represents a fundamental shift in how OpenStack is deployed and managed. Instead of running OpenStack services as traditional systemd services on dedicated controller nodes (as in RHOSP), RHOSO runs the OpenStack control plane as containerized workloads managed by Kubernetes operators on an OpenShift cluster.
+
+
+[NOTE]
+.Key Concept
+====
+RHOSO splits the OpenStack deployment into two distinct domains: the *control plane* (OpenStack services running as pods on OpenShift) and the *data plane* (compute, networking, and storage services running on bare-metal nodes or VMs outside the OpenShift cluster).
+====
+
+
+=== The High-Level Architecture
+
+----
++---------------------------------------------------------------+
+|                   OpenShift Cluster (Control Plane)            |
+|                                                                |
+|  +------------------+  +------------------+  +---------------+ |
+|  | Neutron API Pod  |  | Nova API Pod     |  | Glance Pod    | |
+|  +------------------+  +------------------+  +---------------+ |
+|  +------------------+  +------------------+  +---------------+ |
+|  | OVN NB DB Pod    |  | OVN SB DB Pod    |  | ovn-northd    | |
+|  |                  |  |                  |  | Pod           | |
+|  +------------------+  +------------------+  +---------------+ |
+|  +------------------+  +------------------+                    |
+|  | Keystone Pod     |  | MariaDB/Galera   |                    |
+|  +------------------+  +------------------+                    |
+|                                                                |
++-------------------------------+--------------------------------+
+                                |
+                    Control Network (API, OVN SB)
+                                |
+        +-----------------------+-----------------------+
+        |                       |                       |
++-------+--------+    +--------+-------+    +-----------+----+
+| Data Plane     |    | Data Plane     |    | Data Plane     |
+| Node 1         |    | Node 2         |    | Node 3         |
+| (Compute)      |    | (Compute)      |    | (Compute/Net)  |
+|                |    |                |    |                |
+| ovn-controller |    | ovn-controller |    | ovn-controller |
+| OVS (br-int)   |    | OVS (br-int)   |    | OVS (br-int)   |
+| nova-compute   |    | nova-compute   |    | nova-compute   |
++----------------+    +----------------+    +----------------+
+----
+
+=== Why the Shift from RHOSP to RHOSO
+
+The move to RHOSO brings several operational advantages:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|RHOSP (Traditional)
+|RHOSO (Operator-Based)
+
+|Control plane hosting
+|Dedicated controller nodes (bare metal or VMs)
+|OpenShift pods managed by operators
+
+|Lifecycle management
+|Director (TripleO), manual upgrades
+|Kubernetes operators, declarative CRDs
+
+|Scaling control plane
+|Complex, requires re-deployment
+|Scale pods horizontally via OpenShift
+
+|High availability
+|Pacemaker/HAProxy clusters
+|Kubernetes native HA (replicas, liveness probes)
+
+|Configuration management
+|Puppet, Heat templates
+|Kubernetes CRDs, operator reconciliation
+
+|Data plane management
+|TripleO-managed overcloud nodes
+|edpm-ansible via OpenStackDataPlaneNodeSet CRDs
+
+|===
+
+
+[NOTE]
+====
+RHOSO 18.0 is the first major release following this new architecture. It replaces RHOSP 17.1 as the forward-looking deployment model for Red Hat OpenStack.
+====
+
+
+'''
+
+== Networking Architecture in RHOSO
+
+Networking in RHOSO involves two fundamentally different domains that must work together seamlessly: the OpenShift cluster networking (for the control plane) and the traditional OVS/OVN networking (for the data plane where VMs actually run).
+
+=== Control Plane Networking
+
+The OpenShift cluster uses its own networking stack (OVN-Kubernetes, covered in Module 09) for communication between the OpenStack service pods. However, OpenStack services often need connectivity to networks that exist outside the OpenShift pod network - for example, the OVN southbound database must be reachable by ovn-controller instances running on data plane nodes.
+
+This is where *NetworkAttachmentDefinitions (NADs)* come in.
+
+
+[NOTE]
+.Key Concept
+====
+A NetworkAttachmentDefinition is a Kubernetes Custom Resource that defines an additional network interface for pods. In RHOSO, NADs are used to give OpenStack service pods connectivity to external networks - such as the internal API network, the tenant tunnel network, or the storage network - that exist outside the OpenShift pod network.
+====
+
+
+----
++---------------------------------------------------------------+
+|                    OpenShift Cluster                           |
+|                                                                |
+|  Default Pod Network (OVN-Kubernetes CNI)                      |
+|  +---------+  +---------+  +---------+                        |
+|  | Pod A   |  | Pod B   |  | Pod C   |  <-- Standard pod IPs  |
+|  +---------+  +---------+  +---------+                        |
+|                                                                |
+|  Additional Networks via NADs (Multus CNI)                     |
+|  +---------+  +---------+                                      |
+|  | OVN DB  |  | Neutron |                                      |
+|  | Pod     |  | Pod     |                                      |
+|  | net1:   |  | net1:   |  <-- Additional NICs from NADs       |
+|  | 172.17. |  | 172.17. |      (internal API, tenant, etc.)    |
+|  +---------+  +---------+                                      |
+|                                                                |
++---------------------------------------------------------------+
+----
+
+=== How NADs Work in RHOSO
+
+Multus is a meta-CNI plugin that runs on OpenShift and allows pods to have multiple network interfaces. The primary interface uses the cluster's default CNI (OVN-Kubernetes), while additional interfaces are configured through NADs.
+
+In a RHOSO deployment, you will typically find NADs for:
+
+
+[cols="1,1,1",options="header"]
+|===
+|NAD Name
+|Purpose
+|Example Subnet
+
+|internalapi
+|Communication between OpenStack services
+|172.17.0.0/24
+
+|tenant
+|Tenant/tunnel network for Geneve overlay traffic
+|172.19.0.0/24
+
+|storage
+|Storage network (Ceph, NFS)
+|172.18.0.0/24
+
+|storagemgmt
+|Storage management network
+|172.20.0.0/24
+
+|ctlplane
+|Control plane provisioning network
+|192.168.122.0/24
+
+|external
+|External/public API access
+|10.0.0.0/24
+
+|===
+
+
+To list the NADs in a RHOSO deployment:
+
+[source,bash]
+----
+oc get network-attachment-definitions -n openstack
+----
+
+----
+NAME           AGE
+ctlplane       3d
+internalapi    3d
+tenant         3d
+storage        3d
+storagemgmt    3d
+external       3d
+----
+
+To see the details of a specific NAD:
+
+[source,bash]
+----
+oc get network-attachment-definition internalapi -n openstack -o yaml
+----
+
+----
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: internalapi
+  namespace: openstack
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "internalapi",
+      "type": "macvlan",
+      "master": "enp7s0.20",
+      "mode": "bridge",
+      "ipam": {
+        "type": "whereabouts",
+        "range": "172.17.0.0/24",
+        "range_start": "172.17.0.30",
+        "range_end": "172.17.0.70"
+      }
+    }
+----
+
+
+[NOTE]
+====
+The NAD configuration typically uses `macvlan` or `bridge` type plugins to connect pods directly to the physical network or a VLAN on the OpenShift nodes. The `whereabouts` IPAM plugin manages IP address allocation to avoid conflicts.
+====
+
+
+=== Data Plane Networking
+
+The data plane nodes are where the actual VM workloads run. These nodes have:
+
+* *OVS (Open vSwitch):* The virtual switch that provides the data plane forwarding
+* *ovn-controller:* The local OVN agent that programs OVS based on instructions from the OVN southbound database
+* *nova-compute:* The compute service that manages VM lifecycle
+* *os-net-config:* Network configuration tool for the data plane node interfaces
+
+Data plane nodes require connectivity to several networks:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Network
+|Purpose
+|Used By
+
+|Control plane
+|Communication with OpenShift for provisioning
+|edpm-ansible, SSH
+
+|Internal API
+|OpenStack service API calls
+|nova-compute, ovn-controller
+
+|Tenant
+|Geneve tunnel traffic between compute nodes
+|OVS, ovn-controller
+
+|Storage
+|VM disk I/O to storage backends
+|nova-compute, cinder
+
+|Provider/External
+|VM external network access (floating IPs, provider nets)
+|OVS, neutron-ovn-metadata-agent
+
+|===
+
+
+=== The OpenStack Operator
+
+The OpenStack Operator is the top-level Kubernetes operator that manages the entire RHOSO deployment. It is responsible for:
+
+. Deploying and configuring all OpenStack service operators (Nova, Neutron, Glance, etc.)
+. Managing the OVN control plane components (OVN NB/SB databases, ovn-northd)
+. Coordinating with the data plane operator for compute node management
+
+[source,bash]
+----
+# View the OpenStack control plane custom resource
+oc get openstackcontrolplane -n openstack
+----
+
+----
+NAME                 STATUS   MESSAGE
+openstack-galera     True     Setup complete
+----
+
+[source,bash]
+----
+# Get detailed view of the control plane
+oc get openstackcontrolplane -n openstack -o yaml | grep -A 5 "ovn:"
+----
+
+----
+    ovn:
+      enabled: true
+      template:
+        ovnController:
+          networkAttachment: tenant
+          nicMappings:
+            datacentre: ospbr
+        ovnDBCluster:
+          ovndbcluster-nb:
+            dbType: NB
+            networkAttachment: internalapi
+            storageRequest: 10G
+          ovndbcluster-sb:
+            dbType: SB
+            networkAttachment: internalapi
+            storageRequest: 10G
+        ovnNorthd:
+          networkAttachment: internalapi
+----
+
+
+[NOTE]
+.Key Concept
+====
+The OpenStack Operator uses Custom Resource Definitions (CRDs) to declare the desired state of the OpenStack deployment. The operator continuously reconciles the actual state with the desired state, automatically handling configuration changes, scaling, and recovery.
+====
+
+
+'''
+
+== OVN in RHOSO
+
+OVN is the default and only supported networking backend in RHOSO. Unlike RHOSP, which historically supported both ML2/OVS and ML2/OVN, RHOSO standardizes entirely on OVN.
+
+=== OVN Architecture in RHOSO
+
+The OVN deployment in RHOSO splits across the two domains:
+
+*On OpenShift (Control Plane Pods):*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Component
+|Runs As
+|Purpose
+
+|OVN Northbound Database (NB DB)
+|StatefulSet pod
+|Stores the logical network configuration (logical switches, routers, ACLs)
+
+|OVN Southbound Database (SB DB)
+|StatefulSet pod
+|Stores the physical-logical bindings (chassis, port bindings, tunnel endpoints)
+
+|ovn-northd
+|Deployment pod
+|Translates NB DB entries into SB DB logical flows
+
+|===
+
+
+*On Data Plane Nodes:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Component
+|Runs As
+|Purpose
+
+|ovn-controller
+|systemd service
+|Reads SB DB logical flows and programs OVS accordingly
+
+|OVS (ovs-vswitchd)
+|systemd service
+|Performs the actual packet forwarding in the data path
+
+|ovsdb-server
+|systemd service
+|Manages the local OVS configuration database
+
+|===
+
+
+----
++---------------------------------------------------------------+
+|                    OpenShift Cluster                           |
+|                                                                |
+|   +-------------+    +-------------+    +---------------+      |
+|   | OVN NB DB   |    | OVN SB DB   |    | ovn-northd    |      |
+|   | Pod         |    | Pod         |    | Pod           |      |
+|   | (ovsdb-     |    | (ovsdb-     |    | (translates   |      |
+|   |  server)    |    |  server)    |    |  NB -> SB)    |      |
+|   +------+------+    +------+------+    +-------+-------+      |
+|          |                  |                   |              |
+|          +------------------+-------------------+              |
+|                             |                                  |
++-----------------------------+----------------------------------+
+                              |
+                    Internal API Network
+                    (via NAD: internalapi)
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
++-------+--------+  +--------+-------+  +----------+------+
+| Compute Node 1 |  | Compute Node 2 |  | Compute Node 3  |
+|                |  |                |  |                  |
+| ovn-controller |  | ovn-controller |  | ovn-controller   |
+|   connects to  |  |   connects to  |  |   connects to    |
+|   SB DB pod    |  |   SB DB pod    |  |   SB DB pod      |
+|                |  |                |  |                  |
+| OVS            |  | OVS            |  | OVS              |
+| +--------+    |  | +--------+    |  | +--------+       |
+| | br-int |    |  | | br-int |    |  | | br-int |       |
+| +--------+    |  | +--------+    |  | +--------+       |
+| | VMs    |    |  | | VMs    |    |  | | VMs    |       |
+| +--------+    |  | +--------+    |  | +--------+       |
++----------------+  +----------------+  +------------------+
+----
+
+=== How the Distributed Model Works
+
+The flow of network configuration in RHOSO follows this path:
+
+. *A user or Neutron creates a network resource* (e.g., a new network, subnet, or port) via the Neutron API running in an OpenShift pod.
+
+. *Neutron writes to the OVN Northbound Database.* The Neutron ML2/OVN driver translates Neutron API objects into OVN logical network objects and writes them to the NB DB pod.
+
+. *ovn-northd translates logical configuration to logical flows.* The ovn-northd pod reads the NB DB and generates logical flow entries in the SB DB.
+
+. *ovn-controller on each data plane node reads the SB DB.* Each ovn-controller connects to the OVN SB DB pod over the internal API network. It reads only the logical flows relevant to its chassis (the ports bound locally) and programs OVS accordingly.
+
+. *OVS forwards packets.* The programmed OpenFlow rules in OVS handle the actual packet switching, routing, NAT, and ACL enforcement on the data plane node.
+
+
+[NOTE]
+.Key Concept
+====
+The OVN SB DB pod must be reachable from all data plane nodes over the internal API network. This connectivity is typically provided through a NAD that connects the SB DB pod to a VLAN or physical network shared with the data plane nodes. If this connectivity breaks, ovn-controller on the data plane nodes loses its ability to receive flow updates, which can lead to stale flows and eventual connectivity failures.
+====
+
+
+=== OVN Database Clustering in RHOSO
+
+For high availability, the OVN NB and SB databases can run as clustered instances using the Raft consensus protocol. In RHOSO, this is configured through the OpenStack operator:
+
+[source,bash]
+----
+# Check OVN DB cluster status
+oc get pods -n openstack | grep ovn
+----
+
+----
+ovsdbserver-nb-0                          1/1     Running   0   3d
+ovsdbserver-nb-1                          1/1     Running   0   3d
+ovsdbserver-nb-2                          1/1     Running   0   3d
+ovsdbserver-sb-0                          1/1     Running   0   3d
+ovsdbserver-sb-1                          1/1     Running   0   3d
+ovsdbserver-sb-2                          1/1     Running   0   3d
+ovn-northd-6b8d7f9c4d-abc12              1/1     Running   0   3d
+----
+
+The three NB DB pods and three SB DB pods form Raft clusters, providing automatic leader election and database replication.
+
+[source,bash]
+----
+# Check the Raft cluster status for the NB DB
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovs-appctl -t /tmp/ovnnb_db.ctl cluster/status OVN_Northbound
+----
+
+----
+2fd3
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234-5678-90ef-ghij-klmnopqrstuv)
+Server ID: 2fd3 (2fd31234-5678-90ef-ghij-klmnopqrstuv)
+Address: tcp:172.17.0.30:6643
+Status: cluster member
+Role: leader
+Term: 3
+Leader: self
+Vote: self
+
+Last Election started 259232 ms ago, reason: timeout
+Last Election won 259230 ms ago
+Election timer: 1000
+Log: [2, 1547]
+Entries not yet committed: 0
+Entries not yet applied: 0
+Connections:
+  tcp:172.17.0.31:6643 (db34): last msg 423 ms ago
+  tcp:172.17.0.32:6643 (ef56): last msg 423 ms ago
+Servers:
+  2fd3 (2fd3 at tcp:172.17.0.30:6643) (self) next_index=1547 match_index=1546
+  db34 (db34 at tcp:172.17.0.31:6643) next_index=1547 match_index=1546
+  ef56 (ef56 at tcp:172.17.0.32:6643) next_index=1547 match_index=1546
+----
+
+
+[WARNING]
+====
+In a Raft cluster, if a majority of nodes become unavailable (e.g., 2 out of 3 pods go down), the cluster loses quorum and becomes read-only. No new writes can be committed until quorum is restored. This means that no new logical network configurations can be applied, and ovn-controller instances cannot register or update their chassis information. Existing flows on data plane nodes continue to work, but no changes can be made.
+====
+
+
+'''
+
+== Key Differences from RHOSP
+
+Understanding the differences between RHOSP and RHOSO is critical for engineers who are transitioning between the two platforms or supporting both.
+
+=== Control Plane Location and Access
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|RHOSP 17.x
+|RHOSO 18.0
+
+|OVN NB/SB databases
+|Run on controller nodes as systemd services
+|Run as pods on OpenShift
+
+|ovn-northd
+|Runs on controller nodes as systemd service
+|Runs as pod on OpenShift
+
+|Access to OVN databases
+|SSH to controller, run `ovn-nbctl` directly
+|`oc exec` into pod, then run `ovn-nbctl`
+
+|Configuration files
+|`/etc/neutron/`, `/etc/openvswitch/` on controllers
+|ConfigMaps and Secrets in OpenShift
+
+|Logs for control plane
+|`journalctl` or `/var/log/` on controllers
+|`oc logs` for pod logs
+
+|HA mechanism
+|Pacemaker manages OVN DB failover
+|Kubernetes manages pod scheduling and restart
+
+|===
+
+
+=== Accessing OVN Databases: RHOSP vs RHOSO
+
+*In RHOSP:*
+
+[source,bash]
+----
+# SSH to a controller node
+ssh tripleo-admin@controller-0
+
+# Run OVN commands directly
+sudo ovn-nbctl show
+sudo ovn-sbctl show
+sudo ovn-sbctl list Chassis
+----
+
+*In RHOSO:*
+
+[source,bash]
+----
+# Find the OVN NB DB pod
+oc get pods -n openstack | grep ovsdbserver-nb
+
+# Exec into the pod to run ovn-nbctl
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl show
+
+# Or for the SB DB
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show
+----
+
+
+[NOTE]
+====
+In RHOSO, you do not need to SSH into any node to access the OVN control plane. All control plane operations are done through `oc exec` into the appropriate pod. However, for data plane operations (checking OVS on compute nodes), you still SSH into the data plane nodes.
+====
+
+
+=== Data Plane Node Configuration
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|RHOSP 17.x
+|RHOSO 18.0
+
+|Node provisioning
+|TripleO/Director (Heat, Puppet)
+|edpm-ansible via OpenStackDataPlaneNodeSet CRDs
+
+|Network configuration
+|os-net-config templates via TripleO
+|os-net-config configured by edpm-ansible
+
+|Service deployment
+|Containerized via Paunch/podman on overcloud
+|Direct systemd services on data plane nodes
+
+|ovn-controller config
+|Puppet configures connection to SB DB
+|edpm-ansible configures connection to SB DB
+
+|Adding compute nodes
+|Stack update via Director
+|Create/update OpenStackDataPlaneNodeSet CR
+
+|===
+
+
+=== Data Plane Management with edpm-ansible
+
+In RHOSO, data plane nodes are configured using edpm-ansible, which is triggered by creating or updating an `OpenStackDataPlaneNodeSet` custom resource:
+
+[source,bash]
+----
+# View the data plane node sets
+oc get openstackdataplanenodesets -n openstack
+----
+
+----
+NAME                  STATUS   MESSAGE
+openstack-edpm        True     NodeSet Ready
+----
+
+[source,bash]
+----
+# View the nodes in a node set
+oc get openstackdataplanenodeset openstack-edpm -n openstack -o yaml | \
+  grep -A 20 "nodes:"
+----
+
+----
+    nodes:
+      edpm-compute-0:
+        hostName: edpm-compute-0
+        ansible:
+          ansibleHost: 192.168.122.100
+        networks:
+        - name: ctlplane
+          subnetName: subnet1
+          defaultRoute: true
+          fixedIP: 192.168.122.100
+        - name: internalapi
+          subnetName: subnet1
+          fixedIP: 172.17.0.100
+        - name: tenant
+          subnetName: subnet1
+          fixedIP: 172.19.0.100
+        - name: storage
+          subnetName: subnet1
+          fixedIP: 172.18.0.100
+----
+
+=== Monitoring and Logging
+
+
+[cols="1,1,1",options="header"]
+|===
+|What to Check
+|RHOSP
+|RHOSO
+
+|OVN NB/SB DB logs
+|`journalctl -u ovn-northd` on controller
+|`oc logs ovsdbserver-nb-0 -n openstack`
+
+|ovn-northd logs
+|`journalctl -u ovn-northd` on controller
+|`oc logs ovn-northd-xxx -n openstack`
+
+|Neutron logs
+|`journalctl -u tripleo_neutron_api` or `/var/log/containers/neutron/`
+|`oc logs neutron-xxx -n openstack`
+
+|ovn-controller logs
+|`journalctl -u ovn-controller` on compute
+|`journalctl -u ovn-controller` on data plane node
+
+|OVS logs
+|`journalctl -u ovs-vswitchd` on compute
+|`journalctl -u ovs-vswitchd` on data plane node
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+In RHOSO, the logging split mirrors the architectural split. Control plane component logs are accessed through OpenShift (`oc logs`), while data plane component logs are accessed through traditional Linux tools (`journalctl`) on the data plane nodes. This means a complete troubleshooting session often involves both `oc` commands and SSH sessions.
+====
+
+
+=== Upgrade Model
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|RHOSP
+|RHOSO
+
+|Control plane upgrade
+|Major undertaking: stack update via Director, often requires maintenance window
+|Operator-driven: update the OpenStack operator, it rolls out new pod versions
+
+|Data plane upgrade
+|Part of stack update, nodes rebooted in sequence
+|Separate step: create OpenStackDataPlaneDeployment CR to trigger edpm-ansible on nodes
+
+|Rollback
+|Complex, often requires re-deployment
+|Operator can revert pod versions; data plane rollback still complex
+
+|Downtime
+|Often significant for control plane
+|Minimal for control plane (rolling pod updates)
+
+|===
+
+
+'''
+
+== Hands-On: Exploring OVN in RHOSO
+
+This section provides commands you can run on a live RHOSO environment. The environment is assumed to be already deployed and operational.
+
+
+[NOTE]
+====
+All commands in the "On OpenShift" sections require access to the OpenShift cluster via the `oc` CLI with appropriate permissions (typically `cluster-admin` or access to the `openstack` namespace). Commands in the "On Data Plane Nodes" sections require SSH access to the compute nodes with root privileges.
+====
+
+
+=== On OpenShift (Control Plane)
+
+==== Finding the OVN Pods
+
+Start by identifying all OVN-related pods running in the openstack namespace:
+
+[source,bash]
+----
+oc get pods -n openstack | grep -E "ovn|ovsdb"
+----
+
+----
+ovn-northd-6b8d7f9c4d-abc12               1/1     Running   0   3d2h
+ovsdbserver-nb-0                           1/1     Running   0   3d2h
+ovsdbserver-nb-1                           1/1     Running   0   3d2h
+ovsdbserver-nb-2                           1/1     Running   0   3d2h
+ovsdbserver-sb-0                           1/1     Running   0   3d2h
+ovsdbserver-sb-1                           1/1     Running   0   3d2h
+ovsdbserver-sb-2                           1/1     Running   0   3d2h
+ovn-controller-ovs-7k4m2                   1/1     Running   0   3d2h
+----
+
+
+[NOTE]
+====
+The naming convention may vary slightly between RHOSO versions. The NB DB pods are typically `ovsdbserver-nb-*` and SB DB pods are `ovsdbserver-sb-*`. The `ovn-northd` pod runs the northd daemon that translates NB to SB entries.
+====
+
+
+==== Accessing the OVN Northbound Database
+
+The NB DB contains the logical network configuration - the networks, routers, ports, and ACLs that Neutron has configured.
+
+[source,bash]
+----
+# Show the full logical topology
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl show
+----
+
+----
+switch 3a1b2c3d-4e5f-6789-abcd-ef0123456789 (neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab) (aka network1)
+    port 7a8b9c0d-1e2f-3456-7890-abcdef012345
+        type: ""
+        addresses: ["fa:16:3e:aa:bb:cc 192.168.1.10"]
+    port 8b9c0d1e-2f34-5678-90ab-cdef01234567
+        type: ""
+        addresses: ["fa:16:3e:dd:ee:ff 192.168.1.11"]
+    port provnet-e1f2a3b4-5678-90ab-cdef-1234567890ab
+        type: localnet
+        addresses: ["unknown"]
+switch 4b2c3d4e-5f67-8901-bcde-f01234567890 (neutron-f2e3d4c5-6789-01ab-cdef-234567890abc) (aka external)
+    port cr-lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+        type: router
+        router-port: lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+router 5c3d4e5f-6789-0123-cdef-0123456789ab (neutron-b3c4d5e6-7890-12ab-cdef-345678901234) (aka router1)
+    port lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+        mac: "fa:16:3e:11:22:33"
+        networks: ["10.0.0.1/24"]
+    port lrp-c2d3e4f5-6789-01ab-cdef-2345678901bc
+        mac: "fa:16:3e:44:55:66"
+        networks: ["192.168.1.1/24"]
+----
+
+List all logical switches with more detail:
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl ls-list
+----
+
+----
+3a1b2c3d-4e5f-6789-abcd-ef0123456789 (neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab)
+4b2c3d4e-5f67-8901-bcde-f01234567890 (neutron-f2e3d4c5-6789-01ab-cdef-234567890abc)
+----
+
+List all logical routers:
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lr-list
+----
+
+----
+5c3d4e5f-6789-0123-cdef-0123456789ab (neutron-b3c4d5e6-7890-12ab-cdef-345678901234)
+----
+
+Check the ACLs (security groups):
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl acl-list \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab
+----
+
+----
+from-lport  1002 (inport == @pg_security_group_1 && ip) allow-related
+  to-lport  1002 (outport == @pg_security_group_1 && ip4 && ip4.src == 0.0.0.0/0 && tcp && tcp.dst == 22) allow-related
+  to-lport  1002 (outport == @pg_security_group_1 && ip4 && ip4.src == 0.0.0.0/0 && icmp4) allow-related
+  to-lport  1001 (outport == @pg_security_group_1 && ip) drop
+from-lport  1001 (inport == @pg_security_group_1 && ip) drop
+----
+
+==== Accessing the OVN Southbound Database
+
+The SB DB contains the physical-logical bindings and the compiled logical flows.
+
+[source,bash]
+----
+# Show chassis registrations
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show
+----
+
+----
+Chassis "e1f2a3b4-5678-90ab-cdef-111111111111"
+    hostname: edpm-compute-0.localdomain
+    Encap geneve
+        ip: "172.19.0.100"
+        options: {csum="true"}
+    Port_Binding "7a8b9c0d-1e2f-3456-7890-abcdef012345"
+    Port_Binding "cr-lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef"
+Chassis "f2e3d4c5-6789-01ab-cdef-222222222222"
+    hostname: edpm-compute-1.localdomain
+    Encap geneve
+        ip: "172.19.0.101"
+        options: {csum="true"}
+    Port_Binding "8b9c0d1e-2f34-5678-90ab-cdef01234567"
+----
+
+
+[NOTE]
+.Key Concept
+====
+Each data plane node registers itself as a *Chassis* in the OVN Southbound Database. The chassis entry includes the node's Geneve tunnel endpoint IP (on the tenant network) and the list of ports bound to that chassis. If a data plane node is missing from the chassis list, its ovn-controller is not connected to the SB DB.
+====
+
+
+List all chassis:
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl list Chassis
+----
+
+----
+_uuid               : a1b2c3d4-5678-90ab-cdef-111111111111
+encaps              : [e1f2a3b4-1111-2222-3333-444444444444]
+hostname            : "edpm-compute-0.localdomain"
+name                : "e1f2a3b4-5678-90ab-cdef-111111111111"
+nb_cfg              : 45
+other_config        : {datapath-type="system", iface-id-ver="", is-interconn="false", ovn-bridge-mappings="datacentre:br-ex", ovn-cms-options=""}
+transport_zones     : []
+vtep_logical_switches: []
+----
+
+Check logical flows (the compiled pipeline):
+
+[source,bash]
+----
+# List logical flows for a specific logical switch
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl lflow-list \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab | head -30
+----
+
+----
+Datapath: "neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab" aka "network1" (3a1b2c3d...)
+  table=0 (ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+  table=1 (ls_in_apply_port_sec), priority=50   , match=(reg0[15] == 1), action=(drop;)
+  table=1 (ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=2 (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=3 (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+  table=4 (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  ...
+----
+
+==== Checking Neutron Configuration
+
+[source,bash]
+----
+# Find the Neutron pods
+oc get pods -n openstack | grep neutron
+----
+
+----
+neutron-6f8c9d7e5b-xw2k4                  1/1     Running   0   3d2h
+neutron-6f8c9d7e5b-yz3l5                  1/1     Running   0   3d2h
+----
+
+[source,bash]
+----
+# Check the ML2 plugin configuration
+oc exec -n openstack neutron-6f8c9d7e5b-xw2k4 -- \
+  cat /etc/neutron/plugins/ml2/ml2_conf.ini | grep -A 5 "\[ml2\]"
+----
+
+----
+[ml2]
+type_drivers = geneve,vlan,flat
+tenant_network_types = geneve
+mechanism_drivers = ovn
+extension_drivers = port_security,qos
+----
+
+[source,bash]
+----
+# Check the OVN-specific Neutron configuration
+oc exec -n openstack neutron-6f8c9d7e5b-xw2k4 -- \
+  cat /etc/neutron/plugins/ml2/ml2_conf.ini | grep -A 10 "\[ovn\]"
+----
+
+----
+[ovn]
+ovn_nb_connection = tcp:172.17.0.30:6641,tcp:172.17.0.31:6641,tcp:172.17.0.32:6641
+ovn_sb_connection = tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642
+ovn_l3_scheduler = leastloaded
+ovn_metadata_enabled = true
+----
+
+==== Viewing OVN Logs
+
+[source,bash]
+----
+# View ovn-northd pod logs
+oc logs -n openstack ovn-northd-6b8d7f9c4d-abc12 --tail=50
+----
+
+----
+2024-05-15T10:30:15.123Z|00045|reconnect|INFO|tcp:172.17.0.30:6641: connected
+2024-05-15T10:30:15.125Z|00046|reconnect|INFO|tcp:172.17.0.30:6642: connected
+2024-05-15T10:30:15.200Z|00047|inc_proc_northd|INFO|Northbound database changed, updating southbound
+----
+
+[source,bash]
+----
+# View NB DB pod logs
+oc logs -n openstack ovsdbserver-nb-0 --tail=30
+----
+
+----
+2024-05-15T10:25:00.456Z|00012|raft|INFO|term 3: elected leader by 2/3 (needed 2)
+2024-05-15T10:25:00.457Z|00013|raft|INFO|term 3: 2fd3 is now leader
+2024-05-15T10:30:10.789Z|00014|ovsdb_server|INFO|update 2 monitor(s)
+----
+
+[source,bash]
+----
+# Follow logs in real time (useful during active troubleshooting)
+oc logs -n openstack ovsdbserver-sb-0 -f
+----
+
+=== On Data Plane Nodes
+
+
+[NOTE]
+====
+For data plane node commands, SSH into the compute node first: ```bash ssh root@edpm-compute-0 ```
+====
+
+
+==== Checking ovn-controller Status
+
+[source,bash]
+----
+sudo systemctl status ovn-controller
+----
+
+----
+ovn-controller.service - Open Virtual Network controller
+     Loaded: loaded (/usr/lib/systemd/system/ovn-controller.service; enabled; preset: disabled)
+     Active: active (running) since Mon 2024-05-13 08:15:30 UTC; 3 days ago
+   Main PID: 1234 (ovn-controller)
+      Tasks: 4 (limit: 49152)
+     Memory: 85.2M
+        CPU: 12min 34.567s
+     CGroup: /system.slice/ovn-controller.service
+----
+
+Check the ovn-controller connection to the SB DB:
+
+[source,bash]
+----
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote
+----
+
+----
+"tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `ovn-remote` external ID in OVS tells ovn-controller where to find the OVN Southbound Database. In RHOSO, this points to the IP addresses of the SB DB pods (via the NAD-provided network). This is configured by edpm-ansible during data plane node provisioning.
+====
+
+
+Verify the connection is active:
+
+[source,bash]
+----
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+If the output says `not connected`, the ovn-controller cannot reach the SB DB pods.
+
+==== Checking OVS Configuration
+
+[source,bash]
+----
+sudo ovs-vsctl show
+----
+
+----
+6789abcd-ef01-2345-6789-abcdef012345
+    Manager "ptcp:6640:127.0.0.1"
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port ovn-edpm-c-0
+            Interface ovn-edpm-c-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.19.0.101"}
+        Port "tap7a8b9c0d-1e"
+            Interface "tap7a8b9c0d-1e"
+        Port patch-br-int-to-provnet-datacentre
+            Interface patch-br-int-to-provnet-datacentre
+                type: patch
+                options: {peer=patch-provnet-datacentre-to-br-int}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port patch-provnet-datacentre-to-br-int
+            Interface patch-provnet-datacentre-to-br-int
+                type: patch
+                options: {peer=patch-br-int-to-provnet-datacentre}
+        Port enp8s0
+            Interface enp8s0
+----
+
+==== Examining OVS Flows
+
+[source,bash]
+----
+# Count flows per table
+sudo ovs-ofctl dump-flows br-int | awk -F'table=' '{print $2}' | \
+  awk -F',' '{print $1}' | sort -n | uniq -c | sort -rn
+----
+
+----
+     45 0
+     32 8
+     28 9
+     24 44
+     18 45
+     15 48
+     12 49
+      8 65
+      5 66
+      3 73
+----
+
+[source,bash]
+----
+# Dump flows for a specific table (table 0 = ingress port security)
+sudo ovs-ofctl dump-flows br-int table=0 | head -10
+----
+
+----
+ cookie=0xabcdef01, duration=259345.123s, table=0, n_packets=12345678, n_bytes=9876543210, priority=180,vlan_tci=0x0000/0x1000 actions=conjunction(100,1/2)
+ cookie=0xabcdef02, duration=259345.123s, table=0, n_packets=0, n_bytes=0, priority=180,conj_id=100 actions=load:0x1->NXM_NX_REG14[],load:0x1->NXM_NX_REG11[],load:0x2->NXM_NX_REG12[],load:0x1->OXM_OF_METADATA[],load:0x1->NXM_NX_REG13[],resubmit(,8)
+----
+
+==== Checking Geneve Tunnels
+
+[source,bash]
+----
+# List all Geneve tunnel ports
+sudo ovs-vsctl find Interface type=geneve
+----
+
+----
+_uuid               : a1b2c3d4-aaaa-bbbb-cccc-dddddddddddd
+admin_state         : up
+link_state          : up
+name                : "ovn-edpm-c-0"
+ofport              : 2
+options             : {csum="true", key=flow, remote_ip="172.19.0.101"}
+statistics          : {rx_bytes=123456, rx_packets=789, tx_bytes=654321, tx_packets=987}
+status              : {tunnel_egress_iface="enp7s0", tunnel_egress_iface_carrier=up}
+type                : geneve
+----
+
+==== Verifying Chassis Registration
+
+On the data plane node, verify this node's chassis name:
+
+[source,bash]
+----
+sudo ovs-vsctl get Open_vSwitch . external_ids:system-id
+----
+
+----
+"e1f2a3b4-5678-90ab-cdef-111111111111"
+----
+
+Then confirm it appears in the SB DB (from the OpenShift side):
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl list Chassis | \
+  grep -A 3 "e1f2a3b4-5678-90ab-cdef-111111111111"
+----
+
+----
+name                : "e1f2a3b4-5678-90ab-cdef-111111111111"
+hostname            : "edpm-compute-0.localdomain"
+nb_cfg              : 45
+other_config        : {datapath-type="system", ...}
+----
+
+'''
+
+== Tracing a Packet in RHOSO
+
+Understanding how a packet traverses the RHOSO networking stack is essential for troubleshooting. This section walks through three common scenarios.
+
+=== Scenario 1: VM to VM on the Same Compute Node
+
+Two VMs (`vm-a` with IP 192.168.1.10 and `vm-b` with IP 192.168.1.11) are on the same network and the same compute node (`edpm-compute-0`).
+
+----
+VM-A (192.168.1.10)        VM-B (192.168.1.11)
+       |                          |
+  tap7a8b9c0d-1e             tap8b9c0d1e-2f
+       |                          |
+       +--------br-int-----------+
+                  |
+          (all switching done
+           locally in OVS)
+----
+
+*Step 1: Identify the ports on the compute node.*
+
+[source,bash]
+----
+# On edpm-compute-0
+sudo ovs-vsctl list-ports br-int | grep tap
+----
+
+----
+tap7a8b9c0d-1e
+tap8b9c0d1e-2f
+----
+
+*Step 2: Check the logical port binding in the SB DB.*
+
+[source,bash]
+----
+# From OpenShift
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl find Port_Binding \
+  logical_port="7a8b9c0d-1e2f-3456-7890-abcdef012345"
+----
+
+----
+_uuid               : abcd1234-5678-90ef-ghij-klmnopqrstuv
+chassis             : [_uuid : a1b2c3d4-5678-90ab-cdef-111111111111]
+datapath            : [_uuid : 3a1b2c3d-4e5f-6789-abcd-ef0123456789]
+logical_port        : "7a8b9c0d-1e2f-3456-7890-abcdef012345"
+mac                 : ["fa:16:3e:aa:bb:cc 192.168.1.10"]
+type                : ""
+----
+
+*Step 3: Trace the logical flow using ovn-trace.*
+
+[source,bash]
+----
+# From the OVN NB DB pod (or ovn-northd pod)
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:dd:ee:ff && ip4.src == 192.168.1.10 && ip4.dst == 192.168.1.11 && ip.ttl == 64'
+----
+
+----
+ingress(dp="network1", inport="7a8b9c0d...")
+-----------------------------------------
+ 0. ls_in_check_port_sec (northd.c:8210): 1, priority 50, uuid abcd1234
+    reg0[15] = check_in_port_sec();
+    next;
+ 1. ls_in_apply_port_sec (northd.c:8235): reg0[15] == 0, priority 50
+    next;
+    ...
+ 9. ls_in_acl_hint (northd.c:6587): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 7
+    reg0[8] = 1; reg0[10] = 1;
+    next;
+    ...
+24. ls_in_l2_lkup (northd.c:9456): eth.dst == fa:16:3e:dd:ee:ff, priority 50
+    outport = "8b9c0d1e-2f34-5678-90ab-cdef01234567";
+    output;
+
+egress(dp="network1", inport="7a8b9c0d...", outport="8b9c0d1e...")
+-----------------------------------------
+ 0. ls_out_pre_acl (northd.c:5870): 1, priority 0
+    next;
+    ...
+ 9. ls_out_apply_port_sec (northd.c:8300): outport == "8b9c0d1e...", priority 50
+    output;
+    /* output to "8b9c0d1e...", type "" */
+----
+
+*Step 4: Verify with tcpdump on the compute node.*
+
+[source,bash]
+----
+# On edpm-compute-0 - capture on the destination tap interface
+sudo tcpdump -i tap8b9c0d1e-2f -nn icmp -c 5
+----
+
+----
+10:45:12.123456 IP 192.168.1.10 > 192.168.1.11: ICMP echo request, id 1234, seq 1, length 64
+10:45:12.123789 IP 192.168.1.11 > 192.168.1.10: ICMP echo reply, id 1234, seq 1, length 64
+----
+
+=== Scenario 2: VM to VM on Different Compute Nodes
+
+`vm-a` (192.168.1.10) on `edpm-compute-0` sends a packet to `vm-c` (192.168.1.20) on `edpm-compute-1`. Both are on the same logical network.
+
+----
+edpm-compute-0                    edpm-compute-1
++-----------------+               +-----------------+
+| VM-A            |               | VM-C            |
+| 192.168.1.10    |               | 192.168.1.20    |
+| tap7a8b9c0d-1e  |               | tapabcdef01-23  |
+|       |         |               |       |         |
+|   br-int        |               |   br-int        |
+|       |         |               |       |         |
+| geneve tunnel   |               | geneve tunnel   |
+|  port (vni=flow)|               |  port (vni=flow)|
++----|------------+               +-------|----------+
+     |                                    |
+     +--------Tenant Network--------------+
+             (172.19.0.0/24)
+       172.19.0.100            172.19.0.101
+----
+
+*Step 1: Verify the tunnel exists.*
+
+[source,bash]
+----
+# On edpm-compute-0
+sudo ovs-vsctl find Interface type=geneve | grep -E "name|remote_ip"
+----
+
+----
+name                : "ovn-edpm-c-0"
+options             : {csum="true", key=flow, remote_ip="172.19.0.101"}
+----
+
+*Step 2: Check that vm-c's port is bound to edpm-compute-1 chassis.*
+
+[source,bash]
+----
+# From OpenShift
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl find Port_Binding \
+  logical_port="abcdef01-2345-6789-0abc-def012345678" | grep chassis
+----
+
+----
+chassis             : [_uuid : f2e3d4c5-6789-01ab-cdef-222222222222]
+----
+
+*Step 3: Capture the Geneve-encapsulated traffic on the tenant network.*
+
+[source,bash]
+----
+# On edpm-compute-0 - capture on the tenant interface
+sudo tcpdump -i enp7s0 -nn udp port 6081 -c 5
+----
+
+----
+10:50:15.123456 IP 172.19.0.100.12345 > 172.19.0.101.6081: Geneve, Flags [C], vni 0x5, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:77:88:99, ethertype IPv4, 192.168.1.10 > 192.168.1.20: ICMP echo request
+10:50:15.124789 IP 172.19.0.101.12345 > 172.19.0.100.6081: Geneve, Flags [C], vni 0x5, proto TEB: fa:16:3e:77:88:99 > fa:16:3e:aa:bb:cc, ethertype IPv4, 192.168.1.20 > 192.168.1.10: ICMP echo reply
+----
+
+*Step 4: Trace the logical flow.*
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:77:88:99 && ip4.src == 192.168.1.10 && ip4.dst == 192.168.1.20 && ip.ttl == 64'
+----
+
+The output will show the packet traversing the logical switch pipeline, being forwarded to the remote port, and the `output` action. OVN knows the port is on a different chassis, so it encapsulates the packet in a Geneve tunnel.
+
+=== Scenario 3: VM to External Network
+
+`vm-a` (192.168.1.10) sends traffic to an external host (8.8.8.8) via a floating IP (10.0.0.50). A logical router handles the NAT.
+
+----
+edpm-compute-0                    edpm-compute-2 (gateway)
++-----------------+               +-----------------------+
+| VM-A            |               | OVN Gateway Chassis   |
+| 192.168.1.10    |               |                       |
+| FIP: 10.0.0.50  |               | Logical Router        |
+|       |         |               | (DNAT/SNAT)           |
+|   br-int        |               |   br-int              |
+|       |         |               |       |               |
+| geneve tunnel   |               |   br-ex               |
++-------|----------+               |       |               |
+        |                         |  enp8s0 (external)    |
+        +---Tenant Network--------+       |               |
+                                  +-------|----------------+
+                                          |
+                                     External Network
+                                      10.0.0.0/24
+----
+
+*Step 1: Check the NAT rules in the NB DB.*
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lr-nat-list \
+  neutron-b3c4d5e6-7890-12ab-cdef-345678901234
+----
+
+----
+TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_MAC            LOGICAL_IP          EXTERNAL_PORT_RANGE
+dnat_and_snat    lrp-a1b2c3d4-5678...  10.0.0.50          fa:16:3e:99:aa:bb      192.168.1.10
+snat             lrp-a1b2c3d4-5678...  10.0.0.1                                  192.168.1.0/24
+----
+
+*Step 2: Identify the gateway chassis for the logical router.*
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lrp-get-gateway-chassis \
+  lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+----
+
+----
+lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_f2e3d4c5-6789-01ab-cdef-222222222222    5
+lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_e1f2a3b4-5678-90ab-cdef-111111111111    1
+----
+
+The first entry (priority 5) is the primary gateway chassis, and the second (priority 1) is the backup.
+
+*Step 3: Trace the full path with ovn-trace.*
+
+[source,bash]
+----
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:44:55:66 && ip4.src == 192.168.1.10 && ip4.dst == 8.8.8.8 && ip.ttl == 64'
+----
+
+The trace will show:
+. The packet enters the logical switch pipeline (ingress ACL, port security)
+. The packet is forwarded to the logical router port
+. The logical router applies DNAT/SNAT (replacing source IP with the floating IP 10.0.0.50)
+. The packet exits through the external logical switch
+. The packet is sent to the gateway chassis via `localnet` port to the physical network
+
+*Step 4: On the gateway node, verify the traffic on br-ex.*
+
+[source,bash]
+----
+# On the gateway compute node
+sudo tcpdump -i enp8s0 -nn host 10.0.0.50 -c 5
+----
+
+----
+10:55:20.123456 IP 10.0.0.50 > 8.8.8.8: ICMP echo request, id 5678, seq 1, length 64
+10:55:20.145678 IP 8.8.8.8 > 10.0.0.50: ICMP echo reply, id 5678, seq 1, length 64
+----
+
+'''
+
+== Troubleshooting RHOSO-Specific Issues
+
+This section covers common problems specific to the RHOSO architecture and how to diagnose them.
+
+=== Issue 1: ovn-controller Cannot Connect to SB DB
+
+*Symptoms:*
+
+* VMs cannot get network connectivity
+* New VMs fail to get DHCP addresses
+* `ovn-appctl -t ovn-controller connection-status` returns `not connected`
+
+*Diagnosis:*
+
+[source,bash]
+----
+# Step 1: On the data plane node, check connection status
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+not connected
+----
+
+[source,bash]
+----
+# Step 2: Check where ovn-controller is trying to connect
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote
+----
+
+----
+"tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"
+----
+
+[source,bash]
+----
+# Step 3: Test connectivity to the SB DB IPs
+ping -c 3 172.17.0.30
+----
+
+----
+PING 172.17.0.30 (172.17.0.30) 56(84) bytes of data.
+--- 172.17.0.30 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2003ms
+----
+
+[source,bash]
+----
+# Step 4: Check the network interface used for internalapi
+ip addr show | grep 172.17
+----
+
+----
+    inet 172.17.0.100/24 brd 172.17.0.255 scope global enp7s0.20
+----
+
+[source,bash]
+----
+# Step 5: From OpenShift, verify the SB DB pods are running and their IPs
+oc get pods -n openstack -o wide | grep ovsdbserver-sb
+----
+
+----
+ovsdbserver-sb-0   1/1   Running   0   3d   172.17.0.30   master-0   <none>   <none>
+ovsdbserver-sb-1   1/1   Running   0   3d   172.17.0.31   master-1   <none>   <none>
+ovsdbserver-sb-2   1/1   Running   0   3d   172.17.0.32   master-2   <none>   <none>
+----
+
+*Common Causes:*
+. VLAN or network misconfiguration on the data plane node (wrong VLAN tag, wrong interface)
+. NAD misconfiguration on the OpenShift side (wrong master interface, wrong VLAN)
+. Firewall rules blocking port 6642 between data plane nodes and OpenShift nodes
+. SB DB pods were rescheduled and got new IPs (check if ovn-remote needs updating)
+
+
+[WARNING]
+====
+If the SB DB pods are rescheduled to different OpenShift nodes, their NAD-assigned IPs may change (depending on IPAM configuration). If ovn-controller on data plane nodes has stale IP addresses in `ovn-remote`, it will fail to connect. In production, use stable IPs via the `whereabouts` IPAM plugin with fixed ranges, or use DNS names.
+====
+
+
+*Resolution:*
+
+[source,bash]
+----
+# If IPs changed, update ovn-remote on the data plane node
+sudo ovs-vsctl set Open_vSwitch . \
+  external_ids:ovn-remote="tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"
+
+# Restart ovn-controller to reconnect
+sudo systemctl restart ovn-controller
+
+# Verify connection
+sudo ovn-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+=== Issue 2: Data Plane Node Not Registered as Chassis
+
+*Symptoms:*
+
+* VMs on a specific compute node have no network connectivity
+* The node does not appear in `ovn-sbctl show`
+* Ports intended for this node show `chassis: []` in Port_Binding
+
+*Diagnosis:*
+
+[source,bash]
+----
+# From OpenShift, check if the chassis is registered
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show | \
+  grep -A 5 "edpm-compute-0"
+----
+
+If there is no output, the node is not registered.
+
+[source,bash]
+----
+# On the data plane node, check ovn-controller logs
+sudo journalctl -u ovn-controller --since "1 hour ago" | tail -20
+----
+
+----
+May 15 10:30:00 edpm-compute-0 ovn-controller[1234]: ovs|00045|reconnect|WARN|tcp:172.17.0.30:6642: connection attempt failed (Connection refused)
+May 15 10:30:05 edpm-compute-0 ovn-controller[1234]: ovs|00046|reconnect|WARN|tcp:172.17.0.31:6642: connection attempt failed (Connection refused)
+May 15 10:30:10 edpm-compute-0 ovn-controller[1234]: ovs|00047|reconnect|WARN|tcp:172.17.0.32:6642: connection attempt failed (No route to host)
+----
+
+[source,bash]
+----
+# Check the system-id is set (required for chassis registration)
+sudo ovs-vsctl get Open_vSwitch . external_ids:system-id
+----
+
+----
+"e1f2a3b4-5678-90ab-cdef-111111111111"
+----
+
+[source,bash]
+----
+# Check the hostname is set
+sudo ovs-vsctl get Open_vSwitch . external_ids:hostname
+----
+
+----
+"edpm-compute-0.localdomain"
+----
+
+[source,bash]
+----
+# Check that ovn-encap-type and ovn-encap-ip are set
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip
+----
+
+----
+"geneve"
+"172.19.0.100"
+----
+
+*Common Causes:*
+. ovn-controller not running or crashing
+. Cannot connect to SB DB (see Issue 1)
+. Missing `system-id`, `ovn-encap-type`, or `ovn-encap-ip` in external_ids
+. edpm-ansible did not complete successfully during provisioning
+
+=== Issue 3: edpm-ansible Networking Configuration Issues
+
+*Symptoms:*
+
+* Data plane node has wrong network configuration after provisioning
+* Missing VLANs, wrong IPs, or missing bridges
+* edpm-ansible deployment fails with networking errors
+
+*Diagnosis:*
+
+[source,bash]
+----
+# Check the data plane deployment status
+oc get openstackdataplanedeployments -n openstack
+----
+
+----
+NAME                    STATUS   MESSAGE
+openstack-edpm-deploy   False    Deployment in progress
+----
+
+[source,bash]
+----
+# Check the ansible job logs
+oc get jobs -n openstack | grep edpm
+----
+
+----
+openstack-edpm-deploy-openstack-edpm-abcde   0/1   Running   0   10m
+----
+
+[source,bash]
+----
+# View the ansible job logs
+oc logs job/openstack-edpm-deploy-openstack-edpm-abcde -n openstack --tail=50
+----
+
+----
+TASK [edpm_os_net_config : Run os-net-config] **********************************
+fatal: [edpm-compute-0]: FAILED! => {
+    "changed": false,
+    "msg": "Error running os-net-config: Interface enp7s0 not found"
+}
+----
+
+*Common Causes:*
+. Wrong interface names in the OpenStackDataPlaneNodeSet CR
+. Missing physical interfaces on the data plane node
+. Network configuration template errors
+. SSH connectivity issues between OpenShift and data plane nodes
+
+*Resolution:*
+
+[source,bash]
+----
+# Verify the actual interface names on the data plane node
+ssh root@edpm-compute-0 "ip link show"
+----
+
+----
+1: lo: <LOOPBACK,UP,LOWER_UP> ...
+2: enp6s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+3: enp8s0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+----
+
+Update the OpenStackDataPlaneNodeSet CR with the correct interface names and re-run the deployment.
+
+=== Issue 4: Checking OVN Database Health in Pods
+
+*Diagnosis:*
+
+[source,bash]
+----
+# Check NB DB cluster status
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- \
+  ovs-appctl -t /tmp/ovnnb_db.ctl cluster/status OVN_Northbound
+----
+
+----
+2fd3
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234...)
+Server ID: 2fd3 (2fd31234...)
+Address: tcp:172.17.0.30:6643
+Status: cluster member
+Role: leader
+Term: 3
+Leader: self
+Vote: self
+...
+Servers:
+  2fd3 (2fd3 at tcp:172.17.0.30:6643) (self) next_index=1547 match_index=1546
+  db34 (db34 at tcp:172.17.0.31:6643) next_index=1547 match_index=1546
+  ef56 (ef56 at tcp:172.17.0.32:6643) next_index=1547 match_index=1546
+----
+
+[source,bash]
+----
+# Check SB DB cluster status
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- \
+  ovs-appctl -t /tmp/ovnsb_db.ctl cluster/status OVN_Southbound
+----
+
+What to look for:
+
+* *Role:* Should be `leader` for one pod and `follower` for the others
+* *Status:* Should be `cluster member` for all pods
+* *Entries not yet committed:* Should be 0 or very small; large numbers indicate replication issues
+* *Connections:* All peer addresses should show recent `last msg` times
+
+
+[WARNING]
+====
+If a Raft cluster loses quorum (e.g., 2 of 3 pods down), the surviving pod will show `Status: cluster member` but `Role: candidate` because it cannot elect a leader alone. The database becomes read-only. Existing network configurations continue to work, but no new changes can be applied.
+====
+
+
+=== Issue 5: Pod Restart Scenarios and Impact on OVN
+
+Understanding what happens when OVN pods restart is critical for operations:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Pod Restarted
+|Impact
+|Recovery
+
+|ovsdbserver-nb (one of three)
+|Minimal - remaining pods maintain quorum
+|Automatic - pod rejoins Raft cluster
+
+|ovsdbserver-nb (two of three)
+|Critical - loss of quorum, NB DB read-only
+|Manual intervention may be needed
+
+|ovsdbserver-sb (one of three)
+|Minimal - ovn-controllers reconnect to remaining pods
+|Automatic - ovn-controllers have all SB endpoints configured
+
+|ovsdbserver-sb (two of three)
+|Critical - ovn-controllers cannot update chassis or receive flows
+|Urgent - restore quorum
+
+|ovn-northd
+|Temporary - no NB to SB translation
+|Automatic - Kubernetes restarts the pod
+
+|Neutron pods
+|Temporary - API unavailable, no new network changes
+|Automatic - existing networks unaffected
+
+|===
+
+
+[source,bash]
+----
+# Check pod restart counts (high restart counts may indicate a problem)
+oc get pods -n openstack | grep -E "ovn|ovsdb"
+----
+
+----
+ovn-northd-6b8d7f9c4d-abc12               1/1     Running   0          3d
+ovsdbserver-nb-0                           1/1     Running   0          3d
+ovsdbserver-nb-1                           1/1     Running   2          3d
+ovsdbserver-nb-2                           1/1     Running   0          3d
+ovsdbserver-sb-0                           1/1     Running   0          3d
+ovsdbserver-sb-1                           1/1     Running   0          3d
+ovsdbserver-sb-2                           1/1     Running   0          3d
+----
+
+If a pod shows a high restart count, check why:
+
+[source,bash]
+----
+# Check pod events
+oc describe pod ovsdbserver-nb-1 -n openstack | tail -20
+----
+
+----
+Events:
+  Type     Reason   Age                  From     Message
+  ----     ------   ----                 ----     -------
+  Warning  BackOff  5m (x3 over 10m)     kubelet  Back-off restarting failed container
+  Normal   Pulled   4m                   kubelet  Container image pulled successfully
+  Normal   Started  4m                   kubelet  Started container ovsdbserver-nb
+----
+
+[source,bash]
+----
+# Check previous container logs
+oc logs ovsdbserver-nb-1 -n openstack --previous --tail=30
+----
+
+'''
+
+== Summary
+
+This module covered the architecture and operation of OVS and OVN in Red Hat OpenStack Services on OpenShift (RHOSO). Key takeaways:
+
+* *RHOSO splits the deployment* into an OpenShift-hosted control plane (OVN databases, ovn-northd, Neutron) and bare-metal data plane nodes (ovn-controller, OVS, nova-compute).
+
+* *NetworkAttachmentDefinitions* bridge the gap between the OpenShift pod network and the physical networks required by OpenStack services.
+
+* *OVN is the sole networking backend* in RHOSO. The NB/SB databases run as Raft-clustered StatefulSet pods, providing high availability.
+
+* *Troubleshooting requires working across both domains:* `oc exec` and `oc logs` for control plane components, SSH and `journalctl` for data plane components.
+
+* *The connectivity between data plane nodes and the SB DB pods* is the most critical network path. If it breaks, ovn-controller cannot receive flow updates.
+
+In the next module, we will explore how OVN is used in a completely different context: as the CNI (Container Network Interface) for OpenShift itself, powering pod-to-pod networking in OVN-Kubernetes.
+
+'''
+
+
+[cols="1,1",options="header"]
+|===
+|Previous
+|Next
+
+|xref:07-ovs-ovn-in-rhosp.adoc[Module 07 - OVS and OVN in Red Hat OpenStack Platform]
+|xref:09-ovn-in-openshift.adoc[Module 09 - OVN-Kubernetes in OpenShift]
+
+|===
+
+

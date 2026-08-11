@@ -1,0 +1,548 @@
+= Module 00 - Introduction
+
+
+== Welcome
+
+Welcome to the *OVS and OVN Deep Dive Workshop* - a comprehensive, hands-on training designed for Red Hat engineers who work with customers running OpenStack and OpenShift. Whether you are troubleshooting a connectivity issue on a support case, designing a network architecture for a customer deployment, or simply trying to understand what happens when a packet leaves a virtual machine, this workshop will give you the knowledge and the tools to work confidently with OVS and OVN.
+
+Networking is often the most complex and least understood layer in cloud deployments. Virtual switches and overlay networks sit at the heart of every Red Hat OpenStack Platform (RHOSP), Red Hat OpenStack Services on OpenShift (RHOSO), and Red Hat OpenShift Container Platform (OCP) installation. When things work, they are invisible. When things break, they can be extremely difficult to diagnose without a solid understanding of the underlying technology.
+
+This workshop exists to bridge that gap. It takes you from foundational networking concepts through the internals of OVS and OVN, and into real-world troubleshooting scenarios drawn from production environments. Each module builds on the previous one, combining theory with guided labs so that you walk away with practical skills you can apply immediately.
+
+'''
+
+== Workshop Objectives
+
+By the end of this workshop, you will be able to:
+
+. *Understand OVS architecture* - Explain how Open vSwitch processes packets through its pipeline, including the kernel datapath, userspace daemon, flow tables, and the OpenFlow protocol that ties them together.
+
+. *Understand OVN architecture* - Describe how OVN orchestrates logical networks on top of OVS, including the northbound and southbound databases, ovn-northd, ovn-controller, and the logical flow pipeline.
+
+. *Compare OVS vs OVN* - Clearly articulate the relationship between OVS and OVN, when each is used, what OVN adds on top of OVS, and why the industry has moved toward OVN-based deployments.
+
+. *Set up standalone labs* - Build your own OVS and OVN lab environments from scratch, creating bridges, ports, logical switches, routers, and ACLs to see the technology in action outside of any product deployment.
+
+. *Explore OVS/OVN in RHOSP, RHOSO, and OCP* - Navigate the networking layer in production Red Hat environments, understanding how each product integrates OVS and OVN and where to find the relevant components, configuration, and logs.
+
+. *Trace traffic flows end-to-end* - Follow a packet from a virtual machine or pod through the entire OVS/OVN pipeline, including flow table lookups, tunnel encapsulation, and delivery to the destination.
+
+. *Master management tools* - Use `ovs-vsctl`, `ovs-ofctl`, `ovs-dpctl`, `ovn-nbctl`, `ovn-sbctl`, `ovn-trace`, and other tools fluently for inspection, configuration, and troubleshooting.
+
+. *Troubleshoot real-world issues* - Apply a structured troubleshooting methodology to diagnose and resolve common networking problems in RHOSP, RHOSO, and OCP, including VM connectivity failures, DHCP issues, floating IP problems, pod-to-pod communication failures, and service reachability issues.
+
+
+[NOTE]
+.Key Concept
+====
+This workshop is designed to be practical above all else. Every concept is tied to a real scenario you might encounter on a support case or in a customer environment. The goal is not academic knowledge - it is operational confidence.
+====
+
+
+'''
+
+== Why OVS and OVN Matter for Red Hat Engineers
+
+Every major Red Hat infrastructure product relies on OVS, OVN, or both for its networking layer:
+
+* *RHOSP* uses OVN (via Neutron ML2/OVN) as its default networking backend. Earlier versions used ML2/OVS, which you will still encounter in existing deployments.
+* *RHOSO* uses OVN as its primary networking backend, with the control plane running on OpenShift and the data plane on bare-metal nodes.
+* *OCP* uses OVN-Kubernetes as the default Container Network Interface (CNI) plugin since OpenShift 4.12, including managed offerings like ROSA (Red Hat OpenShift Service on AWS), ARO (Azure Red Hat OpenShift), and ROKS (Red Hat OpenShift on IBM Cloud).
+
+This means that virtually every networking-related support case, architecture review, or troubleshooting session you participate in will involve OVS, OVN, or both. Understanding how they work - not just at a surface level but at the level of flow tables, database entries, and packet walks - is what separates an engineer who can resolve issues quickly from one who is guessing.
+
+Consider these real scenarios:
+
+* A customer reports that VMs on one compute node cannot reach VMs on another compute node. Is it a tunnel issue? An OpenFlow rule missing? An OVN binding problem? A physical network misconfiguration?
+* A pod in OpenShift can reach some services but not others. Is it an OVN ACL blocking traffic? A Kubernetes NetworkPolicy translated incorrectly? A conntrack table full?
+* After a RHOSP upgrade from ML2/OVS to ML2/OVN, some workloads lose connectivity. What changed? How do you compare the old OVS-based flows with the new OVN-generated flows?
+
+Without a solid understanding of OVS and OVN internals, these issues can take hours or days to resolve. With it, you can often narrow down the root cause in minutes.
+
+'''
+
+== A Brief History
+
+=== Open vSwitch (OVS)
+
+Open vSwitch was created in *2009* by the team at *Nicira Networks*, a startup focused on network virtualization. The project was designed to be a production-quality, multilayer virtual switch that could run on hypervisors and provide programmatic control over network forwarding through the OpenFlow protocol and the OVSDB management protocol.
+
+Key milestones:
+
+
+[cols="1,1",options="header"]
+|===
+|Year
+|Event
+
+|2009
+|OVS created at Nicira Networks
+
+|2012
+|VMware acquires Nicira for $1.26 billion
+
+|2013
+|OVS becomes a Linux Foundation Collaborative Project
+
+|2016
+|OVS 2.6 introduces conntrack-based stateful firewalling
+
+|2017
+|OVS with DPDK support gains traction for NFV workloads
+
+|2020
+|OVS repo moves to the OVN GitHub organization after the OVN split
+
+|===
+
+
+OVS quickly became the de facto standard virtual switch for Linux-based virtualization and cloud platforms. Its support for OpenFlow made it uniquely programmable compared to the native Linux bridge, and its performance characteristics - particularly with kernel datapath acceleration and later DPDK support - made it suitable for production workloads.
+
+
+[NOTE]
+====
+When VMware acquired Nicira, many in the open-source community were concerned about the future of OVS. The move to the Linux Foundation as a collaborative project ensured that OVS remained vendor-neutral and community-driven, which is a key reason it became the standard across multiple cloud platforms, not just VMware's.
+====
+
+
+=== Open Virtual Network (OVN)
+
+OVN was created in *2015* by many of the same engineers who built OVS. By that point, it had become clear that while OVS was an excellent data plane, it lacked a built-in control plane for managing logical networks across multiple hypervisors. Every cloud platform that used OVS - OpenStack, for example - had to build its own mechanism for programming OVS with the right flows on each node. This led to duplicated effort, inconsistency, and complexity.
+
+OVN was designed to solve this by providing:
+
+* A *logical network abstraction layer* on top of OVS (logical switches, routers, ACLs)
+* *Automatic flow generation* - translating high-level intent into low-level OpenFlow rules
+* *Distributed L2 and L3* - routing and switching that happens directly on each hypervisor without requiring traffic to traverse a central node
+* *Built-in services* - DHCP, NAT, load balancing, and DNS without external components
+
+Key milestones:
+
+
+[cols="1,1",options="header"]
+|===
+|Year
+|Event
+
+|2015
+|OVN project announced and initial development begins within the OVS repository
+
+|2016
+|OpenStack Neutron adds ML2/OVN driver (initially experimental)
+
+|2019
+|OVN becomes the default backend for Neutron in upstream OpenStack
+
+|2020
+|OVN splits from the OVS repository into its own project under the OVS GitHub organization
+
+|2021
+|OVN-Kubernetes becomes the default CNI for Red Hat OpenShift 4.x
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+OVN started as a sub-project within the OVS source tree. In 2020, it was separated into its own repository to allow independent release cycles and governance, but it remains tightly coupled to OVS - OVN cannot function without OVS underneath it.
+====
+
+
+'''
+
+== The Relationship Between OVS and OVN
+
+This is a point of confusion that comes up repeatedly, so it is worth stating clearly:
+
+*OVN is not a replacement for OVS. OVN is built on top of OVS.*
+
+* *OVS is the data plane* - the virtual switch that actually forwards packets based on OpenFlow rules installed in its flow tables.
+* *OVN is the control plane* - the brain that decides what those OpenFlow rules should be and programs them into OVS automatically.
+
+Every deployment that uses OVN also has OVS running underneath. When you troubleshoot an OVN-based network, you will frequently drop down to the OVS level to inspect flows, check port states, and trace packets. The two are inseparable in practice.
+
+Think of it this way:
+
+----
++------------------------------------------------------+
+|                    OVN (The Brain)                    |
+|                                                      |
+|  - Logical switches, routers, ACLs                   |
+|  - Northbound DB, Southbound DB                      |
+|  - ovn-northd, ovn-controller                        |
+|  - Automatic flow generation and distribution        |
++------------------------------------------------------+
+|                    OVS (The Muscle)                   |
+|                                                      |
+|  - Packet forwarding based on OpenFlow rules         |
+|  - Kernel datapath for fast-path processing          |
+|  - ovs-vswitchd, ovsdb-server                        |
+|  - Port management (physical NICs, VIFs, tunnels)    |
++------------------------------------------------------+
+|              Physical Network / Hardware              |
++------------------------------------------------------+
+----
+
+You can run *OVS without OVN* - this is "standalone OVS" mode, where something else (a human, a script, an SDN controller like OpenDaylight, or an OpenStack Neutron agent) programs the flows. This was the standard approach in earlier RHOSP versions using ML2/OVS.
+
+You *cannot run OVN without OVS* - OVN has no data plane of its own. It relies entirely on OVS to forward packets.
+
+
+[NOTE]
+.Key Concept
+====
+When a customer says "we are running OVN," they are also running OVS. When they say "we are running OVS," they may or may not be running OVN on top of it. Always clarify which mode is in use - it fundamentally changes how you approach troubleshooting.
+====
+
+
+'''
+
+== OVS and OVN in Red Hat Products
+
+=== Red Hat OpenStack Platform (RHOSP)
+
+RHOSP has used both OVS-based and OVN-based networking backends over its history:
+
+*ML2/OVS (Legacy):*
+
+* Used in RHOSP versions up through RHOSP 16.x (available but not default in later versions).
+* Neutron agents (neutron-openvswitch-agent) run on each compute and network node.
+* These agents program OVS flows directly based on Neutron's network model.
+* L3 routing is centralized on dedicated network nodes (unless DVR is enabled).
+* Security groups are implemented via iptables (older) or OVS conntrack (newer).
+
+*ML2/OVN (Current/Default):*
+
+* Default backend starting with RHOSP 16.2 and the standard in RHOSP 17+.
+* Replaces all Neutron agents with OVN components (ovn-northd, ovn-controller).
+* Neutron writes to the OVN Northbound Database, and OVN handles everything from there.
+* L3 routing is distributed by default - East-West traffic is routed directly on the compute node.
+* Security groups are implemented via OVN ACLs and OVS conntrack.
+* DHCP is handled by OVN's built-in DHCP responder instead of a separate neutron-dhcp-agent.
+
+
+[NOTE]
+====
+If you are working on a RHOSP support case, one of the first things to determine is whether the deployment uses ML2/OVS or ML2/OVN. The troubleshooting approach, relevant logs, and tools are different for each. Module 07 covers this in detail.
+====
+
+
+=== Red Hat OpenStack Services on OpenShift (RHOSO)
+
+RHOSO represents the next generation of Red Hat's OpenStack offering, with the control plane running as containers on OpenShift and the data plane running on bare-metal nodes.
+
+* OVN is the *primary and only supported networking backend* in RHOSO.
+* The OVN control plane components (northbound DB, southbound DB, ovn-northd) run as pods on the OpenShift cluster.
+* ovn-controller runs on each bare-metal data plane node, programming OVS on those nodes.
+* The architecture separates the control plane lifecycle (managed by OpenShift operators) from the data plane lifecycle (managed by the OpenStack data plane operator).
+* Troubleshooting involves navigating both the OpenShift layer (for control plane components) and the bare-metal layer (for data plane components).
+
+
+[WARNING]
+====
+RHOSO introduces a new operational model that can be confusing for engineers accustomed to RHOSP. The control plane is no longer a set of services running on dedicated VMs or bare-metal nodes - it is a set of pods running on OpenShift. This means you need to be comfortable with both OpenStack and OpenShift tooling to troubleshoot effectively. Module 08 walks through this in detail.
+====
+
+
+=== Red Hat OpenShift Container Platform (OCP)
+
+OpenShift uses OVN-Kubernetes as its default Container Network Interface (CNI) plugin:
+
+* *OVN-Kubernetes has been the default CNI since OpenShift 4.12* and is the *only* CNI since OCP 4.17 (OpenShift SDN was removed). This applies to all deployment types: self-managed, ROSA (AWS), ARO (Azure), and ROKS (IBM Cloud).
+* OVN-Kubernetes uses OVN to implement pod networking, service routing, NetworkPolicy enforcement, EgressIP, EgressFirewall, and more.
+* Each node runs ovn-controller, which programs the local OVS instance.
+* Since OCP 4.14, OVN-K runs in *Interconnect (IC) mode*: each node has its own NB/SB DB, ovn-northd, and ovn-controller (no centralized Raft cluster). In pre-4.14, the databases ran centrally on control plane nodes.
+* Kubernetes network constructs (Services, NetworkPolicies, EgressIPs) are translated into OVN logical network constructs, which are then translated into OVS flows.
+
+
+[NOTE]
+====
+Even if your primary focus is OpenStack, understanding how OVN works in OpenShift is valuable because RHOSO runs its control plane on OpenShift, and the underlying OVN concepts are the same. If you understand OVN in one context, you understand it in all contexts - only the integration layer differs.
+====
+
+
+'''
+
+== Workshop Structure
+
+This workshop is organized into 15 modules (00 through 14), designed to be followed sequentially:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Module
+|Title
+|What You Will Learn
+
+|*00*
+|Introduction
+|Workshop overview, history, product context (you are here)
+
+|*01*
+|Networking Fundamentals
+|L2/L3 refresher, VLANs, overlays (VXLAN, Geneve), SDN concepts, Linux networking building blocks
+
+|*02*
+|OVS Architecture
+|OVS components, how they interact, the role of OpenFlow
+
+|*03*
+|OVS in Practice
+|Hands-on OVS lab - creating bridges, ports, and flows
+
+|*04*
+|OVN Architecture
+|OVN components, databases, logical pipeline, how OVN programs OVS
+
+|*05*
+|OVN Hands-On Lab
+|Building logical networks with OVN from scratch
+
+|*06*
+|OVS vs OVN Comparison
+|Side-by-side comparison, when to use which, migration considerations
+
+|*07*
+|OVS/OVN in RHOSP
+|Neutron integration, ML2/OVS vs ML2/OVN, RHOSP-specific architecture
+
+|*08*
+|OVS/OVN in RHOSO
+|RHOSO networking architecture, operator-managed components, debugging
+
+|*09*
+|OVN in OpenShift
+|OVN-Kubernetes CNI, pod networking, services, NetworkPolicy, EgressIP
+
+|*10*
+|Traffic Flows
+|End-to-end packet walks through OVS and OVN pipelines
+
+|*11*
+|Management Tooling
+|Complete reference for all OVS and OVN command-line tools
+
+|*12*
+|Troubleshooting OVS and OVN
+|Structured approach to diagnosing OVS/OVN issues with real-world scenarios
+
+|*13*
+|Limitations and Considerations
+|Scale limits, performance considerations, and known issues
+
+|*14*
+|References and Further Reading
+|Documentation links, community resources, and additional reading
+
+|===
+
+In addition to the modules above, the workshop includes six standalone troubleshooting scenarios.
+These are hands-on exercises that walk through real-world problems step by step, from symptom to root cause to fix:
+
+[cols="1,1",options="header"]
+|===
+|Scenario
+|Problem
+
+|xref:ts-01-vm-connectivity.adoc[TS-01]
+|VM Cannot Reach Another VM
+
+|xref:ts-02-overlay-issues.adoc[TS-02]
+|Intermittent Packet Loss on Overlay Network
+
+|xref:ts-03-performance.adoc[TS-03]
+|Severe Performance Degradation Under Load
+
+|xref:ts-04-ovn-controller.adoc[TS-04]
+|Pods Lose Network After Node Maintenance
+
+|xref:ts-05-dhcp-failure.adoc[TS-05]
+|VMs Not Getting DHCP Addresses
+
+|xref:ts-06-floating-ip.adoc[TS-06]
+|Floating IP Not Accessible from External Network
+
+|===
+
+
+Each module follows a consistent structure:
+
+* *Theory and concepts* explained with analogies, diagrams, and real-world context
+* *Hands-on exercises* that reinforce the concepts with practical work
+* *Key takeaways* that summarize the most important points
+* *Connections to Red Hat products* showing how the concepts apply in practice
+
+'''
+
+== Lab Environment Requirements
+
+To get the most out of this workshop, you will need access to a lab environment. The requirements vary depending on which modules you plan to work through.
+
+=== Hardware Requirements
+
+*For standalone OVS/OVN labs (Modules 02-06):*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Resource
+|Minimum
+|Recommended
+
+|CPU
+|4 cores
+|8 cores
+
+|RAM
+|8 GB
+|16 GB
+
+|Disk
+|40 GB free
+|80 GB free
+
+|Network
+|1 NIC
+|2 NICs (for testing physical port scenarios)
+
+|===
+
+
+A single Linux machine (physical or virtual) is sufficient. You will use network namespaces to simulate multiple hosts.
+
+*For product-specific labs (Modules 07-09, 12-13):*
+
+Access to a deployed RHOSP, RHOSO, and/or OCP environment is required. These labs do not cover installation of the platforms - they assume the environment is already running. Consult the lab setup instructions in `labs/lab-environment/` for details on recommended topologies.
+
+=== Software Requirements
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Details
+
+|Operating System
+|RHEL 9.x or Fedora 38+ (for standalone labs)
+
+|OVS
+|Open vSwitch 3.1+ (available from RHEL/Fedora repositories)
+
+|OVN
+|OVN 23.03+ (available from RHEL/Fedora repositories)
+
+|Container runtime
+|Podman (for containerized lab exercises)
+
+|Utilities
+|`tcpdump`, `ip`, `bridge`, `wireshark` (optional), `jq`
+
+|Access
+|Root or sudo access on the lab machine
+
+|===
+
+
+[source,bash]
+----
+# Install OVS and OVN on RHEL 9 / Fedora
+sudo dnf install -y openvswitch ovn ovn-central ovn-host
+
+# Enable and start the services
+sudo systemctl enable --now openvswitch
+sudo systemctl enable --now ovn-northd
+sudo systemctl enable --now ovn-controller
+
+# Verify installation
+ovs-vsctl --version
+ovn-nbctl --version
+----
+
+
+[NOTE]
+====
+For RHOSP, RHOSO, and OCP environments, OVS and OVN are pre-installed and managed by the platform. You do not need to install them manually - you only need access to the nodes where they are running.
+====
+
+
+'''
+
+== How to Read This Guide
+
+This workshop uses consistent formatting conventions throughout all modules to help you navigate the content efficiently.
+
+=== Code Blocks
+
+Commands you should run appear in fenced code blocks with a language hint:
+
+[source,bash]
+----
+ovs-vsctl show
+----
+
+Output or diagrams use plain text blocks:
+
+----
+Bridge br-int
+    Port patch-br-int-to-provnet
+        Interface patch-br-int-to-provnet
+            type: patch
+            options: {peer=patch-provnet-to-br-int}
+    Port br-int
+        Interface br-int
+            type: internal
+----
+
+=== Callout Boxes
+
+Throughout the guide, you will encounter three types of callouts:
+
+
+[NOTE]
+.Key Concept
+====
+These highlight the most important ideas in a section - the things you should remember even if you forget everything else. If you are short on time, read only these.
+====
+
+
+[NOTE]
+====
+These provide additional context, clarifications, or tips that supplement the main content. They are useful but not critical.
+====
+
+
+[WARNING]
+====
+These flag common mistakes, pitfalls, or things that can break your environment if you are not careful. Always read these.
+====
+
+
+=== Tables
+
+Comparison tables are used frequently to contrast technologies, tools, or approaches side by side. They are designed to be quick-reference resources you can come back to.
+
+=== Navigation
+
+Each module ends with navigation links to the previous and next modules. You can also use the Table of Contents at the top of each module to jump to a specific section.
+
+'''
+
+== Summary
+
+This workshop is built around a single goal: giving Red Hat engineers the knowledge and practical skills to work confidently with OVS and OVN across the entire Red Hat product portfolio.
+
+Key points from this introduction:
+
+* *OVS* is the open-source virtual switch that serves as the data plane - it forwards packets based on OpenFlow rules.
+* *OVN* is the control plane built on top of OVS - it manages logical networks and programs OVS automatically.
+* *You cannot run OVN without OVS*, but you can run OVS without OVN.
+* All three major Red Hat infrastructure products (RHOSP, RHOSO, OCP) use OVN as their networking backend, with OVS underneath.
+* The workshop is structured as 15 sequential modules, each building on the previous one, combining theory with hands-on labs.
+
+Now, let us start with the networking fundamentals that underpin everything else.
+
+'''
+
+xref:01-networking-fundamentals.adoc[Next: Module 01 - Networking Fundamentals]
+

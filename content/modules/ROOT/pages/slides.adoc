@@ -1,0 +1,23 @@
+= Interactive Slide Deck
+
+The interactive slide deck provides a visual overview of the workshop content, designed for instructor-led delivery or as a companion to self-paced study.
+
+== Access the Slides
+
+++++
+<p><a href="../../../slides/index.html" target="_blank">Open slide deck in a new tab</a></p>
+<iframe src="../../../slides/index.html" width="100%" height="600" frameborder="0" style="border: 1px solid #ccc; border-radius: 4px;"></iframe>
+++++
+
+[NOTE]
+====
+The slide deck is built with reveal.js and runs entirely in your browser. Use the arrow keys or swipe to navigate between slides. Press `S` for speaker notes and `F` for fullscreen.
+====
+
+== Slide Deck Features
+
+* *Keyboard navigation* - Arrow keys, Space, Page Up/Down
+* *Speaker notes* - Press `S` to open speaker notes in a separate window
+* *Fullscreen* - Press `F` to toggle fullscreen mode
+* *Overview* - Press `Esc` to see all slides at once
+* *Print* - Add `?print-pdf` to the URL to generate a printable version

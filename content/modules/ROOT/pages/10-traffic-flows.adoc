@@ -1,0 +1,1206 @@
+= Module 10: Traffic Flows Deep Dive
+
+== Overview
+
+Every previous module in this workshop has built toward this moment. You understand OVS bridges, OpenFlow tables, OVN's architecture, logical constructs, and the troubleshooting tools. Now we put it all together by tracing packets end to end through OVS and OVN in realistic scenarios - the exact kind of tracing you will need to perform during a production incident.
+
+This module is deliberately detailed. When a customer reports that VM A cannot reach VM B, or that a floating IP is not working, or that a Kubernetes Service is not load balancing correctly, you need to be able to follow a packet from the moment it leaves the source interface to the moment it arrives at the destination. Every hop, every table, every encapsulation, every NAT translation. That is what this module teaches.
+
+'''
+
+== Understanding Flow Tables
+
+Before tracing packets, you need to be completely comfortable with how flow tables work. This section recaps key concepts from Modules 2 and 3 and extends them to show how OVN uses flow tables.
+
+=== OpenFlow Flow Tables in OVS
+
+OVS organizes its forwarding logic into a pipeline of numbered tables (table 0, table 1, table 2, and so on). When a packet enters the switch, it always starts in *table 0*. Each table contains flow entries, and each flow entry has three essential parts:
+
+. *Match fields* - conditions the packet must satisfy (source MAC, destination IP, input port, VLAN tag, etc.)
+. *Priority* - a number from 0 to 65535 that determines which flow wins when multiple flows match the same packet. Higher priority wins.
+. *Actions* - what to do with the packet if it matches (output to a port, modify a header, drop it, resubmit to another table, etc.)
+
+When a packet enters a table, OVS evaluates it against all flow entries in that table simultaneously. The highest-priority matching entry wins, and its actions are executed. If no entry matches, the packet is dropped (unless a table-miss flow with priority 0 specifies a different behavior).
+
+The `resubmit(,N)` action is what chains tables together. When a flow in table 0 executes `resubmit(,1)`, the packet is evaluated against table 1's flow entries without leaving the switch. This allows complex logic to be broken into stages.
+
+
+[NOTE]
+.Key Concept
+====
+The flow table pipeline is the heart of OVS packet processing. Every packet traverses this pipeline. Understanding which table does what, and how packets move between tables, is the single most important skill for troubleshooting.
+====
+
+
+=== How OVN Uses Flow Tables
+
+When OVN manages an OVS instance, `ovn-controller` programs the flow tables on `br-int` (the integration bridge). OVN uses a specific table numbering scheme to implement its logical pipeline. The exact table numbers can vary between OVN versions, but the general structure is consistent.
+
+OVN's physical flow tables on `br-int` implement two pipelines:
+
+. *Ingress pipeline* - processes packets entering the logical network from a local port or arriving from a tunnel.
+. *Egress pipeline* - processes packets leaving the logical network toward a local port or a tunnel.
+
+The tables serve as stages in these pipelines. Each stage performs a specific function (port security, ACL evaluation, routing, etc.), and the packet moves through stages via `resubmit` actions.
+
+
+[NOTE]
+====
+The exact OVS table numbers that correspond to each OVN logical table depend on your OVN version. You can determine the mapping by examining the flows with `ovs-ofctl dump-flows br-int` and correlating the table numbers with the logical flow stages shown by `ovn-sbctl lflow-list`. The `ovn-detrace` tool automates this correlation.
+====
+
+
+=== Reading Flow Entries
+
+When you run `ovs-ofctl dump-flows br-int`, you see output like this:
+
+----
+ cookie=0x4a5c0b13, duration=3842.651s, table=0, n_packets=15234, n_bytes=1827410,
+ priority=100,in_port=3 actions=load:0x2->NXM_NX_REG13[],load:0x1->NXM_NX_REG11[],
+ load:0x3->NXM_NX_REG12[],load:0x2->OXM_OF_METADATA[],
+ load:0x1->NXM_NX_REG14[],resubmit(,8)
+----
+
+Let us break down every field:
+
+
+[cols="1,1",options="header"]
+|===
+|Field
+|Meaning
+
+|`cookie=0x4a5c0b13`
+|A 64-bit identifier that OVN uses to track which logical flow this physical flow came from. Used by `ovn-detrace` to map back to OVN logical flows.
+
+|`duration=3842.651s`
+|How long this flow has been installed in the table.
+
+|`table=0`
+|Which OVS table this flow belongs to.
+
+|`n_packets=15234`
+|Number of packets that have matched this flow since it was installed.
+
+|`n_bytes=1827410`
+|Total bytes processed by this flow.
+
+|`priority=100`
+|Priority of this flow within the table. Higher number wins when multiple flows match.
+
+|`in_port=3`
+|Match condition: this flow matches packets arriving on OVS port 3.
+
+|`actions=...`
+|What to do when the packet matches.
+
+|===
+
+
+The actions in this example perform the following:
+
+* `load:0x2->NXM_NX_REG13[]` - Store a value in register 13 (OVN uses registers to carry metadata through the pipeline, such as the logical input port number).
+* `load:0x1->NXM_NX_REG11[]` - Store a value in register 11 (typically the logical datapath group).
+* `load:0x3->NXM_NX_REG12[]` - Store a value in register 12.
+* `load:0x2->OXM_OF_METADATA[]` - Store the logical datapath identifier in the OpenFlow metadata field.
+* `load:0x1->NXM_NX_REG14[]` - Store the logical input port in register 14.
+* `resubmit(,8)` - Continue processing in table 8 (the start of the OVN ingress pipeline).
+
+
+[NOTE]
+.Key Concept
+====
+OVN uses OpenFlow registers (NXM_NX_REG0 through NXM_NX_REG15) and the metadata field to carry logical context through the physical pipeline. When you see `load` actions writing to registers, OVN is tagging the packet with information like "this came from logical port X on logical switch Y." Later tables read these registers to make forwarding decisions without re-examining the physical packet headers.
+====
+
+
+=== Cookie Values and OVN Correlation
+
+The `cookie` field is particularly important in OVN-managed environments. OVN assigns each logical flow a unique identifier, and when `ovn-controller` translates that logical flow into one or more OVS physical flows, it stamps them with a cookie derived from the logical flow's UUID.
+
+This means you can take any flow from `ovs-ofctl dump-flows br-int`, extract its cookie, and use `ovn-detrace` to find the corresponding logical flow in the Southbound database. This is invaluable for debugging because it lets you answer the question: "Why does this OVS flow exist?"
+
+[source,bash]
+----
+# Dump flows with cookies
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15
+
+# Use ovn-detrace to map a cookie back to a logical flow
+# (requires SB DB connection)
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+----
+
+The output of `ovn-detrace` annotates each OVS flow with the logical flow it came from, showing the datapath, pipeline direction, table, priority, match, and action from the OVN logical layer.
+
+'''
+
+== OVS Standalone Flow Walkthrough
+
+Before diving into OVN's complex multi-table pipeline, let us trace a packet through a simple standalone OVS bridge. This establishes the mechanics of packet tracing that we will use throughout the rest of the module.
+
+=== Setting Up the Example
+
+Consider a basic OVS bridge with three ports:
+
+[source,bash]
+----
+# Create a bridge
+sudo ovs-vsctl add-br br-test
+
+# Add three internal ports (simulating connected endpoints)
+sudo ip netns add ns1
+sudo ip netns add ns2
+sudo ip netns add ns3
+
+sudo ovs-vsctl add-port br-test veth1 -- set interface veth1 type=internal
+sudo ovs-vsctl add-port br-test veth2 -- set interface veth2 type=internal
+sudo ovs-vsctl add-port br-test veth3 -- set interface veth3 type=internal
+
+sudo ip link set veth1 netns ns1
+sudo ip link set veth2 netns ns2
+sudo ip link set veth3 netns ns3
+
+sudo ip netns exec ns1 ip addr add 10.0.0.1/24 dev veth1
+sudo ip netns exec ns1 ip link set veth1 up
+sudo ip netns exec ns2 ip addr add 10.0.0.2/24 dev veth2
+sudo ip netns exec ns2 ip link set veth2 up
+sudo ip netns exec ns3 ip addr add 10.0.0.3/24 dev veth3
+sudo ip netns exec ns3 ip link set veth3 up
+----
+
+With no custom flows installed, OVS uses its default behavior: the `NORMAL` action, which makes it act like a traditional learning switch (learn source MACs, flood unknown destinations, forward known destinations).
+
+=== Tracing a Packet with ofproto/trace
+
+The `ovs-appctl ofproto/trace` command simulates a packet through the OVS pipeline without actually sending it on the wire. This is your most important debugging tool for OVS-level problems.
+
+[source,bash]
+----
+# Trace a packet from port 1 (veth1) to port 2 (veth2)
+sudo ovs-appctl ofproto/trace br-test \
+  in_port=1,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,dl_type=0x0800,\
+  nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80
+----
+
+The output walks you through each table:
+
+----
+Flow: tcp,in_port=1,vlan_tci=0x0000,dl_src=00:00:00:00:00:01,
+      dl_dst=00:00:00:00:00:02,nw_src=10.0.0.1,nw_dst=10.0.0.2,
+      nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=12345,tp_dst=80,tcp_flags=0
+
+bridge("br-test")
+-----------------
+ 0. priority 0
+    NORMAL
+     -> learned that 00:00:00:00:00:01 is on port veth1 in VLAN 0
+     -> forwarding to learned port
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,in_port=1,dl_src=00:00:00:00:00:01,
+          dl_dst=00:00:00:00:00:02
+Datapath actions: 2
+----
+
+Reading this output:
+
+. *Flow* - the complete simulated packet.
+. *bridge("br-test")* - which bridge processes the packet.
+. *0. priority 0* - table 0, matched the default flow.
+. *NORMAL* - standard L2 switching logic.
+. *learned that...* - OVS associated the source MAC with the input port.
+. *Final flow: unchanged* - no header modifications.
+. *Megaflow* - the wildcard cached flow for the kernel datapath.
+. *Datapath actions: 2* - output on kernel datapath port 2.
+
+=== Adding Custom Flows and Tracing Again
+
+[source,bash]
+----
+# Remove the default NORMAL action
+sudo ovs-ofctl del-flows br-test
+
+# Table 0: classify by input port
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=1,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=2,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=3,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=0,actions=drop"
+
+# Table 1: filter - only allow IP and ARP traffic
+sudo ovs-ofctl add-flow br-test "table=1,priority=100,ip,actions=resubmit(,2)"
+sudo ovs-ofctl add-flow br-test "table=1,priority=100,arp,actions=resubmit(,2)"
+sudo ovs-ofctl add-flow br-test "table=1,priority=0,actions=drop"
+
+# Table 2: forwarding by destination MAC
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:01,actions=output:1"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:02,actions=output:2"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:03,actions=output:3"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=50,dl_dst=ff:ff:ff:ff:ff:ff,actions=output:1,output:2,output:3"
+sudo ovs-ofctl add-flow br-test "table=2,priority=0,actions=drop"
+----
+
+Trace with the custom pipeline:
+
+[source,bash]
+----
+sudo ovs-appctl ofproto/trace br-test \
+  in_port=1,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,dl_type=0x0800,\
+  nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80
+----
+
+----
+bridge("br-test")
+-----------------
+ 0. in_port=1, priority 100
+    resubmit(,1)
+ 1. ip, priority 100
+    resubmit(,2)
+ 2. dl_dst=00:00:00:00:00:02, priority 100
+    output:2
+
+Final flow: unchanged
+Datapath actions: 2
+----
+
+Each table in action: Table 0 matched the input port, Table 1 matched IP, Table 2 matched the destination MAC and output on port 2.
+
+A non-IP packet would be dropped at Table 1:
+
+----
+bridge("br-test")
+-----------------
+ 0. in_port=1, priority 100
+    resubmit(,1)
+ 1. priority 0
+    drop
+
+Datapath actions: drop
+----
+
+
+[NOTE]
+.Key Concept
+====
+`ovs-appctl ofproto/trace` is a dry-run tool. It does not inject packets into the network. It evaluates the packet against the current flow tables and tells you what would happen. This makes it completely safe to use in production.
+====
+
+
+'''
+
+== OVN Logical Flow Pipeline (Detailed)
+
+When OVN manages the network, the packet processing pipeline is far more complex than a standalone OVS setup. OVN implements its forwarding logic as *logical flows* in the Southbound database. These logical flows are organized into numbered tables within two pipelines: ingress and egress.
+
+`ovn-controller` on each chassis reads these logical flows and translates them into OVS OpenFlow rules on `br-int`. The logical table numbers do not map one-to-one to OVS table numbers - `ovn-controller` uses its own mapping scheme.
+
+=== Ingress Pipeline
+
+The ingress pipeline processes packets entering the logical network.
+
+*Table 0 - Admission / Port Security (Ingress)*
+
+The first table a packet encounters. Validates source MAC/IP against the port's allowed addresses. Drops spoofed packets.
+
+----
+table=0 (ls_in_check_port_sec), priority=100,
+  match=(inport == "vm1" && eth.src == {00:00:00:00:00:01}),
+  action=(next;)
+----
+
+*Tables 1-4 - Pre-ACL / Pre-Stateful*
+
+Prepare the packet for ACL evaluation. Key operation: *conntrack zone assignment*.
+
+* Table 1 (`ls_in_apply_port_sec`): Additional port security checks.
+* Table 2 (`ls_in_lookup_fdb`): FDB lookups for MAC learning on localnet ports.
+* Table 3 (`ls_in_put_fdb`): FDB population.
+* Table 4 (`ls_in_pre_acl`): Sends packets through conntrack to populate state before ACL evaluation.
+
+----
+table=4 (ls_in_pre_acl), priority=110,
+  match=(ip),
+  action=(ct(table=5, zone=NXM_NX_REG13[0..15]);)
+----
+
+*Tables 5-8 - ACL (Security Groups)*
+
+Evaluate Access Control Lists implementing OpenStack security groups or Kubernetes NetworkPolicies.
+
+* Table 5 (`ls_in_pre_stateful`): Allows established/related connections to bypass ACL evaluation.
+* Table 6 (`ls_in_acl_hint`): Optimization hints.
+* Table 7 (`ls_in_acl_eval`): Main ACL evaluation.
+* Table 8 (`ls_in_acl_action`): Commits new connections to conntrack for stateful tracking.
+
+----
+# Allow incoming TCP port 80
+table=7 (ls_in_acl_eval), priority=2002,
+  match=(inport == @pg_group1 && ip4 && tcp && tcp.dst == 80),
+  action=(reg8[16] = 1; next;)
+
+# Default deny
+table=7 (ls_in_acl_eval), priority=1,
+  match=(ip),
+  action=(reg8[16] = 0; next;)
+----
+
+
+[NOTE]
+.Key Concept
+====
+OVN implements stateful firewalling using the Linux kernel's conntrack facility via OVS's `ct()` action. When a security group rule allows TCP port 80 inbound, OVN does not need a separate rule for return traffic. The `ct_commit` on the initial packet creates a conntrack entry, and subsequent packets match as `ct.est` (established) and bypass ACL evaluation.
+====
+
+
+*Tables 9-12 - QoS, Load Balancing*
+
+* Tables 9-10: DSCP marking and rate limiting.
+* Table 11: Load balancer affinity checks.
+* Table 12 (`ls_in_lb`): Load balancer DNAT for traffic to virtual IPs.
+
+*Tables 13-19 - L2 Lookup / ARP Responder*
+
+Handle Layer 2 forwarding decisions.
+
+ARP responder - OVN replies to ARP requests on behalf of known ports:
+
+----
+table=17 (ls_in_arp_rsp), priority=50,
+  match=(arp.tpa == 10.0.0.1 && arp.op == 1),
+  action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:01;
+          arp.op = 2; arp.tha = arp.sha; arp.sha = 00:00:00:00:00:01;
+          arp.tpa = arp.spa; arp.spa = 10.0.0.1;
+          outport = inport; flags.loopback = 1; output;)
+----
+
+L2 destination lookup:
+
+----
+table=19 (ls_in_l2_lkup), priority=50,
+  match=(eth.dst == 00:00:00:00:00:02),
+  action=(outport = "vm2"; output;)
+----
+
+*Logical Router Pipeline (Tables within lr datapath)*
+
+When a packet's destination is on a different subnet, it enters the logical router pipeline:
+
+* IP routing table lookup (longest-prefix match).
+* TTL decrement (drop if TTL reaches 0).
+* Source/destination MAC rewrite.
+* ARP/ND resolution for next hop.
+
+----
+table=1 (lr_in_ip_routing), priority=49,
+  match=(ip4.dst == 192.168.1.0/24),
+  action=(ip.ttl--; reg0 = 192.168.1.0; reg1 = 192.168.1.1;
+          eth.src = 00:00:00:00:aa:01; outport = "router-port-subnet2";
+          flags.loopback = 1; next;)
+----
+
+=== Egress Pipeline
+
+After the ingress pipeline determines the output port, the packet enters the egress pipeline.
+
+*Tables 0-4 - Pre-ACL / Pre-Stateful (Egress)* - Conntrack zone assignment for egress.
+
+*Tables 5-8 - ACL (Egress Security Groups)* - Evaluate egress ACL rules.
+
+*Tables 9-12 - Port Security (Egress)* - Validate destination MAC/IP matches the port configuration.
+
+*Table 13 - Delivery* - Output the packet to the local OVS port or Geneve tunnel.
+
+----
+table=13 (ls_out_delivery), priority=100,
+  match=(outport == "vm2"),
+  action=(output;)
+----
+
+=== Viewing Logical Flows
+
+[source,bash]
+----
+# List all logical flows
+sudo ovn-sbctl lflow-list
+
+# Filter by logical switch
+sudo ovn-sbctl lflow-list <switch-name>
+
+# Filter by table name
+sudo ovn-sbctl lflow-list <switch-name> | grep "ls_in_acl"
+----
+
+
+[NOTE]
+====
+Logical flows use OVN's own match/action language (`ip4.src`, `tcp.dst`, `inport`, `outport`), which is different from OpenFlow syntax. `ovn-controller` translates these into OpenFlow when programming OVS.
+====
+
+
+'''
+
+== Traffic Flow Scenarios (Complete End-to-End)
+
+For each scenario below, we show the logical path, physical path, tracing commands, packet captures, and packet modifications.
+
+=== Scenario 1: VM/Pod to VM/Pod (Same Node, Same Subnet)
+
+The simplest case. Two VMs on the same hypervisor, same L2 subnet. No tunneling, no routing.
+
+*Setup:*
+
+* VM1: MAC `00:00:00:00:00:01`, IP `10.0.0.1/24`, logical switch `ls1`, chassis `node-1`
+* VM2: MAC `00:00:00:00:00:02`, IP `10.0.0.2/24`, logical switch `ls1`, chassis `node-1`
+
+*Logical Path:*
+
+----
+VM1 -> ls1 ingress (port security, ACL, L2 lookup) -> outport="vm2"
+    -> ls1 egress (ACL, port security, delivery) -> VM2
+----
+
+*Physical Path:* Packet stays entirely within `br-int` on the local node.
+
+*Tracing:*
+
+[source,bash]
+----
+# Logical trace
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.1 && ip4.dst == 10.0.0.2 && ip.ttl == 64 && tcp.dst == 80'
+
+# Physical trace (find OVS port number first with ovs-ofctl show br-int)
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,\
+   dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,\
+   tp_src=12345,tp_dst=80"
+----
+
+*Packet Modifications:* None. The packet is forwarded unmodified.
+
+'''
+
+=== Scenario 2: VM/Pod to VM/Pod (Different Nodes, Same Subnet)
+
+Two VMs on different hypervisors, same L2 subnet. Requires Geneve tunnel encapsulation.
+
+*Setup:*
+
+* VM1: `10.0.0.1/24`, chassis `node-1` (IP `172.16.0.1`)
+* VM3: `10.0.0.3/24`, chassis `node-2` (IP `172.16.0.2`)
+* Both on logical switch `ls1`
+
+*Physical Path:*
+
+----
+Node-1                                Node-2
+VM1 -> br-int ingress pipeline        br-int egress pipeline -> VM3
+    -> L2 lookup (remote chassis)          ^
+    -> Geneve encapsulation          Geneve decapsulation
+    -> tunnel port -> eth0 --------> eth0 -> tunnel port
+         (UDP 6081)
+----
+
+*Geneve Encapsulation Details:*
+
+* VNI: Identifies the logical datapath
+* Geneve options: OVN logical metadata (output port, flags)
+* Outer IP: `172.16.0.1` -> `172.16.0.2`
+* Outer UDP: random src port -> 6081
+
+*Tracing:*
+
+[source,bash]
+----
+# Logical trace
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:03 && ip4.src == 10.0.0.1 && ip4.dst == 10.0.0.3 && ip.ttl == 64 && tcp.dst == 22'
+
+# Physical trace (shows tunnel output)
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:03,\
+   dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.3,nw_proto=6,\
+   tp_src=12345,tp_dst=22"
+----
+
+*Packet Capture:*
+
+[source,bash]
+----
+# On node-1: capture Geneve-encapsulated traffic on the physical NIC
+sudo tcpdump -i eth0 -nn port 6081
+
+# On node-2: capture on VM3's OVS port (inner packet only)
+sudo ovs-tcpdump -i vm3-port -nn
+----
+
+
+[WARNING]
+====
+When capturing on physical interfaces, you see outer Geneve headers. When capturing on `br-int` ports or VM interfaces, you see the inner packet. Know which layer you are looking at.
+====
+
+
+*Packet Modifications:* The inner packet is unmodified. OVN adds outer tunnel headers.
+
+'''
+
+=== Scenario 3: VM/Pod to VM/Pod (Different Subnets - Distributed Routing)
+
+Two VMs on different subnets. OVN's distributed logical router handles routing locally.
+
+*Setup:*
+
+* VM1: `10.0.0.1/24` on `ls-subnet1`, chassis `node-1`
+* VM4: `192.168.1.4/24` on `ls-subnet2`, chassis `node-2`
+* Router `lr1`: port `lr1-subnet1` (`10.0.0.254/24`), port `lr1-subnet2` (`192.168.1.254/24`)
+
+*Logical Path:*
+
+----
+VM1 -> ls-subnet1 ingress -> lr1 routing -> ls-subnet2 ingress -> VM4
+----
+
+
+[NOTE]
+.Key Concept
+====
+Distributed routing means the routing decision happens locally on node-1, not on a central network node. This is a major advantage of OVN over the legacy ML2/OVS architecture where east-west inter-subnet traffic had to traverse a dedicated network node.
+====
+
+
+*Tracing:*
+
+[source,bash]
+----
+sudo ovn-trace --detailed ls-subnet1 \
+  'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:aa:aa:01 && ip4.src == 10.0.0.1 && ip4.dst == 192.168.1.4 && ip.ttl == 64 && tcp.dst == 443'
+----
+
+Key operations in the trace output:
+
+* `lr_in_ip_routing`: Route lookup, TTL decrement, MAC rewrite
+* `lr_in_arp_resolve`: Resolve destination MAC from IP
+* Output to `ls-subnet2`, then tunnel to `node-2`
+
+*Packet Modifications:*
+
+
+[cols="1,1,1,1,1,1",options="header"]
+|===
+|Step
+|Src MAC
+|Dst MAC
+|Src IP
+|Dst IP
+|TTL
+
+|VM1 sends
+|`00:00:00:00:00:01`
+|`00:00:00:aa:aa:01`
+|`10.0.0.1`
+|`192.168.1.4`
+|64
+
+|After lr1 routing
+|`00:00:00:aa:aa:02`
+|`00:00:00:00:00:04`
+|`10.0.0.1`
+|`192.168.1.4`
+|63
+
+|===
+
+
+IP addresses unchanged (routing, not NAT). MACs rewritten by router. TTL decremented by 1.
+
+'''
+
+=== Scenario 4: VM/Pod to External (North-South with SNAT)
+
+A VM sends traffic to an external host. Requires Source NAT.
+
+*Setup:*
+
+* VM1: `10.0.0.1/24` on `ls1`, chassis `node-1`
+* Router `lr1`: internal port `10.0.0.254/24`, external port `203.0.113.1/24`
+* SNAT rule: `10.0.0.0/24` -> `203.0.113.1`
+* Gateway chassis: `node-gw`
+
+*Physical Path (Centralized Gateway):*
+
+----
+Node-1 (compute)                  Node-GW (gateway)
+VM1 -> br-int ingress             br-int: lr1 routing
+    -> lr1 routing                     -> SNAT (10.0.0.1 -> 203.0.113.1)
+    -> redirect via Geneve             -> br-ex -> physical NIC -> Internet
+       to node-gw
+----
+
+*With Distributed Gateway Port:* SNAT can happen locally on the compute node, avoiding the tunnel to the gateway chassis.
+
+*Tracing:*
+
+[source,bash]
+----
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:aa:aa:01 && ip4.src == 10.0.0.1 && ip4.dst == 8.8.8.8 && ip.ttl == 64 && udp.dst == 53'
+----
+
+*Packet Modifications:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Step
+|Src IP
+|Dst IP
+|Notes
+
+|VM1 sends
+|`10.0.0.1`
+|`8.8.8.8`
+|Private IP
+
+|After SNAT
+|`203.0.113.1`
+|`8.8.8.8`
+|Public IP
+
+|===
+
+
+*Return Traffic:* Conntrack performs reverse SNAT, changing destination from `203.0.113.1` back to `10.0.0.1`.
+
+*Packet Capture:*
+
+[source,bash]
+----
+# On compute node: VM1's port (pre-NAT)
+sudo ovs-tcpdump -i vm1-port -nn
+# src IP: 10.0.0.1
+
+# On gateway node: br-ex (post-SNAT)
+sudo tcpdump -i br-ex -nn host 8.8.8.8
+# src IP: 203.0.113.1
+----
+
+'''
+
+=== Scenario 5: External to VM/Pod (North-South with DNAT / Floating IP)
+
+An external client accesses a VM via its floating IP. Requires Destination NAT.
+
+*Setup:*
+
+* VM1: private IP `10.0.0.1/24`, floating IP `203.0.113.50`, chassis `node-1`
+* Gateway chassis: `node-gw`
+* External client: `198.51.100.10`
+
+*Logical Path:*
+
+----
+External -> br-ex on node-gw -> lr1 -> DNAT (203.0.113.50 -> 10.0.0.1)
+         -> routing -> ls1 -> VM1 (possibly via tunnel)
+----
+
+*Tracing:*
+
+[source,bash]
+----
+sudo ovn-trace --detailed lr1 \
+  'inport == "lr1-external" && eth.src == 00:00:00:cc:cc:01 && eth.dst == 00:00:00:bb:bb:01 && ip4.src == 198.51.100.10 && ip4.dst == 203.0.113.50 && ip.ttl == 62 && tcp.dst == 443'
+----
+
+*Packet Modifications:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Step
+|Src IP
+|Dst IP
+|Notes
+
+|Arrives on br-ex
+|`198.51.100.10`
+|`203.0.113.50`
+|Floating IP
+
+|After DNAT
+|`198.51.100.10`
+|`10.0.0.1`
+|Private IP
+
+|VM1 receives
+|`198.51.100.10`
+|`10.0.0.1`
+|
+
+|===
+
+
+*Return traffic:* Conntrack performs reverse DNAT, restoring source IP to `203.0.113.50`.
+
+'''
+
+=== Scenario 6: Service Load Balancing (OVN LB)
+
+A client accesses a VIP that is load-balanced across multiple backends.
+
+*Setup:*
+
+* VIP: `10.0.0.100:80`
+* Backends: `10.0.0.1:8080`, `10.0.0.2:8080`, `10.0.0.3:8080`
+* Client: `10.0.0.50`
+
+*Configuration:*
+
+[source,bash]
+----
+sudo ovn-nbctl lb-add web-lb 10.0.0.100:80 \
+  10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080
+sudo ovn-nbctl ls-lb-add ls1 web-lb
+----
+
+*How It Works:*
+
+The load balancer is implemented using conntrack and `ct_lb_mark`:
+
+----
+table=12 (ls_in_lb), priority=120,
+  match=(ct.new && ip4.dst == 10.0.0.100 && tcp.dst == 80),
+  action=(ct_lb_mark(backends=10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080);)
+----
+
+The `ct_lb_mark` action selects a backend, performs DNAT, and creates a conntrack entry. All subsequent packets in the connection use the same backend.
+
+*Tracing:*
+
+[source,bash]
+----
+sudo ovn-trace --ct new --detailed ls1 \
+  'inport == "vm-client" && eth.src == 00:00:00:00:00:50 && eth.dst == 00:00:00:00:01:00 && ip4.src == 10.0.0.50 && ip4.dst == 10.0.0.100 && ip.ttl == 64 && tcp.dst == 80'
+----
+
+*Packet Modifications:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Step
+|Src IP:Port
+|Dst IP:Port
+
+|Client sends
+|`10.0.0.50:54321`
+|`10.0.0.100:80` (VIP)
+
+|After LB DNAT
+|`10.0.0.50:54321`
+|`10.0.0.2:8080` (backend)
+
+|Backend reply
+|`10.0.0.2:8080`
+|`10.0.0.50:54321`
+
+|After reverse DNAT
+|`10.0.0.100:80`
+|`10.0.0.50:54321` (VIP restored)
+
+|===
+
+
+*Verifying:*
+
+[source,bash]
+----
+sudo ovn-nbctl lb-list
+sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.0.100"
+----
+
+
+[NOTE]
+====
+OVN load balancers operate at Layer 4 (TCP/UDP). For Layer 7 (HTTP) features, you need an application-level load balancer running as a workload on top of OVN.
+====
+
+
+'''
+
+== Packet Capture Techniques
+
+=== Where to Capture
+
+
+[cols="1,1,1",options="header"]
+|===
+|Capture Point
+|What You See
+|When to Use
+
+|VM/Pod interface
+|Packet as the endpoint sends/receives it
+|Verify endpoint behavior
+
+|br-int port
+|Decapsulated packet
+|Debug ACL drops, port security
+
+|Tunnel port
+|Decapsulated inner packet (receiving side)
+|Verify tunnel arrival
+
+|Physical NIC
+|Full encapsulated packet with outer headers
+|Debug tunnel/MTU/physical issues
+
+|===
+
+
+=== Capturing on OVS Ports
+
+[source,bash]
+----
+sudo ovs-tcpdump -i <port-name> -nn
+sudo ovs-tcpdump -i <port-name> -nn host 10.0.0.1
+sudo ovs-tcpdump -i <port-name> -nn -w /tmp/capture.pcap
+----
+
+=== Filtering Geneve Traffic
+
+[source,bash]
+----
+sudo tcpdump -i eth0 -nn port 6081
+sudo tcpdump -i eth0 -nn port 6081 and host 172.16.0.2
+sudo tshark -i eth0 -f "port 6081" -O geneve
+----
+
+=== Geneve Packet Structure
+
+----
++-------------------+
+| Outer Ethernet    |  (physical src/dst MACs)
++-------------------+
+| Outer IP          |  (hypervisor src/dst IPs)
++-------------------+
+| Outer UDP         |  (src: random, dst: 6081)
++-------------------+
+| Geneve Header     |  (VNI, OVN metadata options)
++-------------------+
+| Inner Ethernet    |  (VM/pod src/dst MACs)
++-------------------+
+| Inner IP/Payload  |
++-------------------+
+----
+
+=== OVS Port Mirroring
+
+[source,bash]
+----
+# Create a mirror
+sudo ovs-vsctl \
+  -- --id=@vm1 get port vm1 \
+  -- --id=@mon get port monitor \
+  -- --id=@m create mirror name=debug \
+     select-src-port=@vm1 select-dst-port=@vm1 \
+     output-port=@mon \
+  -- set bridge br-int mirrors=@m
+
+# Capture on the mirror port
+sudo tcpdump -i monitor -nn -w /tmp/vm1-traffic.pcap
+
+# Clean up
+sudo ovs-vsctl -- clear bridge br-int mirrors \
+  -- --if-exists destroy mirror debug
+----
+
+
+[WARNING]
+====
+Port mirroring duplicates traffic and consumes additional bandwidth and CPU. Always clean up mirrors after debugging.
+====
+
+
+'''
+
+== The ofproto/trace Tool (OVS)
+
+=== Syntax
+
+[source,bash]
+----
+sudo ovs-appctl ofproto/trace <bridge> <flow-specification>
+----
+
+=== Common Fields
+
+
+[cols="1,1,1",options="header"]
+|===
+|Field
+|Description
+|Example
+
+|`in_port`
+|Input port number or name
+|`in_port=5`
+
+|`dl_src` / `dl_dst`
+|Source/destination MAC
+|`dl_src=00:11:22:33:44:55`
+
+|`dl_type`
+|Ethertype
+|`0x0800` (IPv4), `0x0806` (ARP)
+
+|`nw_src` / `nw_dst`
+|Source/destination IP
+|`nw_src=10.0.0.1`
+
+|`nw_proto`
+|IP protocol
+|`6` (TCP), `17` (UDP), `1` (ICMP)
+
+|`tp_src` / `tp_dst`
+|L4 port
+|`tp_dst=80`
+
+|===
+
+
+=== Reading the Output
+
+* *Table gaps*: Packet was not resubmitted to that table.
+* *drop*: Packet dropped - check which table did it.
+* *output:N*: Final output port (cross-reference with `ovs-ofctl show`).
+* *Megaflow*: Kernel datapath cache entry wildcard.
+
+=== Common Traces
+
+[source,bash]
+----
+# ICMP ping
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,icmp,nw_src=10.0.0.1,nw_dst=10.0.0.2,\
+   dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff"
+
+# ARP request
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,arp,dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
+   arp_spa=10.0.0.1,arp_tpa=10.0.0.2,arp_op=1"
+
+# DHCP request
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,udp,nw_src=0.0.0.0,nw_dst=255.255.255.255,\
+   dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
+   tp_src=68,tp_dst=67"
+----
+
+'''
+
+== The ovn-trace Tool (OVN)
+
+=== Syntax
+
+[source,bash]
+----
+sudo ovn-trace [options] <datapath> <flow>
+----
+
+=== Output Modes
+
+
+[cols="1,1",options="header"]
+|===
+|Mode
+|Description
+
+|`--detailed`
+|Every logical flow matched (default)
+
+|`--summary`
+|Key decisions only
+
+|`--minimal`
+|Just the final result
+
+|===
+
+
+=== Connection Tracking
+
+[source,bash]
+----
+sudo ovn-trace --ct new ls1 '<flow>'    # new connection
+sudo ovn-trace --ct est ls1 '<flow>'    # established connection
+----
+
+=== Common Fields
+
+
+[cols="1,1",options="header"]
+|===
+|Field
+|Example
+
+|`inport`
+|`inport == "vm1"`
+
+|`eth.src` / `eth.dst`
+|`eth.src == 00:00:00:00:00:01`
+
+|`ip4.src` / `ip4.dst`
+|`ip4.src == 10.0.0.1`
+
+|`tcp.dst` / `udp.dst`
+|`tcp.dst == 80`
+
+|`ip.ttl`
+|`ip.ttl == 64`
+
+|===
+
+
+=== Limitations
+
+* Does not send actual packets (simulation only).
+* Does not show physical OVS flows.
+* Limited conntrack simulation.
+* Requires SB DB access.
+
+
+[NOTE]
+.Key Concept
+====
+Use `ovn-trace` to understand logical intent and `ovs-appctl ofproto/trace` to understand physical execution. Compare both when debugging. If they diverge, the problem is in `ovn-controller`'s flow translation.
+====
+
+
+'''
+
+== The ovn-detrace Tool
+
+=== What It Does
+
+Maps OVS OpenFlow cookie values back to OVN logical flows. Annotates OVS flow output with the corresponding logical flow information.
+
+=== Usage
+
+[source,bash]
+----
+# With flow dump
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+# With ofproto/trace output
+sudo ovs-appctl ofproto/trace br-int "<flow>" 2>&1 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+# Remote SB DB
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=tcp:192.168.1.100:6642
+----
+
+=== When to Use
+
+* Understanding the purpose of an OVS flow.
+* Correlating `ofproto/trace` output with OVN logical stages.
+* Finding discrepancies between expected and actual flows.
+
+'''
+
+== Putting It All Together: A Debugging Workflow
+
+----
+[Problem reported]
+       |
+       v
+[ovn-nbctl show / ovn-sbctl show]  --> Identify logical topology
+       |
+       v
+[ovn-trace --detailed]              --> Verify logical path
+       |                                 (if broken: fix OVN config)
+       v
+[ovs-appctl ofproto/trace]          --> Verify physical path
+       |                                 (if divergent: check ovn-controller)
+       v
+[tcpdump / ovs-tcpdump]             --> Confirm on-wire behavior
+       |                                 (if divergent: check datapath)
+       v
+[ovn-detrace]                        --> Correlate physical to logical
+       |
+       v
+[Root cause identified]
+----
+
+
+[NOTE]
+.Key Concept
+====
+The three-layer approach - logical trace, physical trace, packet capture - systematically narrows down where the problem lies. If the logical trace is wrong, fix the OVN configuration. If the logical trace is right but the physical trace is wrong, investigate `ovn-controller`. If both traces are right but packets are not flowing, look at the physical network (MTU, firewall rules blocking Geneve port 6081, etc.).
+====
+
+
+'''
+
+== Exercises
+
+=== Exercise 10.1: Trace Same-Node Traffic
+
+*Objective:* Trace a packet between two ports on the same logical switch and same chassis.
+
+. Identify two local ports on a logical switch using `ovn-sbctl show`.
+. Run `ovn-trace --detailed` for a TCP packet between them.
+. Run `ovs-appctl ofproto/trace` for the same packet.
+. Compare the outputs and identify which port security checks, ACL flows, and output port were used.
+
+=== Exercise 10.2: Trace Cross-Node Traffic
+
+*Objective:* Trace a packet between two ports on different chassis.
+
+. Identify two ports on different chassis but the same logical switch.
+. Run `ovn-trace` and note the tunnel indication in the output.
+. Use `tcpdump -i <physical-nic> port 6081` on the source node while generating traffic.
+. Decode the Geneve headers and verify the VNI matches the logical datapath.
+
+=== Exercise 10.3: Trace Routed Traffic
+
+*Objective:* Trace a packet that crosses subnet boundaries through a logical router.
+
+. Set up two logical switches connected by a logical router.
+. Run `ovn-trace --detailed` for traffic between the two subnets.
+. Identify the routing decision, TTL decrement, and MAC address rewrites.
+. Verify with a real ping and capture at both endpoints to confirm TTL changes.
+
+=== Exercise 10.4: Trace NAT Traffic
+
+*Objective:* Trace north-south traffic with SNAT and DNAT.
+
+. Configure a floating IP (DNAT) for a VM or use an existing one.
+. Trace inbound traffic from an external IP to the floating IP.
+. Trace outbound traffic from the VM to an external IP.
+. For each direction, identify where the NAT translation occurs and how conntrack is used.
+
+=== Exercise 10.5: Debug with ovn-detrace
+
+*Objective:* Use `ovn-detrace` to map OVS flows to OVN logical flows.
+
+. Dump the OVS flows on `br-int` and pipe them through `ovn-detrace`.
+. Find the flows that implement the ingress ACL for a specific port.
+. Find the flows that implement the L2 lookup for a specific MAC address.
+. Explain how the cookie values connect the OVS and OVN layers.
+
+=== Exercise 10.6: Load Balancer Tracing
+
+*Objective:* Create an OVN load balancer and trace traffic through it.
+
+. Create a load balancer with `ovn-nbctl lb-add`.
+. Associate it with a logical switch.
+. Trace a packet destined to the VIP.
+. Verify the DNAT action and backend selection in the trace output.
+. Check conntrack entries to confirm the load balancer state.
+

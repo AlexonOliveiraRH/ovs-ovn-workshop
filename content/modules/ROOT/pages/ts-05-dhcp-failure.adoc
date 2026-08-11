@@ -1,0 +1,1176 @@
+= Scenario 05: VMs Not Getting DHCP Addresses
+
+== The Problem
+
+*Customer report:* "New VMs in RHOSP are not getting IP addresses via DHCP. Existing VMs
+with static IPs work fine. The issue started after a new subnet was configured."
+
+The customer created a new subnet "app-subnet" on network "app-net" for a new application
+deployment. VMs launched on this subnet boot successfully but never receive an IP address
+via DHCP. The VMs' DHCP clients time out after repeated DHCPDISCOVER attempts. VMs on
+other subnets that were created previously continue to get DHCP addresses without issues.
+
+
+[IMPORTANT]
+.RHOSP 17.1: Containerized OVN Commands
+====
+In RHOSP 17.1, OVN databases run inside Pacemaker-managed containers. All `ovn-nbctl` and `ovn-sbctl` commands shown in this scenario must be executed via `podman exec` on the controller node. For example:
+
+* `ovn-nbctl show` becomes `sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only show`
+* `ovn-sbctl show` becomes `sudo podman exec -it ovn_cluster_south_db_server ovn-sbctl --no-leader-only show`
+* `ovn-trace` becomes `sudo podman exec -it ovn_cluster_north_db_server ovn-trace --no-leader-only`
+
+For brevity, this scenario shows the bare commands. Refer to xref:12-troubleshooting.adoc#_rhosp_red_hat_openstack_platform[Module 12: RHOSP Product-Specific Troubleshooting] for the full containerized command syntax.
+====
+
+
+'''
+
+== Environment
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Details
+
+|Platform
+|RHOSP 17.1 with ML2/OVN
+
+|Controller nodes
+|3 (controller-0, controller-1, controller-2)
+
+|Compute nodes
+|6 (compute-0 through compute-5)
+
+|Affected network
+|app-net (UUID: c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f)
+
+|Affected subnet
+|app-subnet, 192.168.200.0/24 (UUID: e6f7a8b9-0c1d-2e3f-4a5b-6c7d8e9f0a1b)
+
+|Gateway
+|192.168.200.1
+
+|Allocation pool
+|192.168.200.10 - 192.168.200.250
+
+|DHCP
+|Enabled on subnet
+
+|Affected VM
+|test-vm-1 (UUID: f7a8b9c0-1d2e-3f4a-5b6c-7d8e9f0a1b2c)
+
+|VM MAC
+|fa:16:3e:cc:44:88
+
+|Working subnet
+|web-subnet, 192.168.100.0/24 (works fine)
+
+|===
+
+
+'''
+
+== How DHCP Works in OVN
+
+Before diving into troubleshooting, it is important to understand how OVN handles DHCP,
+because it is fundamentally different from the traditional Neutron DHCP agent approach.
+
+
+[NOTE]
+.Key Concept
+====
+In ML2/OVN deployments, there is *no DHCP agent* and *no dnsmasq* process. OVN implements DHCP natively in the logical switching pipeline. When a VM sends a DHCP Discover, ovn-controller on the local compute node intercepts it and generates a DHCP Offer directly - the packet never leaves the compute node. This is faster and more scalable than the traditional approach, but it means DHCP troubleshooting requires understanding OVN's logical flow pipeline rather than checking dnsmasq processes.
+====
+
+
+=== OVN DHCP Flow
+
+----
+1. VM sends DHCP Discover (broadcast)
+       |
+       v
+2. Packet enters OVS br-int on the compute node
+       |
+       v
+3. ovn-controller matches the packet against logical flows
+   (table 19 in the ingress pipeline - DHCP responder)
+       |
+       v
+4. If DHCP options are configured for the port:
+   - OVN constructs a DHCP Offer in the pipeline
+   - Sets IP, mask, gateway, DNS, MTU, lease time, etc.
+   - Sends the Offer back to the VM on the same port
+       |
+       v
+5. VM sends DHCP Request
+       |
+       v
+6. OVN responds with DHCP Ack (same mechanism as step 3-4)
+       |
+       v
+7. VM configures its interface with the received IP
+
+ALL of this happens locally on the compute node.
+No network traffic to controllers or DHCP servers.
+----
+
+=== How Neutron Configures OVN DHCP
+
+----
+1. Admin creates a subnet with DHCP enabled
+       |
+       v
+2. Neutron ML2/OVN driver creates DHCP options in OVN NB DB:
+   - ovn-nbctl dhcp-options-create <cidr>
+   - Sets options: server_id, server_mac, lease_time, router, dns_server, mtu
+       |
+       v
+3. When a port is created, Neutron associates the DHCP options with the port:
+   - Sets dhcpv4_options on the logical switch port
+       |
+       v
+4. ovn-northd compiles the DHCP options into logical flows
+       |
+       v
+5. ovn-controller receives the logical flows and installs OpenFlow rules
+   that implement the DHCP responder for each port
+----
+
+'''
+
+== Step-by-Step Investigation
+
+=== Step 1: Check VM Console Output
+
+*Why:* Start at the source of the problem - the VM itself. The DHCP client output will
+tell us whether DHCP Discovers are being sent and whether any Offers are received.
+
+Access the VM console via VNC or virsh:
+
+[source,bash]
+----
+[root@compute-0 ~]# virsh console instance-00000042
+----
+
+----
+Connected to domain 'instance-00000042'
+Escape character is ^]
+
+CentOS Stream 9
+Kernel 5.14.0-391.el9.x86_64 on an x86_64
+
+login:
+----
+
+Log in and check the DHCP client output:
+
+[source,bash]
+----
+[root@test-vm-1 ~]# journalctl -u NetworkManager --no-pager | tail -30
+----
+
+----
+Apr 15 14:10:01 localhost NetworkManager[892]: <info>  [1713190201.1234] dhcp4 (eth0): activation: beginning transaction (timeout in 45 seconds)
+Apr 15 14:10:01 localhost NetworkManager[892]: <info>  [1713190201.1235] dhcp4 (eth0): dhclient started with pid 1234
+Apr 15 14:10:01 localhost NetworkManager[892]: <info>  [1713190201.2345] dhcp4 (eth0): DHCPDISCOVER
+Apr 15 14:10:05 localhost NetworkManager[892]: <info>  [1713190205.3456] dhcp4 (eth0): DHCPDISCOVER
+Apr 15 14:10:13 localhost NetworkManager[892]: <info>  [1713190213.4567] dhcp4 (eth0): DHCPDISCOVER
+Apr 15 14:10:29 localhost NetworkManager[892]: <info>  [1713190229.5678] dhcp4 (eth0): DHCPDISCOVER
+Apr 15 14:10:46 localhost NetworkManager[892]: <warn>  [1713190246.6789] dhcp4 (eth0): request timed out
+Apr 15 14:10:46 localhost NetworkManager[892]: <info>  [1713190246.6790] dhcp4 (eth0): state changed unknown -> timeout
+Apr 15 14:10:46 localhost NetworkManager[892]: <info>  [1713190246.6791] device (eth0): state change: ip-config -> failed (reason 'ip-config-unavailable', sys-iface-state: 'managed')
+----
+
+*Finding:* The VM is sending DHCPDISCOVER messages but never receives a DHCPOFFER. The
+DHCP client retries with increasing intervals (1s, 4s, 8s, 16s) before timing out. This
+tells us the problem is on the server/responder side, not the client.
+
+Check dmesg for additional clues:
+
+[source,bash]
+----
+[root@test-vm-1 ~]# dmesg | grep -i eth0
+----
+
+----
+[    2.345678] virtio_net virtio0 eth0: Validate memory region: passed
+[    2.456789] virtio_net virtio0 eth0: Device MTU set to 1500
+[    2.567890] virtio_net virtio0 eth0: link up
+----
+
+*Finding:* The network interface is UP and the link is active. The hardware layer is
+fine - the problem is in DHCP response generation.
+
+'''
+
+=== Step 2: tcpdump on the VM's TAP Interface
+
+*Why:* By capturing traffic on the TAP interface (the host-side end of the VM's virtual
+NIC), we can see exactly what DHCP traffic is entering and leaving the OVS pipeline. This
+tells us whether the DHCP Discover reaches OVS and whether an Offer is generated.
+
+Find the VM's TAP interface:
+
+[source,bash]
+----
+[root@compute-0 ~]# virsh domiflist instance-00000042
+----
+
+----
+ Interface   Type     Source      Model    MAC
+ -----------------------------------------------------------
+ tapc4d5e6f7-a8   bridge   br-int   virtio   fa:16:3e:cc:44:88
+----
+
+Capture DHCP traffic on the TAP interface:
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i tapc4d5e6f7-a8 -n -vvv port 67 or port 68
+----
+
+----
+tcpdump: listening on tapc4d5e6f7-a8, link-type EN10MB (Ethernet)
+14:15:01.234567 IP (tos 0x10, ttl 128, id 0, offset 0, flags [none], proto UDP (17), length 328)
+    0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:cc:44:88, length 300, xid 0x12345678, Flags [Broadcast]
+          Client-Ethernet-Address fa:16:3e:cc:44:88
+          Vendor-rfc1048 Extensions
+            Magic Cookie 0x63825363
+            DHCP-Message Option 53, length 1: Discover
+            Client-ID Option 61, length 7: ether fa:16:3e:cc:44:88
+            Requested-IP Option 50, length 4: 0.0.0.0
+            Hostname Option 12, length 9: "test-vm-1"
+            Parameter-Request Option 55, length 13:
+              Subnet-Mask, BR, Time-Zone, Default-Gateway
+              Domain-Name, Domain-Name-Server, Hostname, YP-Domain-Name
+              MTU, Static-Route, Classless-Static-Route, NTP
+              Classless-Static-Route-Microsoft
+14:15:05.345678 IP (tos 0x10, ttl 128, id 0, offset 0, flags [none], proto UDP (17), length 328)
+    0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:cc:44:88, length 300, xid 0x12345678, Flags [Broadcast]
+          Client-Ethernet-Address fa:16:3e:cc:44:88
+          ...
+          DHCP-Message Option 53, length 1: Discover
+14:15:13.456789 IP (tos 0x10, ttl 128, id 0, offset 0, flags [none], proto UDP (17), length 328)
+    0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:cc:44:88, length 300, xid 0x12345678, Flags [Broadcast]
+          ...
+          DHCP-Message Option 53, length 1: Discover
+^C
+3 packets captured
+3 packets received by filter
+0 packets dropped by kernel
+----
+
+*Finding:* We see DHCPDISCOVER packets leaving the VM (source 0.0.0.0:68, destination
+255.255.255.255:67) but *NO DHCPOFFER coming back*. The Discover messages are entering
+the OVS pipeline but OVN is not generating an Offer.
+
+For comparison, capture on a working VM's TAP interface on a different subnet:
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i tap1a2b3c4d-e5 -n -vvv port 67 or port 68 -c 4
+----
+
+----
+14:16:01.123456 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:aa:11:22, length 300, xid 0x87654321, Flags [Broadcast]
+          DHCP-Message Option 53, length 1: Discover
+14:16:01.124567 IP 192.168.100.1.67 > 192.168.100.15.68: BOOTP/DHCP, Reply, length 320, xid 0x87654321, Flags [Broadcast]
+          DHCP-Message Option 53, length 1: Offer
+          Server-ID Option 54, length 4: 192.168.100.1
+          Lease-Time Option 51, length 4: 43200
+          Subnet-Mask Option 1, length 4: 255.255.255.0
+          Router Option 3, length 4: 192.168.100.1
+          Domain-Name-Server Option 6, length 8: 8.8.8.8, 8.8.4.4
+          MTU Option 26, length 2: 1442
+14:16:01.125678 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:aa:11:22, length 300, xid 0x87654321, Flags [Broadcast]
+          DHCP-Message Option 53, length 1: Request
+14:16:01.126789 IP 192.168.100.1.67 > 192.168.100.15.68: BOOTP/DHCP, Reply, length 320, xid 0x87654321, Flags [Broadcast]
+          DHCP-Message Option 53, length 1: ACK
+----
+
+*Finding:* On the working subnet, we see the full DHCP exchange: Discover, Offer,
+Request, Ack. The Offer includes all required options (server_id, lease_time, subnet_mask,
+router, DNS, MTU). On the broken subnet, only Discovers are seen with no Offers. The
+difference must be in the OVN DHCP configuration.
+
+'''
+
+=== Step 3: Check Neutron Port and Subnet Configuration
+
+*Why:* We need to verify how Neutron configured the port and subnet, and whether all
+required DHCP parameters were specified.
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack port list --network app-net
+----
+
+----
++--------------------------------------+------+-------------------+--------------------------------------------------------------------------+--------+
+| ID                                   | Name | MAC Address       | Fixed IP Addresses                                                       | Status |
++--------------------------------------+------+-------------------+--------------------------------------------------------------------------+--------+
+| c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f |      | fa:16:3e:cc:44:88 | ip_address='192.168.200.10', subnet_id='e6f7a8b9-0c1d-2e3f-4a5b-6c7d8e9f0a1b' | ACTIVE |
+| d5e6f7a8-b9c0-1d2e-3f4a-5b6c7d8e9f0a |      | fa:16:3e:dd:55:99 | ip_address='192.168.200.11', subnet_id='e6f7a8b9-0c1d-2e3f-4a5b-6c7d8e9f0a1b' | ACTIVE |
++--------------------------------------+------+-------------------+--------------------------------------------------------------------------+--------+
+----
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack port show c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f
+----
+
+----
++-------------------------+--------------------------------------------------------------------------+
+| Field                   | Value                                                                    |
++-------------------------+--------------------------------------------------------------------------+
+| admin_state_up          | UP                                                                       |
+| allowed_address_pairs   |                                                                          |
+| binding_host_id         | compute-0.lab.example.com                                                |
+| binding_profile         |                                                                          |
+| binding_vif_details     | connectivity_l2=True, port_filter=True, ovs_hybrid_plug=False            |
+| binding_vif_type        | ovs                                                                      |
+| binding_vnic_type       | normal                                                                   |
+| created_at              | 2025-04-15T13:45:00Z                                                     |
+| device_id               | f7a8b9c0-1d2e-3f4a-5b6c-7d8e9f0a1b2c                                    |
+| device_owner            | compute:nova                                                             |
+| dns_assignment          | None                                                                     |
+| dns_domain              | None                                                                     |
+| dns_name                |                                                                          |
+| extra_dhcp_opts         |                                                                          |
+| fixed_ips               | ip_address='192.168.200.10', subnet_id='e6f7a8b9-0c1d-2e3f-4a5b-6c7d8e9f0a1b' |
+| id                      | c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f                                    |
+| ip_allocation           | immediate                                                                |
+| mac_address             | fa:16:3e:cc:44:88                                                        |
+| name                    |                                                                          |
+| network_id              | c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f                                    |
+| port_security_enabled   | True                                                                     |
+| project_id              | 8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d                                        |
+| revision_number         | 3                                                                        |
+| security_group_ids      | a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d                                    |
+| status                  | ACTIVE                                                                   |
+| tags                    |                                                                          |
+| trunk_details           | None                                                                     |
+| updated_at              | 2025-04-15T13:50:00Z                                                     |
++-------------------------+--------------------------------------------------------------------------+
+----
+
+*Finding:* The port looks correct - it is ACTIVE, bound to compute-0, device_owner is
+compute:nova (meaning it belongs to a VM), and it has an IP address allocated
+(192.168.200.10). The MAC address (fa:16:3e:cc:44:88) matches what we see in the VM.
+
+Now check the subnet:
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack subnet show app-subnet
+----
+
+----
++----------------------+--------------------------------------+
+| Field                | Value                                |
++----------------------+--------------------------------------+
+| allocation_pools     | 192.168.200.10-192.168.200.250       |
+| cidr                 | 192.168.200.0/24                     |
+| created_at           | 2025-04-15T13:40:00Z                 |
+| description          | Application subnet                   |
+| dns_nameservers      |                                      |
+| dns_publish_fixed_ip | None                                 |
+| enable_dhcp          | True                                 |
+| gateway_ip           | 192.168.200.1                        |
+| host_routes          |                                      |
+| id                   | e6f7a8b9-0c1d-2e3f-4a5b-6c7d8e9f0a1b |
+| ip_version           | 4                                    |
+| ipv6_address_mode    | None                                 |
+| ipv6_ra_mode         | None                                 |
+| name                 | app-subnet                           |
+| network_id           | c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f |
+| project_id           | 8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d     |
+| revision_number      | 1                                    |
+| segment_id           | None                                 |
+| service_types        |                                      |
+| subnetpool_id        | None                                 |
+| tags                 |                                      |
+| updated_at           | 2025-04-15T13:40:00Z                 |
++----------------------+--------------------------------------+
+----
+
+*Finding:* The subnet has DHCP enabled (`enable_dhcp: True`) and has a gateway
+(192.168.200.1). However, *`dns_nameservers` is EMPTY*. This is suspicious - compare
+with the working subnet:
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack subnet show web-subnet
+----
+
+----
++----------------------+--------------------------------------+
+| Field                | Value                                |
++----------------------+--------------------------------------+
+| allocation_pools     | 192.168.100.10-192.168.100.250       |
+| cidr                 | 192.168.100.0/24                     |
+| dns_nameservers      | 8.8.8.8, 8.8.4.4                    |
+| enable_dhcp          | True                                 |
+| gateway_ip           | 192.168.100.1                        |
+| id                   | a1b2c3d4-e5f6-7890-abcd-ef1234567890 |
+| name                 | web-subnet                           |
++----------------------+--------------------------------------+
+----
+
+*Finding:* The working subnet has `dns_nameservers: 8.8.8.8, 8.8.4.4` while the broken
+subnet has an empty `dns_nameservers` field. This is a key difference.
+
+'''
+
+=== Step 4: Check OVN DHCP Options
+
+*Why:* Neutron creates DHCP option sets in the OVN Northbound DB. We need to compare
+the DHCP options for the working and broken subnets to identify what is different or
+missing.
+
+List all DHCP option sets:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl dhcp-options-list
+----
+
+----
+a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d   192.168.100.0/24
+b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e   192.168.200.0/24
+----
+
+Check the DHCP options for the *broken* subnet (192.168.200.0/24):
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl dhcp-options-get-options b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e
+----
+
+----
+lease_time = 43200
+mtu = 1500
+router = 192.168.200.1
+server_id = 192.168.200.1
+server_mac = fa:16:3e:00:00:02
+----
+
+Check the DHCP options for the *working* subnet (192.168.100.0/24):
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl dhcp-options-get-options a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d
+----
+
+----
+dns_server = 8.8.8.8
+lease_time = 43200
+mtu = 1442
+router = 192.168.100.1
+server_id = 192.168.100.1
+server_mac = fa:16:3e:00:00:01
+----
+
+*Finding:* Comparing the two:
+
+----
+Working subnet (192.168.100.0/24)    | Broken subnet (192.168.200.0/24)
+-------------------------------------|-------------------------------------
+dns_server = 8.8.8.8                 | (MISSING)
+lease_time = 43200                   | lease_time = 43200
+mtu = 1442                           | mtu = 1500
+router = 192.168.100.1               | router = 192.168.200.1
+server_id = 192.168.100.1            | server_id = 192.168.200.1
+server_mac = fa:16:3e:00:00:01       | server_mac = fa:16:3e:00:00:02
+----
+
+The broken subnet is *missing the `dns_server` option*. In some OVN versions and
+configurations, missing required DHCP options can cause the DHCP response generation
+to fail silently in the logical flow pipeline.
+
+
+[NOTE]
+====
+The MTU difference (1442 vs 1500) is also notable - the working subnet correctly accounts for Geneve overhead while the broken subnet does not. This is a separate issue from the DHCP failure but should be fixed as well.
+====
+
+
+'''
+
+=== Step 5: Check DHCP Options Association with Logical Switch Port
+
+*Why:* Even if DHCP options exist, they must be properly associated with each logical
+switch port for the DHCP responder to work.
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl list logical_switch_port c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f
+----
+
+----
+_uuid               : f8a9b0c1-d2e3-f4a5-b6c7-d8e9f0a1b2c3
+addresses           : ["fa:16:3e:cc:44:88 192.168.200.10"]
+dhcpv4_options      : b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e
+dhcpv6_options      : []
+dynamic_addresses   : []
+enabled             : true
+external_ids        : {"neutron:cidrs"="192.168.200.10/24", "neutron:device_id"="f7a8b9c0-1d2e-3f4a-5b6c-7d8e9f0a1b2c", "neutron:device_owner"="compute:nova", "neutron:network_name"="neutron-c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f", "neutron:port_name"="", "neutron:project_id"="8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d", "neutron:revision_number"="3", "neutron:security_group_ids"="a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d"}
+ha_chassis_group    : []
+name                : c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f
+options             : {requested-chassis=compute-0.lab.example.com}
+parent_name         : []
+port_security       : ["fa:16:3e:cc:44:88 192.168.200.10"]
+tag                 : []
+tag_request         : []
+type                : ""
+up                  : true
+----
+
+*Finding:* The `dhcpv4_options` field is set to the correct DHCP options UUID
+(`b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e`). The association exists, but the options
+themselves are incomplete (missing dns_server).
+
+The `addresses` field correctly shows the MAC and IP (`fa:16:3e:cc:44:88 192.168.200.10`).
+This is important - OVN uses the addresses field to determine what IP to offer via DHCP.
+
+'''
+
+=== Step 6: Use ovn-trace to Trace a DHCP Discover Packet
+
+*Why:* ovn-trace lets us simulate a packet through the OVN logical pipeline and see
+exactly where the DHCP response generation succeeds or fails. This is the definitive
+diagnostic tool for understanding OVN's DHCP behavior.
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-trace --detailed neutron-c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f \
+  'inport == "c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f" && eth.src == fa:16:3e:cc:44:88 && eth.dst == ff:ff:ff:ff:ff:ff && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67'
+----
+
+----
+# udp,reg14=0x3,vlan_tci=0x0000,dl_src=fa:16:3e:cc:44:88,dl_dst=ff:ff:ff:ff:ff:ff,nw_src=0.0.0.0,nw_dst=255.255.255.255,nw_tos=0,nw_ecn=0,nw_ttl=128,tp_src=68,tp_dst=67
+
+ingress(dp="neutron-c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f", inport="c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f")
+--------------------------------------------------------------------------------------------------------------
+ 0. ls_in_check_port_sec (northd.c:8234): 1, priority 50, uuid a1234567
+    reg0[15] = check_in_port_sec();
+ 4. ls_in_pre_acl (northd.c:5678): ip, priority 100, uuid b2345678
+    reg0[0] = 1;
+    next;
+ 6. ls_in_pre_stateful (northd.c:5901): reg0[0] == 1, priority 100, uuid c3456789
+    ct_next;
+11. ls_in_dhcp_options (northd.c:6234): inport == "c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f" && eth.src == fa:16:3e:cc:44:88 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 100, uuid d4567890
+    reg0[3] = put_dhcp_opts(offerip = 192.168.200.10, lease_time = 43200, mtu = 1500, router = 192.168.200.1, server_id = 192.168.200.1);
+    /* DHCP option processing - note: no dns_server option present */
+    next;
+12. ls_in_dhcp_response (northd.c:6345): inport == "c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f" && eth.src == fa:16:3e:cc:44:88 && ip4 && udp.src == 68 && udp.dst == 67 && reg0[3], priority 100, uuid e5678901
+    eth.dst = eth.src;
+    eth.src = fa:16:3e:00:00:02;
+    ip4.src = 192.168.200.1;
+    ip4.dst = 192.168.200.10;
+    udp.src = 67;
+    udp.dst = 68;
+    output;
+    /* but reg0[3] was not set - put_dhcp_opts failed due to incomplete options */
+----
+
+*Finding:* The trace shows what happens in the logical pipeline:
+
+. *Table 11 (ls_in_dhcp_options):* The pipeline matches the DHCP Discover and attempts
+   to call `put_dhcp_opts()` with the configured options. Note that `dns_server` is
+   absent from the call.
+
+. *Table 12 (ls_in_dhcp_response):* This table checks `reg0[3]` which should be set
+   by `put_dhcp_opts()` if the options were successfully applied. When the DHCP options
+   are incomplete or fail validation, `reg0[3]` is not set, and the response is not
+   generated.
+
+
+[NOTE]
+.Key Concept
+====
+The `put_dhcp_opts()` action in OVN constructs the DHCP response packet. It sets `reg0[3]` to 1 if successful. The subsequent `ls_in_dhcp_response` table checks this register to decide whether to send the response. If `put_dhcp_opts()` fails (due to missing or invalid options), the DHCP response is never sent and the Discover packet continues through the pipeline as a regular broadcast - which also gets dropped by default ACLs since there is no DHCP server port to receive it.
+====
+
+
+Now trace the same packet on the *working* subnet for comparison:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-trace --detailed neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  'inport == "working-port-uuid" && eth.src == fa:16:3e:aa:11:22 && eth.dst == ff:ff:ff:ff:ff:ff && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67'
+----
+
+----
+...
+11. ls_in_dhcp_options (northd.c:6234): inport == "working-port-uuid" ..., priority 100, uuid f6789012
+    reg0[3] = put_dhcp_opts(offerip = 192.168.100.15, dns_server = 8.8.8.8, lease_time = 43200, mtu = 1442, router = 192.168.100.1, server_id = 192.168.100.1);
+    /* DHCP option processing - complete with dns_server */
+    next;
+12. ls_in_dhcp_response (northd.c:6345): ... && reg0[3], priority 100, uuid a7890123
+    eth.dst = eth.src;
+    eth.src = fa:16:3e:00:00:01;
+    ip4.src = 192.168.100.1;
+    ip4.dst = 192.168.100.15;
+    udp.src = 67;
+    udp.dst = 68;
+    output;
+    /* reg0[3] IS set - put_dhcp_opts succeeded, response is sent */
+----
+
+*Finding:* On the working subnet, `put_dhcp_opts()` includes `dns_server = 8.8.8.8`
+and succeeds (sets `reg0[3]`). The DHCP response is generated and sent back to the VM.
+
+'''
+
+=== Step 7: Check the Logical Switch Port Addresses
+
+*Why:* The DHCP responder uses the logical switch port's `addresses` field to determine
+what IP address to offer. If this field is wrong or uses the "dynamic" keyword incorrectly,
+DHCP can fail.
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lsp-get-addresses c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f
+----
+
+----
+fa:16:3e:cc:44:88 192.168.200.10
+----
+
+*Finding:* The addresses field is correctly set with the MAC and IP. This is not the
+problem. If it had been set to `"dynamic"` or was empty, that could also cause DHCP
+issues.
+
+
+[NOTE]
+====
+OVN supports two address modes for logical switch ports: - *Static:* `"fa:16:3e:xx:xx:xx 192.168.x.x"` - MAC and IP are specified explicitly - *Dynamic:* `"fa:16:3e:xx:xx:xx dynamic"` - MAC is fixed, IP is assigned by OVN's built-in IPAM  Both modes work with DHCP, but the DHCP options must still be correctly configured.
+====
+
+
+'''
+
+=== Step 8: Check ovn-controller Logs for DHCP-Related Messages
+
+*Why:* ovn-controller may log warnings or errors about DHCP option processing that can
+help pinpoint the exact cause of the failure.
+
+[source,bash]
+----
+[root@compute-0 ~]# journalctl -u ovn-controller --since "1 hour ago" | grep -i dhcp
+----
+
+----
+Apr 15 14:10:01 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
+Apr 15 14:10:05 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
+Apr 15 14:10:13 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
+----
+
+*Finding:* ovn-controller explicitly logs that the DHCP options are *incomplete* and
+specifically identifies `dns_server` as the missing option. This confirms our diagnosis.
+
+
+[WARNING]
+====
+Not all OVN versions produce this specific log message. In older versions, the DHCP failure may be completely silent. Always use `ovn-trace` as the definitive diagnostic rather than relying solely on log messages.
+====
+
+
+'''
+
+=== Step 9: Verify the Issue Scope
+
+*Why:* We need to confirm that this is a subnet-wide configuration issue rather than a
+problem specific to one compute node or one VM.
+
+Test on a second VM on a different compute node:
+
+[source,bash]
+----
+[root@compute-2 ~]# tcpdump -i tapd5e6f7a8-b9 -n port 67 or port 68 -c 5
+----
+
+----
+14:20:01.234567 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:dd:55:99, length 300
+          DHCP-Message Option 53, length 1: Discover
+14:20:05.345678 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:dd:55:99, length 300
+          DHCP-Message Option 53, length 1: Discover
+^C
+2 packets captured
+----
+
+*Finding:* The second VM on compute-2 has the same problem - DHCP Discovers without
+Offers. This confirms the issue is *subnet-wide* (an OVN DHCP configuration problem)
+and not specific to a single compute node.
+
+'''
+
+== Root Cause
+
+The root cause is a *missing DNS nameserver configuration* on the Neutron subnet, which
+resulted in incomplete DHCP options in the OVN Northbound DB:
+
+. The subnet `app-subnet` (192.168.200.0/24) was created with `enable_dhcp: True` but
+   *without specifying DNS nameservers* (`dns_nameservers` was left empty).
+
+. The Neutron ML2/OVN driver created DHCP options in the OVN NB DB, but without the
+   `dns_server` option since no DNS nameservers were configured in Neutron.
+
+. When VMs send DHCPDISCOVER packets, ovn-controller processes them through the logical
+   pipeline. The `put_dhcp_opts()` action attempts to construct a DHCP Offer but fails
+   because the `dns_server` option is missing.
+
+. In this OVN version, certain DHCP options (including `dns_server`) are required for
+   `put_dhcp_opts()` to succeed. When they are absent, `reg0[3]` is not set and the DHCP
+   response is never generated.
+
+. The VM's DHCP client sends repeated Discovers but never receives an Offer, eventually
+   timing out.
+
+
+[NOTE]
+.Key Concept
+====
+The difference between traditional DHCP (dnsmasq) and OVN native DHCP is important here:  - *dnsmasq (traditional):* Acts as a full DHCP server. Can provide default values for missing options. If DNS is not configured, dnsmasq can still send a valid Offer without the DNS option.  - *OVN native DHCP:* Constructs the DHCP response from explicitly configured options in the NB DB. In some versions, missing options that the VM's DHCP client requested via Option 55 (Parameter Request List) can cause the response construction to fail, especially if the client's request includes DNS as a required parameter.
+====
+
+
+'''
+
+== Resolution
+
+=== Step 1: Fix the Subnet Configuration
+
+Add DNS nameservers to the subnet:
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack subnet set \
+  --dns-nameserver 8.8.8.8 \
+  --dns-nameserver 8.8.4.4 \
+  app-subnet
+----
+
+Verify the change:
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack subnet show app-subnet -c dns_nameservers
+----
+
+----
++-----------------+----------------+
+| Field           | Value          |
++-----------------+----------------+
+| dns_nameservers | 8.8.8.8        |
+|                 | 8.8.4.4        |
++-----------------+----------------+
+----
+
+'''
+
+=== Step 2: Verify OVN DHCP Options Updated
+
+The Neutron ML2/OVN driver should automatically update the OVN DHCP options when the
+subnet is modified:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl dhcp-options-get-options b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e
+----
+
+----
+dns_server = {8.8.8.8, 8.8.4.4}
+lease_time = 43200
+mtu = 1500
+router = 192.168.200.1
+server_id = 192.168.200.1
+server_mac = fa:16:3e:00:00:02
+----
+
+*Finding:* The `dns_server` option is now present with both nameservers. The DHCP options
+are complete.
+
+Compare before and after:
+
+----
+Before fix:                          | After fix:
+-------------------------------------|-------------------------------------
+(MISSING dns_server)                 | dns_server = {8.8.8.8, 8.8.4.4}
+lease_time = 43200                   | lease_time = 43200
+mtu = 1500                           | mtu = 1500
+router = 192.168.200.1               | router = 192.168.200.1
+server_id = 192.168.200.1            | server_id = 192.168.200.1
+server_mac = fa:16:3e:00:00:02       | server_mac = fa:16:3e:00:00:02
+----
+
+'''
+
+=== Step 3: Restart DHCP on Affected VMs
+
+The VMs need to send new DHCP Discovers now that the options are fixed. From inside the VM:
+
+[source,bash]
+----
+[root@test-vm-1 ~]# dhclient -r eth0 && dhclient eth0
+----
+
+Or simply reboot the VM if console access is not available:
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack server reboot test-vm-1
+----
+
+Verify DHCP works with tcpdump:
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i tapc4d5e6f7-a8 -n -vvv port 67 or port 68 -c 4
+----
+
+----
+14:25:01.234567 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:cc:44:88, length 300
+          DHCP-Message Option 53, length 1: Discover
+14:25:01.235678 IP 192.168.200.1.67 > 192.168.200.10.68: BOOTP/DHCP, Reply, length 340
+          DHCP-Message Option 53, length 1: Offer
+          Server-ID Option 54, length 4: 192.168.200.1
+          Lease-Time Option 51, length 4: 43200
+          Subnet-Mask Option 1, length 4: 255.255.255.0
+          Router Option 3, length 4: 192.168.200.1
+          Domain-Name-Server Option 6, length 8: 8.8.8.8, 8.8.4.4
+          MTU Option 26, length 2: 1500
+14:25:01.236789 IP 0.0.0.0.68 > 255.255.255.255.67: BOOTP/DHCP, Request from fa:16:3e:cc:44:88, length 300
+          DHCP-Message Option 53, length 1: Request
+          Requested-IP Option 50, length 4: 192.168.200.10
+14:25:01.237890 IP 192.168.200.1.67 > 192.168.200.10.68: BOOTP/DHCP, Reply, length 340
+          DHCP-Message Option 53, length 1: ACK
+----
+
+*Finding:* The full DHCP exchange now works: Discover, Offer, Request, Ack. The Offer
+includes all required options including the DNS servers.
+
+'''
+
+=== Step 4: Verify Connectivity
+
+[source,bash]
+----
+[root@test-vm-1 ~]# ip a show eth0
+----
+
+----
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether fa:16:3e:cc:44:88 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.200.10/24 brd 192.168.200.255 scope global dynamic noprefixroute eth0
+       valid_lft 43199sec preferred_lft 43199sec
+----
+
+[source,bash]
+----
+[root@test-vm-1 ~]# ip route
+----
+
+----
+default via 192.168.200.1 dev eth0 proto dhcp src 192.168.200.10 metric 100
+192.168.200.0/24 dev eth0 proto kernel scope link src 192.168.200.10 metric 100
+----
+
+[source,bash]
+----
+[root@test-vm-1 ~]# cat /etc/resolv.conf
+----
+
+----
+; generated by /usr/sbin/dhclient-script
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+----
+
+[source,bash]
+----
+[root@test-vm-1 ~]# ping -c 3 192.168.200.1
+----
+
+----
+PING 192.168.200.1 (192.168.200.1) 56(84) bytes of data.
+64 bytes from 192.168.200.1: icmp_seq=1 ttl=254 time=0.823 ms
+64 bytes from 192.168.200.1: icmp_seq=2 ttl=254 time=0.614 ms
+64 bytes from 192.168.200.1: icmp_seq=3 ttl=254 time=0.592 ms
+
+--- 192.168.200.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+----
+
+[source,bash]
+----
+[root@test-vm-1 ~]# dig +short google.com
+----
+
+----
+142.250.80.46
+----
+
+*Finding:* Everything works now - IP address via DHCP, default route via DHCP, DNS
+resolution via the configured nameservers.
+
+'''
+
+== Prevention
+
+=== 1. Always Specify DNS Nameservers When Creating Subnets
+
+Make it a standard practice to always include DNS nameservers:
+
+[source,bash]
+----
+# Correct way to create a subnet:
+openstack subnet create \
+  --network app-net \
+  --subnet-range 192.168.200.0/24 \
+  --gateway 192.168.200.1 \
+  --allocation-pool start=192.168.200.10,end=192.168.200.250 \
+  --dns-nameserver 8.8.8.8 \
+  --dns-nameserver 8.8.4.4 \
+  --dhcp \
+  app-subnet
+----
+
+=== 2. Create a Subnet Configuration Checklist
+
+----
+Subnet Creation Checklist for RHOSP with ML2/OVN:
+[ ] Network type and segmentation verified
+[ ] CIDR and gateway configured
+[ ] Allocation pool defined (avoid using .1-.9 for infrastructure)
+[ ] DNS nameservers specified (minimum 1, recommended 2)
+[ ] DHCP enabled (if needed)
+[ ] MTU set correctly (account for Geneve overhead: 1442 for 1500 physical)
+[ ] Host routes added (if needed)
+[ ] Verified DHCP options in OVN NB DB after creation
+[ ] Test VM launched and DHCP verified
+----
+
+=== 3. Test DHCP on New Subnets Before Scheduling Workloads
+
+After creating a subnet, always test DHCP before deploying production VMs:
+
+[source,bash]
+----
+# Launch a test VM:
+openstack server create --flavor m1.small --image cirros --network app-net dhcp-test-vm
+
+# Wait for it to boot, then check:
+openstack server show dhcp-test-vm -c addresses
+
+# Verify the IP was assigned via DHCP:
+openstack console log show dhcp-test-vm | grep -i dhcp
+
+# Clean up:
+openstack server delete dhcp-test-vm
+----
+
+=== 4. Automate Subnet Creation with Heat or Ansible
+
+Use templates that enforce complete subnet configurations:
+
+[source,yaml]
+----
+# Example Heat template snippet:
+resources:
+  app_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network: { get_resource: app_network }
+      cidr: 192.168.200.0/24
+      gateway_ip: 192.168.200.1
+      dns_nameservers:
+        - 8.8.8.8
+        - 8.8.4.4
+      enable_dhcp: true
+      allocation_pools:
+        - start: 192.168.200.10
+          end: 192.168.200.250
+----
+
+'''
+
+== OVN DHCP Options Reference
+
+Common DHCP options that can be configured in OVN and their meaning:
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|OVN Option
+|DHCP Option #
+|Description
+|Example Value
+
+|`server_id`
+|54
+|DHCP server identifier
+|192.168.200.1
+
+|`server_mac`
+|N/A
+|MAC address for DHCP responses
+|fa:16:3e:00:00:02
+
+|`lease_time`
+|51
+|Lease duration in seconds
+|43200
+
+|`router`
+|3
+|Default gateway
+|192.168.200.1
+
+|`dns_server`
+|6
+|DNS nameserver(s)
+|{8.8.8.8, 8.8.4.4}
+
+|`mtu`
+|26
+|Interface MTU
+|1442
+
+|`domain_name`
+|15
+|DNS domain name
+|example.com
+
+|`netmask`
+|1
+|Subnet mask (auto-derived from CIDR)
+|255.255.255.0
+
+|`T1`
+|58
+|Renewal time (seconds)
+|21600
+
+|`T2`
+|59
+|Rebinding time (seconds)
+|37800
+
+|===
+
+
+=== Manually Setting DHCP Options in OVN
+
+If Neutron's automatic DHCP option management is insufficient, you can set options
+directly in the OVN NB DB:
+
+[source,bash]
+----
+# List existing DHCP options:
+ovn-nbctl dhcp-options-list
+
+# Set a specific option:
+ovn-nbctl dhcp-options-set-options <uuid> \
+  server_id=192.168.200.1 \
+  server_mac=fa:16:3e:00:00:02 \
+  lease_time=43200 \
+  router=192.168.200.1 \
+  dns_server="{8.8.8.8, 8.8.4.4}" \
+  mtu=1442 \
+  domain_name=example.com
+----
+
+
+[WARNING]
+====
+Manually modifying OVN DHCP options bypasses Neutron's management. If Neutron later updates the subnet, it may overwrite your manual changes. Always prefer making changes through Neutron (openstack subnet set) rather than directly in OVN.
+====
+
+
+'''
+
+== Key Commands Reference
+
+
+[cols="1,1",options="header"]
+|===
+|Command
+|Purpose
+
+|`virsh domiflist <instance>`
+|Find VM's TAP interface
+
+|`tcpdump -i <tap> -n port 67 or port 68`
+|Capture DHCP traffic on VM interface
+
+|`openstack subnet show <subnet>`
+|Check subnet configuration
+
+|`openstack subnet set --dns-nameserver <ip> <subnet>`
+|Add DNS nameserver to subnet
+
+|`ovn-nbctl dhcp-options-list`
+|List all DHCP option sets
+
+|`ovn-nbctl dhcp-options-get-options <uuid>`
+|Show options for a DHCP set
+
+|`ovn-nbctl dhcp-options-set-options <uuid> key=val`
+|Set DHCP options directly
+
+|`ovn-nbctl list logical_switch_port <port>`
+|Check port DHCP association
+
+|`ovn-nbctl lsp-get-addresses <port>`
+|Check port addresses
+
+|`ovn-trace --detailed <datapath> '<match>'`
+|Trace packet through logical pipeline
+
+|`journalctl -u ovn-controller \
+\|grep dhcp`
+|Check ovn-controller DHCP logs
+
+|`openstack port show <port-uuid>`
+|Check Neutron port details
+
+|`dhclient -r <iface> && dhclient <iface>`
+|Release and renew DHCP lease
+
+|===
+
+
+'''
+
+== Key Takeaways
+
+* *OVN handles DHCP natively without dnsmasq.* There is no separate DHCP agent process
+  to check. DHCP responses are generated locally on each compute node by ovn-controller
+  using options configured in the OVN NB DB.
+
+* *Missing DHCP options can silently break DHCP.* Unlike dnsmasq, OVN may not provide
+  default values for missing options. If the VM's DHCP client requests an option (via
+  Option 55) that is not configured, the DHCP response may fail to be generated.
+
+* *Always configure DNS nameservers when creating subnets.* This is the most common
+  omission that breaks OVN DHCP. Even if VMs will not use DNS, configure a placeholder
+  value.
+
+* *ovn-trace is the definitive DHCP diagnostic tool.* It shows exactly what happens to
+  a DHCP Discover in the OVN logical pipeline, including whether `put_dhcp_opts()` succeeds
+  and whether a response is generated.
+
+* *Compare working and broken configurations side by side.* When DHCP works on one
+  subnet but not another, a direct comparison of the OVN DHCP options between the two
+  subnets will quickly reveal the difference.
+
+'''
+
+*Previous scenario:* xref:ts-04-ovn-controller.adoc[Scenario 04 - Pods Lose Network After Node Maintenance]
+*Back to:* xref:12-troubleshooting.adoc[Module 12 - Troubleshooting OVS and OVN]
+*Next scenario:* xref:ts-06-floating-ip.adoc[Scenario 06 - Floating IP Not Accessible from External Network]
+

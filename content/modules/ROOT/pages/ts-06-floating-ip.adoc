@@ -1,0 +1,1145 @@
+= Scenario 06: Floating IP Not Accessible from External Network
+
+== The Problem
+
+*Customer report:* "Assigned a floating IP to a VM in RHOSP but cannot reach it from the
+external network. VM can reach external network fine (outbound SNAT works). This started
+after a controller node failover."
+
+The customer has a VM running a web application with floating IP 10.20.30.100 assigned.
+The VM was accessible from the external network until controller-0 (the active gateway
+chassis) was rebooted for maintenance. After controller-0 came back up, outbound traffic
+from the VM to the internet works (SNAT), but inbound traffic to the floating IP from
+external clients does not reach the VM. External clients get "connection timed out" when
+trying to reach 10.20.30.100.
+
+
+[IMPORTANT]
+.RHOSP 17.1: Containerized OVN Commands
+====
+In RHOSP 17.1, OVN databases run inside Pacemaker-managed containers. All `ovn-nbctl` and `ovn-sbctl` commands shown in this scenario must be executed via `podman exec` on the controller node. For example:
+
+* `ovn-nbctl show` becomes `sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only show`
+* `ovn-sbctl show` becomes `sudo podman exec -it ovn_cluster_south_db_server ovn-sbctl --no-leader-only show`
+
+For brevity, this scenario shows the bare commands. Refer to xref:12-troubleshooting.adoc#_rhosp_red_hat_openstack_platform[Module 12: RHOSP Product-Specific Troubleshooting] for the full containerized command syntax.
+====
+
+
+'''
+
+== Environment
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Details
+
+|Platform
+|RHOSP 17.1 with ML2/OVN
+
+|Controller nodes
+|3 (controller-0, controller-1, controller-2)
+
+|Compute nodes
+|10 (compute-0 through compute-9)
+
+|External network
+|ext-net, 10.20.30.0/24 (provider flat on br-ex)
+
+|Tenant network
+|tenant-net, 192.168.100.0/24 (Geneve overlay)
+
+|Router
+|tenant-router (UUID: r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6)
+
+|VM
+|web-server, internal IP 192.168.100.50
+
+|Floating IP
+|10.20.30.100 (UUID: fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890)
+
+|Gateway chassis (before)
+|controller-0 (was active, priority 1)
+
+|Gateway chassis (after)
+|controller-1 (now active, priority 2)
+
+|Upstream router
+|10.20.30.1 (customer's physical router)
+
+|===
+
+
+*Timeline:*
+----
+09:00 - Floating IP 10.20.30.100 working fine, accessible from external
+09:30 - controller-0 rebooted for scheduled maintenance
+09:31 - OVN HA failover triggers, gateway moves to controller-1
+09:32 - Outbound SNAT from VMs continues to work
+09:33 - External clients report floating IP 10.20.30.100 unreachable
+09:45 - Support ticket opened
+----
+
+'''
+
+== How Floating IPs Work in OVN
+
+Understanding the floating IP architecture is essential for troubleshooting this issue.
+
+
+[quote]
+____
+*Key Concept: Distributed vs. Centralized NAT in OVN*  OVN implements two types of NAT for routers:  - *SNAT (Source NAT / outbound):* Distributed across all compute nodes. Each compute node performs SNAT locally for VMs it hosts. Traffic exits through the local Geneve tunnel to the gateway chassis. Return traffic for established SNAT connections follows conntrack entries and can arrive at any gateway.  - *DNAT (Destination NAT / floating IP inbound):* Centralized on the gateway chassis. Inbound traffic to a floating IP must arrive at the gateway chassis, which performs DNAT (translating 10.20.30.100 to 192.168.100.50) and forwards the packet to the correct compute node via the Geneve overlay.  This asymmetry is why outbound SNAT can work while inbound DNAT fails - they use different paths.
+____
+
+
+=== The Floating IP Packet Path
+
+----
+INBOUND (external -> VM):
+
+External client -> Upstream router -> ARP for 10.20.30.100 ->
+  Gateway chassis (controller-X) receives on br-ex ->
+    DNAT: 10.20.30.100 -> 192.168.100.50 ->
+      Geneve tunnel to compute node hosting the VM ->
+        VM receives packet with src=external_client, dst=192.168.100.50
+
+OUTBOUND (VM -> external):
+
+VM sends packet -> Compute node local OVS ->
+  Geneve tunnel to gateway chassis ->
+    SNAT: 192.168.100.50 -> 10.20.30.100 ->
+      br-ex on gateway chassis ->
+        Physical network -> Upstream router -> Internet
+----
+
+=== Gateway Chassis HA
+
+----
+OVN supports multiple gateway chassis for high availability:
+
+  controller-0: priority 1 (highest - preferred active)
+  controller-1: priority 2 (standby)
+  controller-2: priority 3 (standby)
+
+When the active gateway fails:
+  1. BFD detects the failure
+  2. OVN selects the next highest-priority chassis (controller-1)
+  3. The chassisredirect port binding moves to controller-1
+  4. controller-1 sends gratuitous ARP (GARP) for all floating IPs
+  5. Upstream router updates its ARP cache
+  6. Traffic flows to the new active gateway
+
+If step 4 or 5 fails, the upstream router still sends traffic to the
+old gateway's MAC address, and inbound traffic is black-holed.
+----
+
+'''
+
+== Step-by-Step Investigation
+
+=== Step 1: Verify Floating IP Association
+
+*Why:* Start by confirming that the floating IP is properly associated at the Neutron
+level. A disassociated floating IP would explain the symptom.
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack server show web-server
+----
+
+----
++-----------------------------+----------------------------------------------------------+
+| Field                       | Value                                                    |
++-----------------------------+----------------------------------------------------------+
+| OS-EXT-SRV-ATTR:host        | compute-3.lab.example.com                                |
+| OS-EXT-STS:power_state      | Running                                                  |
+| OS-EXT-STS:vm_state         | active                                                   |
+| addresses                   | tenant-net=192.168.100.50, 10.20.30.100                  |
+| created                     | 2025-03-01T10:00:00Z                                     |
+| flavor                      | m1.large (4 vCPU, 8GB RAM)                               |
+| id                          | vm-a1b2c3d4-e5f6-7890-abcd-ef1234567890                  |
+| name                        | web-server                                               |
+| status                      | ACTIVE                                                   |
++-----------------------------+----------------------------------------------------------+
+----
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack floating ip show fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+----
+
+----
++---------------------+--------------------------------------+
+| Field               | Value                                |
++---------------------+--------------------------------------+
+| created_at          | 2025-03-01T10:30:00Z                 |
+| description         | Web server floating IP               |
+| dns_domain          | None                                 |
+| dns_name            | None                                 |
+| fixed_ip_address    | 192.168.100.50                       |
+| floating_ip_address | 10.20.30.100                         |
+| floating_network_id | ext-a1b2c3d4-e5f6-7890-abcd-ef1234  |
+| id                  | fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890 |
+| port_id             | port-b2c3d4e5-f6a7-8901-bcde-f12345678901 |
+| project_id          | 8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d     |
+| revision_number     | 3                                    |
+| router_id           | r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6 |
+| status              | ACTIVE                               |
+| updated_at          | 2025-03-01T10:30:05Z                 |
++---------------------+--------------------------------------+
+----
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack router show tenant-router
+----
+
+----
++-------------------------+------------------------------------------------------+
+| Field                   | Value                                                |
++-------------------------+------------------------------------------------------+
+| admin_state_up          | UP                                                   |
+| external_gateway_info   | {"network_id": "ext-a1b2c3d4-e5f6-7890-abcd-ef1234", "external_fixed_ips": [{"subnet_id": "ext-sub-uuid", "ip_address": "10.20.30.5"}], "enable_snat": true} |
+| id                      | r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6                |
+| interfaces_info         | [{"subnet_id": "sub-uuid", "ip_address": "192.168.100.1", "port_id": "rtr-port-uuid"}] |
+| name                    | tenant-router                                        |
+| routes                  |                                                      |
+| status                  | ACTIVE                                               |
++-------------------------+------------------------------------------------------+
+----
+
+*Finding:* Everything looks correct at the Neutron level:
+
+* Floating IP 10.20.30.100 is ACTIVE and associated with port on 192.168.100.50
+* Router has an external gateway on 10.20.30.5
+* SNAT is enabled
+* VM is ACTIVE on compute-3
+
+The association is intact. The problem is not at the Neutron API level.
+
+'''
+
+=== Step 2: Check OVN NAT Rules
+
+*Why:* We need to verify that the NAT rules exist in the OVN Northbound DB and are
+correctly configured.
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lr-nat-list tenant-router
+----
+
+----
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat_and_snat    10.20.30.100       192.168.100.50
+snat             10.20.30.5         192.168.100.0/24
+----
+
+*Finding:* Both NAT rules are present:
+
+* `dnat_and_snat` for the floating IP: external 10.20.30.100 maps to internal
+  192.168.100.50 (this handles both inbound DNAT and outbound SNAT for the specific VM)
+
+* `snat` for the subnet: all traffic from 192.168.100.0/24 is SNATed to 10.20.30.5
+  (the router's external IP)
+
+
+[NOTE]
+.Key Concept
+====
+The `dnat_and_snat` type means this NAT rule handles both directions: - *Inbound (DNAT):* Packets destined for 10.20.30.100 are translated to 192.168.100.50 - *Outbound (SNAT):* Packets from 192.168.100.50 are translated to 10.20.30.100 (overriding the subnet-wide SNAT to 10.20.30.5)
+====
+
+
+'''
+
+=== Step 3: Check Which Chassis Is the Gateway
+
+*Why:* Floating IP DNAT is centralized on the gateway chassis. We need to know which
+chassis is currently active and whether it changed during the maintenance.
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lrp-get-gateway-chassis lrp-ext-tenant-router
+----
+
+----
+lrp-ext-tenant-router_controller-0    3
+lrp-ext-tenant-router_controller-1    2
+lrp-ext-tenant-router_controller-2    1
+----
+
+*Finding:* Three gateway chassis are configured with priorities:
+
+* controller-0: priority 3 (highest - preferred active)
+* controller-1: priority 2
+* controller-2: priority 1 (lowest)
+
+
+[NOTE]
+====
+In OVN, higher priority number = more preferred. controller-0 is the preferred gateway.
+====
+
+
+'''
+
+=== Step 4: Check Gateway HA Status (THE CRITICAL CHECK)
+
+*Why:* After controller-0 was rebooted, the gateway should have failed over to
+controller-1. We need to verify the current state of the chassisredirect port binding,
+which represents the active gateway.
+
+[source,bash]
+----
+[root@controller-1 ~]# ovn-sbctl find port_binding type=chassisredirect
+----
+
+----
+_uuid               : cr-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+chassis             : chassis-ctrl1-uuid-b2c3d4e5-f6a7-8901-bcde-f12345678901
+datapath            : dp-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+encap               : []
+external_ids        : {}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : cr-lrp-ext-tenant-router
+mac                 : ["router"]
+nat_addresses       : ["fa:16:3e:rr:tt:01 10.20.30.100 10.20.30.5 is_chassis_resident(\"cr-lrp-ext-tenant-router\")"]
+options             : {}
+parent_port         : []
+tag                 : []
+tunnel_key          : 1
+type                : chassisredirect
+up                  : true
+virtual_parent      : []
+----
+
+*Finding:* The chassisredirect port (`cr-lrp-ext-tenant-router`) is now bound to
+*controller-1's chassis* (`chassis-ctrl1-uuid-...`). This confirms the failover
+occurred - the gateway moved from controller-0 to controller-1.
+
+The `nat_addresses` field shows the addresses that should be advertised via gratuitous
+ARP: `fa:16:3e:rr:tt:01 10.20.30.100 10.20.30.5`. This is the MAC address that the
+external network should associate with the floating IP.
+
+
+[NOTE]
+.Key Concept
+====
+The `chassisredirect` port binding is the mechanism OVN uses to implement gateway HA. It represents the "active gateway" for a logical router's external connection. When the active gateway fails, OVN reassigns this binding to the next-priority chassis. The new chassis must then advertise the floating IPs via gratuitous ARP so that the upstream network sends traffic to the new gateway.
+====
+
+
+'''
+
+=== Step 5: Check br-ex Configuration on the New Active Gateway
+
+*Why:* The new active gateway (controller-1) must have br-ex properly configured with
+the physical interface connected to the external network.
+
+[source,bash]
+----
+[root@controller-1 ~]# ovs-vsctl show
+----
+
+----
+f6a7b8c9-d0e1-f2a3-b4c5-d6e7f8a9b0c1
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port patch-br-int-to-br-ex_controller-1
+            Interface patch-br-int-to-br-ex_controller-1
+                type: patch
+                options: {peer=patch-br-ex-to-br-int_controller-1}
+        Port ovn-compute-0
+            Interface ovn-compute-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.21"}
+        Port ovn-compute-3
+            Interface ovn-compute-3
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.24"}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port ens2f0
+            Interface ens2f0
+        Port patch-br-ex-to-br-int_controller-1
+            Interface patch-br-ex-to-br-int_controller-1
+                type: patch
+                options: {peer=patch-br-int-to-br-ex_controller-1}
+    ovs_version: "3.3.0"
+----
+
+[source,bash]
+----
+[root@controller-1 ~]# ip addr show br-ex
+----
+
+----
+12: br-ex: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff
+    inet 10.20.30.6/24 brd 10.20.30.255 scope global br-ex
+       valid_lft forever preferred_lft forever
+----
+
+*Finding:* br-ex on controller-1 is properly configured:
+
+* Physical interface `ens2f0` is connected to br-ex
+* Patch port to br-int exists
+* br-ex has IP 10.20.30.6/24 (controller-1's external IP)
+* The bridge is UP
+
+The infrastructure on the new gateway looks correct.
+
+'''
+
+=== Step 6: Check ARP on the External Network (KEY FINDING)
+
+*Why:* For external traffic to reach the floating IP, the upstream router must have the
+correct ARP entry mapping 10.20.30.100 to the MAC address of the ACTIVE gateway chassis.
+If the ARP cache still points to the old gateway (controller-0), traffic will be sent to
+the wrong destination.
+
+From a machine on the external network (or the upstream router):
+
+[source,bash]
+----
+[admin@upstream-router ~]# arp -n | grep 10.20.30.100
+----
+
+----
+10.20.30.100             ether   52:54:00:ex:c0:01   C                     eth1
+----
+
+*Finding:* The ARP entry for 10.20.30.100 points to MAC `52:54:00:ex:c0:01`. Let's
+identify which controller this belongs to:
+
+[source,bash]
+----
+[root@controller-0 ~]# ip link show br-ex | grep ether
+----
+
+----
+    link/ether 52:54:00:ex:c0:01 brd ff:ff:ff:ff:ff:ff
+----
+
+[source,bash]
+----
+[root@controller-1 ~]# ip link show br-ex | grep ether
+----
+
+----
+    link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff
+----
+
+*Finding:* The ARP entry points to `52:54:00:ex:c0:01`, which is *controller-0's*
+br-ex MAC address. But the active gateway is now *controller-1* (MAC
+`52:54:00:ex:c1:01`). The upstream router is sending traffic for the floating IP to
+the WRONG controller.
+
+----
+Current (broken) state:
+
+External client -> upstream router -> ARP: 10.20.30.100 = 52:54:00:ex:c0:01
+  -> Sends to controller-0 (OLD gateway, not active)
+    -> controller-0 does NOT process the floating IP (not the active gateway)
+      -> TRAFFIC BLACK-HOLED
+
+Should be:
+
+External client -> upstream router -> ARP: 10.20.30.100 = 52:54:00:ex:c1:01
+  -> Sends to controller-1 (NEW active gateway)
+    -> controller-1 performs DNAT and forwards to VM
+      -> VM receives the traffic
+----
+
+This is the root cause. The upstream router's ARP cache was not updated after the
+failover.
+
+'''
+
+=== Step 7: tcpdump on br-ex on Both Controllers
+
+*Why:* To confirm our theory, we can capture traffic on both controllers' br-ex
+interfaces to see where the external traffic is actually going.
+
+On controller-0 (old gateway):
+
+[source,bash]
+----
+[root@controller-0 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 10
+----
+
+----
+tcpdump: listening on br-ex, link-type EN10MB (Ethernet)
+09:45:01.234567 ARP, Request who-has 10.20.30.100 tell 10.20.30.1, length 46
+09:45:02.345678 IP 203.0.113.50.54321 > 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0
+09:45:05.456789 IP 203.0.113.50.54321 > 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0
+09:45:11.567890 IP 203.0.113.50.54321 > 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0
+----
+
+*Finding:* Traffic for the floating IP IS arriving at controller-0 (ARP requests and
+TCP SYN packets from external clients). But controller-0 is no longer the active gateway,
+so it does not process these packets. The TCP SYN retransmissions (at 3s, 6s intervals)
+confirm the connection is timing out.
+
+On controller-1 (new active gateway):
+
+[source,bash]
+----
+[root@controller-1 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 5
+----
+
+----
+tcpdump: listening on br-ex, link-type EN10MB (Ethernet)
+^C
+0 packets captured
+0 packets received by filter
+0 packets dropped by kernel
+----
+
+*Finding:* *No traffic* for the floating IP reaches controller-1. This confirms the
+upstream router is sending everything to controller-0's MAC. The new gateway never sees
+the inbound traffic.
+
+'''
+
+=== Step 8: Check Gratuitous ARP from OVN
+
+*Why:* After a gateway failover, OVN should send gratuitous ARP (GARP) from the new
+active gateway to announce the new MAC address for all floating IPs. If GARP was not sent
+or was not received by the upstream router, the old ARP entry persists.
+
+Check ovn-controller logs on controller-1 for GARP activity:
+
+[source,bash]
+----
+[root@controller-1 ~]# journalctl -u ovn-controller --since "09:30" --until "09:35" | grep -i "garp\|gratuitous\|arp\|nat_address"
+----
+
+----
+Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.100 on port lrp-ext-tenant-router
+Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.5 on port lrp-ext-tenant-router
+----
+
+*Finding:* ovn-controller on controller-1 DID send gratuitous ARP for 10.20.30.100 at
+09:31:12, right after the failover. So the GARP was sent - but the upstream router did
+not update its ARP cache.
+
+Verify with tcpdump (if we had captured at the time):
+
+[source,bash]
+----
+# Reconstructing what happened (this would have shown at 09:31):
+# tcpdump -i br-ex -n arp | grep 10.20.30.100
+#
+# Expected output:
+# 09:31:12.123456 ARP, Reply 10.20.30.100 is-at 52:54:00:ex:c1:01 (gratuitous), length 28
+----
+
+
+[NOTE]
+.Key Concept
+====
+Gratuitous ARP (GARP) is an ARP Reply packet sent without a corresponding ARP Request. It announces "I am now at this MAC address" to all devices on the L2 network. However, not all network devices honor GARP:  - Some switches/routers have GARP filtering enabled for security - Some routers have static ARP entries that GARP cannot override - GARP may be lost if the network is congested at the moment of failover - Some enterprise routers have long ARP cache timeouts and ignore GARP  When GARP fails to update the upstream router, inbound traffic continues to flow to the old gateway's MAC address, causing a black hole.
+====
+
+
+Check the OVN mac_binding table for current state:
+
+[source,bash]
+----
+[root@controller-1 ~]# ovn-sbctl list mac_binding | grep -A5 "10.20.30"
+----
+
+----
+_uuid               : mb-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+datapath            : dp-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+ip                  : "10.20.30.1"
+logical_port        : "lrp-ext-tenant-router"
+mac                 : "52:54:00:up:rr:01"
+----
+
+*Finding:* OVN's mac_binding table has the upstream router's MAC (10.20.30.1 ->
+52:54:00:up:rr:01). OVN knows how to reach the upstream router. The problem is the
+reverse - the upstream router does not know the new MAC for the floating IP.
+
+'''
+
+=== Step 9: Check the External Network Provider Configuration
+
+*Why:* Verify that the external network mapping is consistent across all controllers.
+If bridge mappings are wrong on the new gateway, it cannot process external traffic even
+if it receives it.
+
+[source,bash]
+----
+[root@controller-1 ~]# ovs-vsctl get open_vswitch . external_ids:ovn-bridge-mappings
+----
+
+----
+"datacentre:br-ex"
+----
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack network show ext-net -c provider:physical_network -c provider:network_type
+----
+
+----
++---------------------------+------------+
+| Field                     | Value      |
++---------------------------+------------+
+| provider:network_type     | flat       |
+| provider:physical_network | datacentre |
++---------------------------+------------+
+----
+
+*Finding:* The bridge mapping is correct - `datacentre` maps to `br-ex`, and the
+external network uses `datacentre` as its physical network. This is consistent across
+all controllers.
+
+'''
+
+=== Step 10: Check Physical Network Path
+
+*Why:* Verify that there are no L2 issues (VLAN misconfiguration, spanning tree, etc.)
+that could prevent traffic from reaching controller-1 even if ARP was correct.
+
+[source,bash]
+----
+[root@controller-1 ~]# ping -c 3 10.20.30.1
+----
+
+----
+PING 10.20.30.1 (10.20.30.1) 56(84) bytes of data.
+64 bytes from 10.20.30.1: icmp_seq=1 ttl=255 time=0.412 ms
+64 bytes from 10.20.30.1: icmp_seq=2 ttl=255 time=0.387 ms
+64 bytes from 10.20.30.1: icmp_seq=3 ttl=255 time=0.401 ms
+
+--- 10.20.30.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+----
+
+[source,bash]
+----
+[root@controller-1 ~]# arping -c 3 -I br-ex 10.20.30.1
+----
+
+----
+ARPING 10.20.30.1 from 10.20.30.6 br-ex
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.234ms
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.198ms
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.212ms
+Sent 3 probes (1 broadcast(s))
+Received 3 response(s)
+----
+
+*Finding:* controller-1 can reach the upstream router at L2 and L3. The physical network
+path is working. The only issue is the stale ARP entry on the upstream router.
+
+'''
+
+== Root Cause
+
+The root cause is a *stale ARP entry on the upstream router* after an OVN gateway
+failover:
+
+. *controller-0 was the active gateway* for tenant-router with the highest priority (3).
+   The floating IP 10.20.30.100 was advertised from controller-0's br-ex with MAC
+   `52:54:00:ex:c0:01`.
+
+. *controller-0 was rebooted* for maintenance. OVN HA failover triggered, moving the
+   active gateway to *controller-1* (priority 2).
+
+. *OVN sent gratuitous ARP* from controller-1, announcing that 10.20.30.100 is now at
+   MAC `52:54:00:ex:c1:01`.
+
+. *The upstream router did not update its ARP cache.* The GARP was either:
+** Received but ignored (some routers have GARP filtering or static ARP entries)
+** Lost due to network timing during the failover transition
+** The ARP entry had not yet expired and the router's ARP implementation does not
+     honor GARP for existing entries
+
+. *Result:* The upstream router continued sending traffic for 10.20.30.100 to
+   controller-0's MAC (`52:54:00:ex:c0:01`). Controller-0 was either down or no longer
+   the active gateway, so traffic was black-holed.
+
+. *Outbound SNAT continued to work* because SNAT is processed at the gateway and return
+   traffic for established connections follows conntrack entries. The established TCP/UDP
+   connections could still return via the old conntrack entries, and new outbound connections
+   from the VM used controller-1 (the new active gateway) for SNAT, which worked because
+   controller-1 could reach the upstream router directly.
+
+'''
+
+== Resolution
+
+=== Immediate Fix: Trigger ARP Refresh
+
+*Option 1: Re-add the NAT rule to trigger new GARP*
+
+This is the least invasive approach - removing and re-adding the NAT rule causes OVN to
+re-send gratuitous ARP:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lr-nat-del tenant-router dnat_and_snat 10.20.30.100
+[root@controller-0 ~]# ovn-nbctl lr-nat-add tenant-router dnat_and_snat 10.20.30.100 192.168.100.50
+----
+
+Verify the NAT rule is back:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lr-nat-list tenant-router
+----
+
+----
+TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat_and_snat    10.20.30.100       192.168.100.50
+snat             10.20.30.5         192.168.100.0/24
+----
+
+Check ovn-controller logs for GARP on controller-1:
+
+[source,bash]
+----
+[root@controller-1 ~]# journalctl -u ovn-controller --since "1 minute ago" | grep -i garp
+----
+
+----
+Apr 15 10:15:01 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.100 on port lrp-ext-tenant-router
+----
+
+
+[WARNING]
+====
+Removing and re-adding the NAT rule causes a brief disruption to any active connections using the floating IP. The disruption should be very short (sub-second) but should be communicated to the customer.
+====
+
+
+*Option 2: Clear ARP on the upstream router*
+
+If you have access to the upstream router, clear the ARP entry directly:
+
+For Cisco IOS:
+
+----
+router# clear arp-cache 10.20.30.100
+----
+
+For Linux-based router:
+
+[source,bash]
+----
+[admin@upstream-router ~]# ip neigh del 10.20.30.100 dev eth1
+----
+
+The upstream router will then send a new ARP request, which controller-1 will answer
+with its own MAC.
+
+*Option 3: Send manual gratuitous ARP from controller-1*
+
+[source,bash]
+----
+[root@controller-1 ~]# arping -c 5 -A -I br-ex 10.20.30.100
+----
+
+----
+ARPING 10.20.30.100 from 10.20.30.100 br-ex
+Sent 5 probes (5 broadcast(s))
+Received 0 response(s)
+----
+
+
+[NOTE]
+====
+The `arping -A` command sends unsolicited ARP Reply packets (gratuitous ARP). This is equivalent to what OVN does automatically after failover. If OVN's GARP did not work, manually sending GARP may not work either if the upstream router filters GARP. In that case, clearing the ARP cache on the upstream router (Option 2) is the only reliable approach.
+====
+
+
+=== Verify Recovery
+
+After applying any of the above fixes, verify from an external client:
+
+[source,bash]
+----
+[admin@upstream-router ~]# arp -n | grep 10.20.30.100
+----
+
+----
+10.20.30.100             ether   52:54:00:ex:c1:01   C                     eth1
+----
+
+*Finding:* ARP now points to controller-1's MAC (`52:54:00:ex:c1:01`).
+
+Verify traffic reaches controller-1:
+
+[source,bash]
+----
+[root@controller-1 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 5
+----
+
+----
+10:16:01.234567 IP 203.0.113.50.54321 > 10.20.30.100.80: Flags [S], seq 9876543210, win 65535, length 0
+10:16:01.235678 IP 10.20.30.100.80 > 203.0.113.50.54321: Flags [S.], seq 1234567890, ack 9876543211, win 65535, length 0
+10:16:01.236789 IP 203.0.113.50.54321 > 10.20.30.100.80: Flags [.], ack 1, win 65535, length 0
+----
+
+*Finding:* Traffic is now flowing correctly through controller-1 - we see the TCP
+three-way handshake (SYN, SYN-ACK, ACK).
+
+Test from an external client:
+
+[source,bash]
+----
+[user@external-client ~]$ curl -s -o /dev/null -w "%{http_code}" http://10.20.30.100/
+----
+
+----
+200
+----
+
+Floating IP is accessible again.
+
+=== Verify BFD Status
+
+Check that BFD is properly monitoring the gateway chassis health:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-sbctl list BFD
+----
+
+----
+_uuid               : bfd-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+chassis_name        : controller-0
+dst_ip              : "10.0.0.11"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up
+
+_uuid               : bfd-b2c3d4e5-f6a7-8901-bcde-f12345678901
+chassis_name        : controller-0
+dst_ip              : "10.0.0.12"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up
+
+_uuid               : bfd-c3d4e5f6-a7b8-9012-cdef-123456789012
+chassis_name        : controller-1
+dst_ip              : "10.0.0.10"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up
+----
+
+*Finding:* BFD is configured between all gateway chassis with:
+
+* `min_rx=1000`, `min_tx=1000`: 1-second BFD intervals
+* `mult=3`: failure detected after 3 missed intervals (3 seconds)
+* `status=up`: all BFD sessions are currently healthy
+
+The BFD intervals may be too slow for production use. See the Prevention section for
+recommended values.
+
+'''
+
+== Prevention
+
+=== 1. Configure Proper BFD Intervals for Fast Failover Detection
+
+Reduce BFD intervals for faster failover detection:
+
+[source,bash]
+----
+# Set BFD interval to 300ms with multiplier 3 (failure detected in ~1 second):
+ovn-nbctl set nb_global . options:bfd-min-rx=300
+ovn-nbctl set nb_global . options:bfd-min-tx=300
+ovn-nbctl set nb_global . options:bfd-mult=3
+----
+
+
+[NOTE]
+====
+Aggressive BFD intervals (below 300ms) can cause false positives in congested networks. Test in your environment before deploying. The recommended minimum for production is 300ms with multiplier 3 (approximately 1-second detection time).
+====
+
+
+=== 2. Monitor Gateway Chassis HA Status
+
+Set up monitoring for gateway failovers:
+
+[source,bash]
+----
+# Check current active gateway:
+ovn-sbctl find port_binding type=chassisredirect | grep chassis
+
+# Monitor gateway changes:
+watch -n 5 'ovn-sbctl find port_binding type=chassisredirect | grep -E "chassis|logical_port"'
+----
+
+Prometheus alert for gateway failover:
+
+----
+- alert: OVNGatewayFailover
+  expr: changes(ovn_gateway_chassis_active[5m]) > 0
+  labels:
+    severity: warning
+  annotations:
+    summary: "OVN gateway failover detected"
+    description: "Gateway chassis changed on {{ $labels.router }}. Verify floating IP accessibility."
+----
+
+=== 3. Verify GARP Is Working After Every Failover
+
+Create a verification script to run after any planned failover:
+
+[source,bash]
+----
+#!/bin/bash
+# verify-floating-ip-arp.sh
+# Run after any gateway failover to verify ARP is correct
+
+FLOATING_IPS=$(ovn-nbctl lr-nat-list tenant-router | grep dnat_and_snat | awk '{print $2}')
+ACTIVE_GW=$(ovn-sbctl find port_binding type=chassisredirect | grep chassis | awk '{print $3}')
+ACTIVE_GW_MAC=$(ovn-sbctl get chassis $ACTIVE_GW encaps | head -1)
+
+echo "Active gateway chassis: $ACTIVE_GW"
+echo "Checking floating IPs..."
+
+for FIP in $FLOATING_IPS; do
+    echo -n "  $FIP: "
+    # Send GARP just in case
+    arping -c 3 -A -I br-ex $FIP > /dev/null 2>&1
+    echo "GARP sent"
+done
+----
+
+=== 4. Configure Upstream Routers to Accept GARP
+
+Work with the network team to ensure upstream routers honor gratuitous ARP:
+
+----
+Upstream router configuration recommendations:
+- Enable GARP processing (many routers have this disabled by default)
+- Reduce ARP cache timeout to 300 seconds (default is often 14400 seconds / 4 hours)
+- Do not use static ARP entries for floating IPs
+- Consider enabling ARP proxy if GARP is not supported
+----
+
+=== 5. Reduce ARP Timeout on Upstream Routers
+
+A shorter ARP cache timeout means stale entries are cleared faster, reducing the duration
+of floating IP outages after failover:
+
+For Cisco IOS:
+
+----
+interface GigabitEthernet0/1
+  arp timeout 300
+----
+
+For Linux:
+
+[source,bash]
+----
+echo 300 > /proc/sys/net/ipv4/neigh/eth1/gc_stale_time
+----
+
+=== 6. Document the Failover Procedure
+
+----
+Planned Gateway Maintenance Procedure:
+1. Identify the current active gateway:
+   ovn-sbctl find port_binding type=chassisredirect | grep chassis
+2. If the active gateway is the node being maintained, trigger a graceful failover:
+   ovn-nbctl lrp-set-gateway-chassis lrp-ext-tenant-router controller-1 3
+   (temporarily give the backup higher priority)
+3. Wait for failover to complete
+4. Verify GARP was received by upstream router:
+   arp -n | grep <floating-ip> (on upstream router)
+5. If ARP is stale, manually clear it
+6. Verify floating IP accessibility from external
+7. Proceed with maintenance
+8. After maintenance, restore priorities:
+   ovn-nbctl lrp-set-gateway-chassis lrp-ext-tenant-router controller-0 3
+----
+
+'''
+
+== OVN Gateway HA Architecture Reference
+
+=== How Gateway Chassis Priorities Work
+
+----
+Each logical router port (lrp) that connects to an external network has a list
+of gateway chassis with priorities:
+
+  lrp-ext-tenant-router:
+    controller-0: priority 3 (highest - preferred)
+    controller-1: priority 2
+    controller-2: priority 1 (lowest)
+
+OVN selects the highest-priority chassis that is "alive" (BFD reports UP)
+as the active gateway.
+
+When the active chassis fails:
+  1. BFD on other chassis detects the failure (within mult * max(min_rx, min_tx))
+  2. ovn-controller on the remaining chassis re-evaluates the priority list
+  3. The highest-priority remaining chassis becomes active
+  4. The chassisredirect port binding is updated in the SB DB
+  5. The new active chassis installs gateway flows and sends GARP
+----
+
+=== BFD-Based Health Monitoring
+
+----
+BFD (Bidirectional Forwarding Detection) runs between all gateway chassis pairs:
+
+  controller-0 <--BFD--> controller-1
+  controller-0 <--BFD--> controller-2
+  controller-1 <--BFD--> controller-2
+
+BFD parameters:
+  min_tx:  Minimum interval between transmitted BFD packets
+  min_rx:  Minimum interval between received BFD packets
+  mult:    Number of missed packets before declaring failure
+
+Detection time = mult * max(min_rx, min_tx)
+
+Example: min_tx=300ms, min_rx=300ms, mult=3
+  Detection time = 3 * 300ms = 900ms (~1 second)
+----
+
+=== Chassisredirect Port Bindings
+
+----
+The chassisredirect (cr-) port is a special port type in the SB DB:
+- Type: chassisredirect
+- Purpose: Represents the active gateway for a logical router
+- Binding: Points to the active gateway chassis
+- nat_addresses: Lists all floating IPs and SNAT IPs to be advertised via GARP
+
+When the binding changes (failover), the new chassis:
+1. Installs OpenFlow rules for gateway processing
+2. Sends GARP for all addresses in nat_addresses
+3. Begins processing DNAT for inbound floating IP traffic
+----
+
+=== GARP Mechanism
+
+----
+After failover, the new active gateway sends:
+1. Gratuitous ARP Reply for each floating IP
+2. Gratuitous ARP Reply for the router's external IP (SNAT address)
+
+Each GARP packet:
+- Is an ARP Reply (opcode 2)
+- sender IP = sender protocol address = floating IP
+- sender MAC = new gateway's br-ex MAC
+- target IP = floating IP (same as sender)
+- Broadcast to ff:ff:ff:ff:ff:ff
+
+All devices on the L2 segment that receive this should update their ARP cache.
+----
+
+'''
+
+== Key Commands Reference
+
+
+[cols="1,1",options="header"]
+|===
+|Command
+|Purpose
+
+|`openstack floating ip show <uuid>`
+|Check floating IP status and association
+
+|`ovn-nbctl lr-nat-list <router>`
+|List NAT rules on a logical router
+
+|`ovn-nbctl lrp-get-gateway-chassis <lrp>`
+|Show gateway chassis priorities
+
+|`ovn-sbctl find port_binding type=chassisredirect`
+|Find active gateway binding
+
+|`ovn-sbctl list BFD`
+|Check BFD session status
+
+|`ovn-sbctl list mac_binding`
+|Show OVN MAC binding table
+
+|`tcpdump -i br-ex -n host <fip>`
+|Capture floating IP traffic on br-ex
+
+|`arp -n \
+\|grep <fip>`
+|Check ARP entry for floating IP
+
+|`arping -c 5 -A -I br-ex <fip>`
+|Send manual gratuitous ARP
+
+|`ovn-nbctl lr-nat-del <router> dnat_and_snat <fip>`
+|Remove NAT rule
+
+|`ovn-nbctl lr-nat-add <router> dnat_and_snat <ext> <int>`
+|Add NAT rule
+
+|`ovs-vsctl get open_vswitch . external_ids:ovn-bridge-mappings`
+|Check bridge mappings
+
+|`ovn-nbctl lrp-set-gateway-chassis <lrp> <chassis> <priority>`
+|Set gateway chassis priority
+
+|===
+
+
+'''
+
+== Key Takeaways
+
+* *Floating IP accessibility depends on correct ARP on the external network.* After a
+  gateway failover, the upstream router must learn the new MAC address for the floating IP.
+  If GARP fails, the floating IP becomes unreachable from the external network.
+
+* **Outbound SNAT working while inbound DNAT fails is the hallmark of a gateway
+  failover ARP issue.** SNAT and DNAT use different paths - SNAT is partially distributed
+  while DNAT is centralized on the gateway chassis.
+
+* *Not all network devices honor gratuitous ARP.* Always verify that the upstream router
+  accepts GARP. If it does not, plan for manual ARP cache clearing during failovers.
+
+* *BFD is essential for fast failover detection.* Without BFD, OVN relies on the inactivity
+  probe timeout (default 5 seconds), which means a longer disruption window. Configure BFD
+  with aggressive intervals (300ms x 3 = ~1 second detection).
+
+* *Always verify floating IP accessibility after any gateway maintenance.* Do not assume
+  GARP worked - check the upstream router's ARP table and test from an external client.
+
+'''
+
+*Previous scenario:* xref:ts-05-dhcp-failure.adoc[Scenario 05 - VMs Not Getting DHCP Addresses]
+*Back to:* xref:12-troubleshooting.adoc[Module 12 - Troubleshooting OVS and OVN]
+

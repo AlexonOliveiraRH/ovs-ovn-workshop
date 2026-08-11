@@ -1,0 +1,1525 @@
+= Scenario 01: VM Cannot Reach Another VM
+
+== The Problem
+
+A customer opens a support case with the following description:
+
+
+[quote]
+____
+"Two VMs on the same Neutron network cannot ping each other. VM-A is on compute-0 and VM-B is on compute-1. They are both on the tenant-net network (192.168.100.0/24). This was working fine until earlier today. Nothing was changed on the OpenStack side. The VMs can still reach their default gateway and access the metadata service, but direct VM-to-VM communication across the two compute nodes is completely broken."
+____
+
+
+This is one of the most common classes of issues in OVN-based deployments: cross-node east-west traffic failure. The structured investigation below walks through every layer, from inside the VM all the way down to the physical network, to identify the root cause.
+
+
+[IMPORTANT]
+.RHOSP 17.1: Containerized OVN Commands
+====
+In RHOSP 17.1, OVN databases run inside Pacemaker-managed containers. All `ovn-nbctl` and `ovn-sbctl` commands shown in this scenario must be executed via `podman exec` on the controller node. For example:
+
+* `ovn-nbctl show` becomes `sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only show`
+* `ovn-sbctl show` becomes `sudo podman exec -it ovn_cluster_south_db_server ovn-sbctl --no-leader-only show`
+* `ovn-trace` becomes `sudo podman exec -it ovn_cluster_north_db_server ovn-trace --no-leader-only`
+
+Similarly, `ovn-controller` and `ovs-vswitchd` commands on compute nodes must be run via `sudo podman exec -it ovn_controller` or `sudo podman exec -it ovs_vswitchd`.
+
+For brevity, this scenario shows the bare commands. Refer to xref:12-troubleshooting.adoc#_rhosp_red_hat_openstack_platform[Module 12: RHOSP Product-Specific Troubleshooting] for the full containerized command syntax.
+====
+
+
+'''
+
+== Environment
+
+
+[cols="1,1",options="header"]
+|===
+|Component
+|Detail
+
+|Platform
+|Red Hat OpenStack Platform (RHOSP) 17.1
+
+|Networking backend
+|ML2/OVN (Neutron with OVN mechanism driver)
+
+|Compute node 0
+|`compute-0.lab.redhat.local` - management IP `10.0.0.11`
+
+|Compute node 1
+|`compute-1.lab.redhat.local` - management IP `10.0.0.12`
+
+|Tunnel network
+|`10.0.0.0/24` on `ens4` (dedicated tunnel/overlay interface)
+
+|Physical NIC speed
+|10 GbE
+
+|Overlay protocol
+|Geneve (Generic Network Virtualization Encapsulation)
+
+|Neutron network
+|`tenant-net` (UUID: `a1b2c3d4-e5f6-7890-abcd-ef1234567890`)
+
+|Subnet
+|`192.168.100.0/24` (UUID: `b2c3d4e5-f6a7-8901-bcde-f12345678901`)
+
+|VM-A
+|`192.168.100.10`, MAC `fa:16:3e:aa:bb:cc`, on `compute-0`
+
+|VM-B
+|`192.168.100.20`, MAC `fa:16:3e:dd:ee:ff`, on `compute-1`
+
+|VM-A Neutron port
+|UUID: `c3d4e5f6-a7b8-9012-cdef-123456789012`
+
+|VM-B Neutron port
+|UUID: `d4e5f6a7-b8c9-0123-defa-234567890123`
+
+|Logical switch
+|`neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890`
+
+|Chassis compute-0
+|UUID: `e5f6a7b8-c9d0-1234-efab-345678901234`
+
+|Chassis compute-1
+|UUID: `f6a7b8c9-d0e1-2345-fabc-456789012345`
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+In ML2/OVN, Neutron translates its network model into OVN northbound database objects (logical switches, logical router, ACLs). The `ovn-northd` daemon compiles those into the southbound database, and `ovn-controller` on each compute node programs the local OVS bridge (`br-int`) with OpenFlow rules that implement the logical topology. East-west traffic between VMs on different compute nodes travels through Geneve tunnels.
+====
+
+
+'''
+
+== Step-by-Step Investigation
+
+=== Step 1: Verify the Symptoms
+
+*Why we do this:* Before diving into infrastructure, confirm the reported symptom is real and gather precise failure characteristics. The type of failure (timeout vs. unreachable vs. partial loss) tells us where to look.
+
+Access the VM-A console (via Horizon, `virsh console`, or `openstack console url show`) and attempt to ping VM-B:
+
+[source,bash]
+----
+[root@vm-a ~]# ping -c 5 192.168.100.20
+----
+
+----
+PING 192.168.100.20 (192.168.100.20) 56(84) bytes of data.
+From 192.168.100.10 icmp_seq=1 Destination Host Unreachable
+From 192.168.100.10 icmp_seq=2 Destination Host Unreachable
+From 192.168.100.10 icmp_seq=3 Destination Host Unreachable
+From 192.168.100.10 icmp_seq=4 Destination Host Unreachable
+From 192.168.100.10 icmp_seq=5 Destination Host Unreachable
+
+--- 192.168.100.20 ping statistics ---
+5 packets transmitted, 0 received, +5 errors, 100% packet loss, time 4005ms
+----
+
+Also try from VM-B to VM-A to confirm the failure is bidirectional:
+
+[source,bash]
+----
+[root@vm-b ~]# ping -c 5 192.168.100.10
+----
+
+----
+PING 192.168.100.10 (192.168.100.10) 56(84) bytes of data.
+From 192.168.100.20 icmp_seq=1 Destination Host Unreachable
+From 192.168.100.20 icmp_seq=2 Destination Host Unreachable
+From 192.168.100.20 icmp_seq=3 Destination Host Unreachable
+From 192.168.100.20 icmp_seq=4 Destination Host Unreachable
+From 192.168.100.20 icmp_seq=5 Destination Host Unreachable
+
+--- 192.168.100.10 ping statistics ---
+5 packets transmitted, 0 received, +5 errors, 100% packet loss, time 4003ms
+----
+
+*What this tells us:* The failure is 100% packet loss with "Destination Host Unreachable" in both directions. This means the source VM's ARP resolution for the destination is failing - the VM cannot even build an L2 frame to reach the other VM. This is consistent with a complete communication breakdown between the two compute nodes at the overlay level.
+
+*Finding:* Confirmed - complete bidirectional failure. This is NOT normal. Proceed with investigation.
+
+'''
+
+=== Step 2: Check VM Network Configuration
+
+*Why we do this:* Misconfigured guest networking (wrong IP, wrong subnet mask, missing default route, or a duplicate MAC address) can cause connectivity failures that look like infrastructure problems. Always rule out the obvious before going deeper.
+
+On VM-A:
+
+[source,bash]
+----
+[root@vm-a ~]# ip addr show eth0
+----
+
+----
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 state UP group default qlen 1000
+    link/ether fa:16:3e:aa:bb:cc brd ff:ff:ff:ff:ff:ff
+    altname enp0s3
+    inet 192.168.100.10/24 brd 192.168.100.255 scope global dynamic noprefixroute eth0
+       valid_lft 41652sec preferred_lft 41652sec
+    inet6 fe80::f816:3eff:feaa:bbcc/64 scope link
+       valid_lft forever preferred_lft forever
+----
+
+[source,bash]
+----
+[root@vm-a ~]# ip route show
+----
+
+----
+default via 192.168.100.1 dev eth0 proto dhcp src 192.168.100.10 metric 100
+192.168.100.0/24 dev eth0 proto kernel scope link src 192.168.100.10 metric 100
+----
+
+On VM-B:
+
+[source,bash]
+----
+[root@vm-b ~]# ip addr show eth0
+----
+
+----
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 state UP group default qlen 1000
+    link/ether fa:16:3e:dd:ee:ff brd ff:ff:ff:ff:ff:ff
+    altname enp0s3
+    inet 192.168.100.20/24 brd 192.168.100.255 scope global dynamic noprefixroute eth0
+       valid_lft 39841sec preferred_lft 39841sec
+    inet6 fe80::f816:3eff:fedd:eeff/64 scope link
+       valid_lft forever preferred_lft forever
+----
+
+[source,bash]
+----
+[root@vm-b ~]# ip route show
+----
+
+----
+default via 192.168.100.1 dev eth0 proto dhcp src 192.168.100.20 metric 100
+192.168.100.0/24 dev eth0 proto kernel scope link src 192.168.100.20 metric 100
+----
+
+*What this tells us:* Both VMs have the correct IP addresses, correct subnet masks (/24), correct MAC addresses matching what Neutron assigned, and proper default routes via 192.168.100.1 (the OVN logical router gateway). The interfaces are UP with LOWER_UP (link is good). The MTU of 1442 is expected for Geneve overlay (1500 physical MTU - 58 bytes Geneve overhead).
+
+
+[NOTE]
+.Key Concept
+====
+Geneve encapsulation adds overhead to each packet: 8 bytes UDP header + 8 bytes Geneve fixed header + variable Geneve options (typically 4-42 bytes in OVN for metadata) + 20 bytes outer IP header. OVN typically sets the inner MTU to 1442 to account for this overhead on a 1500-byte physical MTU.
+====
+
+
+*Finding:* VM network configuration is correct. This is normal. The problem is not inside the guests.
+
+'''
+
+=== Step 3: Check Neutron Port Status
+
+*Why we do this:* Neutron ports can become DOWN or ERROR due to agent issues, binding failures, or database inconsistencies. A port that is not ACTIVE will not have proper OVN bindings, meaning traffic will not flow.
+
+From the undercloud or controller node (wherever you have the OpenStack CLI configured):
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack port show c3d4e5f6-a7b8-9012-cdef-123456789012
+----
+
+----
++-------------------------+----------------------------------------------+
+| Field                   | Value                                        |
++-------------------------+----------------------------------------------+
+| admin_state_up          | UP                                           |
+| allowed_address_pairs   |                                              |
+| binding_host_id         | compute-0.lab.redhat.local                   |
+| binding_profile         |                                              |
+| binding_vif_details     | connectivity='l2'                            |
+|                         | port_filter='true'                           |
+|                         | ovs_hybrid_plug='false'                      |
+|                         | datapath_type=''                             |
+|                         | bridge_name='br-int'                         |
+| binding_vif_type        | ovs                                          |
+| binding_vnic_type       | normal                                       |
+| created_at              | 2024-11-15T09:23:41Z                         |
+| data_plane_status       | None                                         |
+| description             |                                              |
+| device_id               | 8a9b0c1d-2e3f-4a5b-6c7d-8e9f0a1b2c3d       |
+| device_owner            | compute:nova                                 |
+| dns_assignment          | None                                         |
+| dns_domain              | None                                         |
+| dns_name                |                                              |
+| extra_dhcp_opts         |                                              |
+| fixed_ips               | ip_address='192.168.100.10',                 |
+|                         | subnet_id='b2c3d4e5-f6a7-8901-bcde-f12345678901' |
+| id                      | c3d4e5f6-a7b8-9012-cdef-123456789012         |
+| ip_allocation           | immediate                                    |
+| mac_address             | fa:16:3e:aa:bb:cc                            |
+| name                    | vm-a-port                                    |
+| network_id              | a1b2c3d4-e5f6-7890-abcd-ef1234567890         |
+| port_security_enabled   | True                                         |
+| project_id              | 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d             |
+| revision_number         | 7                                            |
+| security_group_ids      | 5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b        |
+| status                  | ACTIVE                                       |
+| tags                    |                                              |
+| trunk_details           | None                                         |
+| updated_at              | 2024-11-15T09:24:12Z                         |
++-------------------------+----------------------------------------------+
+----
+
+[source,bash]
+----
+(overcloud) [stack@undercloud ~]$ openstack port show d4e5f6a7-b8c9-0123-defa-234567890123
+----
+
+----
++-------------------------+----------------------------------------------+
+| Field                   | Value                                        |
++-------------------------+----------------------------------------------+
+| admin_state_up          | UP                                           |
+| allowed_address_pairs   |                                              |
+| binding_host_id         | compute-1.lab.redhat.local                   |
+| binding_profile         |                                              |
+| binding_vif_details     | connectivity='l2'                            |
+|                         | port_filter='true'                           |
+|                         | ovs_hybrid_plug='false'                      |
+|                         | datapath_type=''                             |
+|                         | bridge_name='br-int'                         |
+| binding_vif_type        | ovs                                          |
+| binding_vnic_type       | normal                                       |
+| created_at              | 2024-11-15T09:25:03Z                         |
+| data_plane_status       | None                                         |
+| description             |                                              |
+| device_id               | 9b0c1d2e-3f4a-5b6c-7d8e-9f0a1b2c3d4e       |
+| device_owner            | compute:nova                                 |
+| dns_assignment          | None                                         |
+| dns_domain              | None                                         |
+| dns_name                |                                              |
+| extra_dhcp_opts         |                                              |
+| fixed_ips               | ip_address='192.168.100.20',                 |
+|                         | subnet_id='b2c3d4e5-f6a7-8901-bcde-f12345678901' |
+| id                      | d4e5f6a7-b8c9-0123-defa-234567890123         |
+| ip_allocation           | immediate                                    |
+| mac_address             | fa:16:3e:dd:ee:ff                            |
+| name                    | vm-b-port                                    |
+| network_id              | a1b2c3d4-e5f6-7890-abcd-ef1234567890         |
+| port_security_enabled   | True                                         |
+| project_id              | 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d             |
+| revision_number         | 6                                            |
+| security_group_ids      | 5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b        |
+| status                  | ACTIVE                                       |
+| tags                    |                                              |
+| trunk_details           | None                                         |
+| updated_at              | 2024-11-15T09:25:38Z                         |
++-------------------------+----------------------------------------------+
+----
+
+*What this tells us:* Both ports are in `ACTIVE` status with `admin_state_up: UP`. The MAC addresses and IP addresses match what we see inside the VMs. The `binding_host_id` correctly maps VM-A to `compute-0` and VM-B to `compute-1`. The `binding_vif_type` is `ovs`, confirming OVS integration is working. The ports belong to the same `network_id` and `subnet_id`.
+
+*Finding:* Neutron ports are healthy and correctly bound. This is normal. The problem is not at the Neutron API level.
+
+'''
+
+=== Step 4: Check OVN Logical Switch and Ports
+
+*Why we do this:* Even if Neutron shows ports as ACTIVE, the OVN northbound database might not have the corresponding logical switch ports, or they could be in the wrong state. The NB database is the "desired state" for the network - if something is wrong here, `ovn-northd` cannot compile the correct southbound flows.
+
+On the controller node (or wherever the OVN northbound database is hosted), inspect the logical switch:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl show neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+----
+
+----
+switch neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890 (tenant-net)
+    port c3d4e5f6-a7b8-9012-cdef-123456789012
+        addresses: ["fa:16:3e:aa:bb:cc 192.168.100.10"]
+    port d4e5f6a7-b8c9-0123-defa-234567890123
+        addresses: ["fa:16:3e:dd:ee:ff 192.168.100.20"]
+    port provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        type: localnet
+        addresses: ["unknown"]
+    port b2c3d4e5-f6a7-8901-bcde-f12345678901
+        type: router
+        router-port: lrp-b2c3d4e5-f6a7-8901-bcde-f12345678901
+----
+
+List all ports on the logical switch to make sure nothing is missing:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl lsp-list neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+----
+
+----
+c3d4e5f6-a7b8-9012-cdef-123456789012 (c3d4e5f6-a7b8-9012-cdef-123456789012)
+d4e5f6a7-b8c9-0123-defa-234567890123 (d4e5f6a7-b8c9-0123-defa-234567890123)
+provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890 (provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890)
+b2c3d4e5-f6a7-8901-bcde-f12345678901 (b2c3d4e5-f6a7-8901-bcde-f12345678901)
+----
+
+Verify that port security and addresses are correctly configured:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl get logical_switch_port c3d4e5f6-a7b8-9012-cdef-123456789012 addresses port_security enabled
+----
+
+----
+["fa:16:3e:aa:bb:cc 192.168.100.10"]
+["fa:16:3e:aa:bb:cc 192.168.100.10"]
+true
+----
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl get logical_switch_port d4e5f6a7-b8c9-0123-defa-234567890123 addresses port_security enabled
+----
+
+----
+["fa:16:3e:dd:ee:ff 192.168.100.20"]
+["fa:16:3e:dd:ee:ff 192.168.100.20"]
+true
+----
+
+*What this tells us:* Both VM ports exist on the logical switch `neutron-a1b2c3d4-...` with the correct MAC and IP addresses. Port security is enabled with the correct allowed address pairs. Both ports are enabled (`true`). The logical switch also has a `localnet` port (for provider network mapping) and a `router` port (connecting to the logical router for the subnet gateway).
+
+
+[NOTE]
+.Key Concept
+====
+In OVN, each Neutron network maps to a logical switch. Each Neutron port maps to a logical switch port (LSP). The `addresses` field tells OVN which MAC/IP combinations are valid for that port, and `port_security` enforces that only those addresses are allowed to send traffic from the port.
+====
+
+
+*Finding:* OVN northbound database is correct. Both ports exist with proper configuration. This is normal.
+
+'''
+
+=== Step 5: Check Port Bindings in the Southbound Database
+
+*Why we do this:* The OVN southbound database contains the runtime state, including which chassis (compute node) each port is bound to. If a port binding is missing or bound to the wrong chassis, traffic will not reach the correct destination. The SB database is what `ovn-controller` actually reads to program OVS flows.
+
+First, check the chassis registrations to ensure both compute nodes are registered:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-sbctl show
+----
+
+----
+Chassis "e5f6a7b8-c9d0-1234-efab-345678901234"
+    hostname: compute-0.lab.redhat.local
+    Encap geneve
+        ip: "10.0.0.11"
+        options: {csum="true"}
+    Port_Binding c3d4e5f6-a7b8-9012-cdef-123456789012
+    Port_Binding cr-lrp-b2c3d4e5-f6a7-8901-bcde-f12345678901
+Chassis "f6a7b8c9-d0e1-2345-fabc-456789012345"
+    hostname: compute-1.lab.redhat.local
+    Encap geneve
+        ip: "10.0.0.12"
+        options: {csum="true"}
+    Port_Binding d4e5f6a7-b8c9-0123-defa-234567890123
+----
+
+Now check each port binding in detail:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-sbctl find port_binding logical_port=c3d4e5f6-a7b8-9012-cdef-123456789012
+----
+
+----
+_uuid               : a1234567-b890-cdef-1234-567890abcdef
+chassis             : e5f6a7b8-c9d0-1234-efab-345678901234
+datapath            : 12345678-9abc-def0-1234-56789abcdef0
+encap               : []
+external_ids        : {name=vm-a-port}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : "c3d4e5f6-a7b8-9012-cdef-123456789012"
+mac                 : ["fa:16:3e:aa:bb:cc 192.168.100.10"]
+nat_addresses       : []
+options             : {requested-chassis=compute-0.lab.redhat.local}
+parent_port         : []
+tag                 : []
+tunnel_key          : 3
+type                : ""
+up                  : true
+virtual_parent      : []
+----
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-sbctl find port_binding logical_port=d4e5f6a7-b8c9-0123-defa-234567890123
+----
+
+----
+_uuid               : b2345678-c901-defa-2345-6789012bcdef
+chassis             : f6a7b8c9-d0e1-2345-fabc-456789012345
+datapath            : 12345678-9abc-def0-1234-56789abcdef0
+encap               : []
+external_ids        : {name=vm-b-port}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : "d4e5f6a7-b8c9-0123-defa-234567890123"
+mac                 : ["fa:16:3e:dd:ee:ff 192.168.100.20"]
+nat_addresses       : []
+options             : {requested-chassis=compute-1.lab.redhat.local}
+parent_port         : []
+tag                 : []
+tunnel_key          : 4
+type                : ""
+up                  : true
+virtual_parent      : []
+----
+
+*What this tells us:* Both ports have `up: true` and are bound to the correct chassis. VM-A's port is bound to chassis `e5f6a7b8-...` (compute-0) and VM-B's port is bound to chassis `f6a7b8c9-...` (compute-1). Both chassis use Geneve encapsulation with the correct tunnel endpoint IPs (10.0.0.11 and 10.0.0.12). The `datapath` value is the same for both, confirming they are on the same logical switch. The `tunnel_key` values (3 and 4) are the unique identifiers used within the Geneve tunnel to identify these specific ports.
+
+
+[NOTE]
+.Key Concept
+====
+The `tunnel_key` in a port binding is used in the Geneve metadata (VNI / options) to identify which logical port a tunneled packet belongs to. When a packet arrives at the remote compute node through the Geneve tunnel, `ovn-controller` uses this key to determine which local OVS port the packet should be delivered to.
+====
+
+
+*Finding:* Port bindings are correct. Both ports are up and bound to their respective chassis. This is normal.
+
+'''
+
+=== Step 6: Check ovn-controller Status on Both Compute Nodes
+
+*Why we do this:* `ovn-controller` is the local agent running on each compute node that reads the OVN southbound database and programs OVS flows accordingly. If `ovn-controller` is not running, has crashed, or has lost its connection to the southbound database, it cannot update the local OVS flows and traffic will break.
+
+On compute-0:
+
+[source,bash]
+----
+[root@compute-0 ~]# systemctl status ovn-controller
+----
+
+----
+* ovn-controller.service - Open Virtual Network controller
+     Loaded: loaded (/usr/lib/systemd/system/ovn-controller.service; enabled; preset: disabled)
+     Active: active (running) since Wed 2024-11-13 08:15:22 UTC; 2 days ago
+   Main PID: 1842 (ovn-controller)
+      Tasks: 4 (limit: 48588)
+     Memory: 62.3M
+        CPU: 12min 34.567s
+     CGroup: /system.slice/ovn-controller.service
+             `-1842 ovn-controller unix:/var/run/openvswitch/db.sock -vconsole:emer -vsyslog:err -vfile:info --no-chdir --log-file=/var/log/ovn/ovn-controller.log --pidfile=/var/run/ovn/ovn-controller.pid
+
+Nov 13 08:15:22 compute-0.lab.redhat.local systemd[1]: Started Open Virtual Network controller.
+Nov 13 08:15:23 compute-0.lab.redhat.local ovn-controller[1842]: 0001|ovn_controller|INFO|ovn-controller 22.12.1 started
+----
+
+On compute-1:
+
+[source,bash]
+----
+[root@compute-1 ~]# systemctl status ovn-controller
+----
+
+----
+* ovn-controller.service - Open Virtual Network controller
+     Loaded: loaded (/usr/lib/systemd/system/ovn-controller.service; enabled; preset: disabled)
+     Active: active (running) since Wed 2024-11-13 08:16:01 UTC; 2 days ago
+   Main PID: 1856 (ovn-controller)
+      Tasks: 4 (limit: 48588)
+     Memory: 58.7M
+        CPU: 11min 22.345s
+     CGroup: /system.slice/ovn-controller.service
+             `-1856 ovn-controller unix:/var/run/openvswitch/db.sock -vconsole:emer -vsyslog:err -vfile:info --no-chdir --log-file=/var/log/ovn/ovn-controller.log --pidfile=/var/run/ovn/ovn-controller.pid
+
+Nov 13 08:16:01 compute-1.lab.redhat.local systemd[1]: Started Open Virtual Network controller.
+Nov 13 08:16:02 compute-1.lab.redhat.local ovn-controller[1856]: 0001|ovn_controller|INFO|ovn-controller 22.12.1 started
+----
+
+Verify that `ovn-controller` can reach the southbound database:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+[source,bash]
+----
+[root@compute-1 ~]# ovs-appctl -t ovn-controller connection-status
+----
+
+----
+connected
+----
+
+*What this tells us:* `ovn-controller` is running on both compute nodes, has been stable for 2 days (no recent restarts), and both instances report `connected` status to the southbound database. The process is healthy with normal memory and CPU usage.
+
+
+[NOTE]
+====
+If `ovn-controller` had recently restarted, you would want to check `/var/log/ovn/ovn-controller.log` for errors. A restart can cause a brief interruption while flows are reprogrammed, but it should recover automatically.
+====
+
+
+*Finding:* `ovn-controller` is healthy on both nodes. This is normal.
+
+'''
+
+=== Step 7: Use ovn-trace to Test the Logical Pipeline
+
+*Why we do this:* `ovn-trace` simulates packet processing through the OVN logical pipeline without actually sending a packet. It shows how the packet would traverse logical ingress and egress stages, including ACL evaluation. If `ovn-trace` shows the packet being dropped, the problem is in the OVN logical configuration (ACLs, routing, etc.). If `ovn-trace` shows the packet being delivered successfully, the problem is in the physical forwarding plane below OVN.
+
+Run an ovn-trace simulating an ICMP ping from VM-A to VM-B:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-trace --detailed neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  'inport == "c3d4e5f6-a7b8-9012-cdef-123456789012" &&
+   eth.src == fa:16:3e:aa:bb:cc &&
+   eth.dst == fa:16:3e:dd:ee:ff &&
+   ip4.src == 192.168.100.10 &&
+   ip4.dst == 192.168.100.20 &&
+   ip.ttl == 64 &&
+   icmp4.type == 8'
+----
+
+----
+# icmp,reg14=0x3,vlan_tci=0x0000,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,nw_src=192.168.100.10,nw_dst=192.168.100.20,nw_tos=0,nw_ecn=0,nw_ttl=64,nw_frag=no,icmp_type=8,icmp_code=0
+
+ingress(dp="neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890", inport="c3d4e5f6-a7b8-9012-cdef-123456789012")
+------------------------------------------------------------------------
+ 0. ls_in_check_port_sec (northd.c:5765): 1, priority 50, uuid 8a1b2c3d
+    reg0[15] = check_in_port_sec(inport);
+ 1. ls_in_apply_port_sec (northd.c:5812): reg0[15] == 0, priority 50, uuid 9b2c3d4e
+    /* Ingress port security passed. */
+    next;
+ 4. ls_in_pre_acl (northd.c:5874): ip, priority 100, uuid ab3c4d5e
+    reg0[0] = 1;
+    next;
+ 6. ls_in_pre_stateful (northd.c:5964): reg0[0] == 1, priority 100, uuid bc4d5e6f
+    ct_next;
+
+    ct_next(ct_state=est|trk /* default (use --ct to customize) */)
+    ----------------------------------------------------------------
+     8. ls_in_acl_eval (northd.c:6238): ct.est && !ct.rel && !ct.new && !ct.inv && ct.trk, priority 1, uuid cd5e6f7a
+        reg0[1] = 1;
+        reg8[16] = 1;
+        next;
+    12. ls_in_acl_action (northd.c:6523): reg8[16] == 1, priority 100, uuid de6f7a8b
+        /* default allow action */
+        next;
+    14. ls_in_pre_lb (northd.c:6621): ip, priority 100, uuid ef7a8b9c
+        reg0[2] = 1;
+        next;
+    17. ls_in_acl_after_lb_eval (northd.c:6238): ct.est && !ct.rel && !ct.new && !ct.inv && ct.trk, priority 1, uuid fa8b9c0d
+        reg8[16] = 1;
+        next;
+    19. ls_in_acl_after_lb_action (northd.c:6523): reg8[16] == 1, priority 100, uuid 0b9c0d1e
+        /* default allow action */
+        next;
+    24. ls_in_l2_lkup (northd.c:7844): eth.dst == fa:16:3e:dd:ee:ff, priority 50, uuid 1c0d1e2f
+        outport = "d4e5f6a7-b8c9-0123-defa-234567890123";
+        output;
+
+egress(dp="neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890", outport="d4e5f6a7-b8c9-0123-defa-234567890123")
+------------------------------------------------------------------------
+ 0. ls_out_pre_acl (northd.c:5874): ip, priority 100, uuid 2d1e2f3a
+    reg0[0] = 1;
+    next;
+ 2. ls_out_pre_stateful (northd.c:5964): reg0[0] == 1, priority 100, uuid 3e2f3a4b
+    ct_next;
+
+    ct_next(ct_state=est|trk /* default (use --ct to customize) */)
+    ----------------------------------------------------------------
+     4. ls_out_acl_eval (northd.c:6238): ct.est && !ct.rel && !ct.new && !ct.inv && ct.trk, priority 1, uuid 4f3a4b5c
+        reg0[1] = 1;
+        reg8[16] = 1;
+        next;
+     6. ls_out_acl_action (northd.c:6523): reg8[16] == 1, priority 100, uuid 5a4b5c6d
+        /* default allow action */
+        next;
+     8. ls_out_check_port_sec (northd.c:5765): 1, priority 50, uuid 6b5c6d7e
+        reg0[15] = check_out_port_sec(outport);
+     9. ls_out_apply_port_sec (northd.c:5812): reg0[15] == 0, priority 50, uuid 7c6d7e8f
+        /* Egress port security passed. */
+        output;
+        /* output to "d4e5f6a7-b8c9-0123-defa-234567890123", type "" */
+----
+
+*What this tells us:* The trace shows the packet successfully traversing the entire OVN logical pipeline:
+
+. *Ingress port security* - passed (the source MAC/IP are allowed)
+. *Ingress ACLs* - the packet matches an established connection tracking entry and is allowed
+. *L2 lookup* - the destination MAC `fa:16:3e:dd:ee:ff` is found in the MAC learning table, and the outport is set to VM-B's port
+. *Egress ACLs* - passed with default allow
+. *Egress port security* - passed
+. *Output* - the packet is delivered to `d4e5f6a7-...` (VM-B's port)
+
+The trace ends with `output` to the correct port. The OVN logical pipeline says this packet SHOULD be delivered. This is critical - it means the problem is NOT in OVN's logical configuration, security groups, or ACLs. The problem must be in the physical forwarding plane.
+
+
+[NOTE]
+.Key Concept
+====
+`ovn-trace` only simulates the LOGICAL pipeline. It does not check whether the Geneve tunnel between compute nodes is functioning, whether OVS flows are correctly installed, or whether the physical network is passing traffic. A successful `ovn-trace` narrows the problem to the OVS or physical layer.
+====
+
+
+*Finding:* The OVN logical pipeline correctly forwards the packet. This is normal. The problem is below the OVN logical layer.
+
+'''
+
+=== Step 8: Check OVS Flows on the Source Compute Node
+
+*Why we do this:* `ovn-controller` translates the OVN logical pipeline into OpenFlow rules on the local `br-int` bridge. If these flows are missing, corrupt, or stale, packets will not be forwarded even though the logical pipeline says they should be. We need to verify that the flows exist and that the tunnel output action is present.
+
+On compute-0, dump the flows from `br-int` and look for the relevant entries. We will look at key tables in the OpenFlow pipeline:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-ofctl dump-flows br-int | head -5
+----
+
+----
+ cookie=0x0, duration=172834.567s, table=0, n_packets=0, n_bytes=0, priority=180,conj_id=100,in_port="patch-br-int-to" actions=load:0x1->NXM_NX_REG13[],load:0x5->NXM_NX_REG11[],load:0x4->NXM_NX_REG12[],load:0x1->OXM_OF_METADATA[],load:0x1->NXM_NX_REG14[],resubmit(,8)
+ cookie=0x0, duration=172834.567s, table=0, n_packets=284721, n_bytes=39652134, priority=100,in_port="c3d4e5f6" actions=load:0x3->NXM_NX_REG13[],load:0x5->NXM_NX_REG11[],load:0x4->NXM_NX_REG12[],load:0x2->OXM_OF_METADATA[],load:0x3->NXM_NX_REG14[],resubmit(,8)
+ cookie=0x0, duration=172834.567s, table=0, n_packets=156234, n_bytes=18723456, priority=100,in_port="ovn-f6a7b8-0" actions=move:NXM_NX_TUN_ID[0..23]->OXM_OF_METADATA[0..23],move:NXM_NX_TUN_METADATA0[16..30]->NXM_NX_REG14[0..14],move:NXM_NX_TUN_METADATA0[0..15]->NXM_NX_REG15[0..15],resubmit(,40)
+ cookie=0x0, duration=172834.567s, table=0, n_packets=0, n_bytes=0, priority=0 actions=drop
+----
+
+Check the flow that handles the L2 lookup and sends traffic to the tunnel port (this is the output stage):
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-ofctl dump-flows br-int table=68 | grep "fa:16:3e:dd:ee:ff"
+----
+
+----
+ cookie=0x0, duration=172834.567s, table=68, n_packets=12453, n_bytes=1122344, priority=50,metadata=0x2,dl_dst=fa:16:3e:dd:ee:ff actions=load:0x4->NXM_NX_REG15[],resubmit(,75)
+----
+
+Check the output table that decides between local delivery and tunnel forwarding:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-ofctl dump-flows br-int table=75 | head -10
+----
+
+----
+ cookie=0x0, duration=172834.567s, table=75, n_packets=342156, n_bytes=45678234, priority=100,reg15=0x3,metadata=0x2 actions=resubmit(,76)
+ cookie=0x0, duration=172834.567s, table=75, n_packets=12453, n_bytes=1122344, priority=100,reg15=0x4,metadata=0x2 actions=load:0x2->NXM_NX_REG15[],resubmit(,79),load:0x4->NXM_NX_REG15[],resubmit(,79)
+ cookie=0x0, duration=172834.567s, table=75, n_packets=0, n_bytes=0, priority=0 actions=drop
+----
+
+Check the remote output table that sends traffic via the tunnel:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-ofctl dump-flows br-int table=79 | head -10
+----
+
+----
+ cookie=0x0, duration=172834.567s, table=79, n_packets=12453, n_bytes=1122344, priority=100,reg15=0x4,metadata=0x2 actions=output:"ovn-f6a7b8-0"
+ cookie=0x0, duration=172834.567s, table=79, n_packets=0, n_bytes=0, priority=0 actions=drop
+----
+
+*What this tells us:* The OVS flow pipeline on compute-0 is intact:
+
+. *Table 0 (ingress classification):* Packets from VM-A's port (`c3d4e5f6`) are classified and sent to table 8 for processing. Packets from the tunnel port (`ovn-f6a7b8-0`) are also handled.
+. *Table 68 (L2 lookup):* The destination MAC `fa:16:3e:dd:ee:ff` maps to register 15 value `0x4` (VM-B's tunnel key), forwarding to table 75.
+. *Table 75 (output routing):* Register 15 = `0x4` is not local, so the packet is sent to table 79 (remote output).
+. *Table 79 (tunnel output):* The packet is output to `ovn-f6a7b8-0`, which is the Geneve tunnel port pointing to compute-1.
+
+The `n_packets` counter on the L2 lookup flow (12453) confirms that packets ARE hitting this flow and being forwarded to the tunnel port.
+
+*Finding:* OVS flows are correctly installed and packets are being forwarded to the tunnel port. This is normal. The problem is not in OVS flow programming.
+
+'''
+
+=== Step 9: Check the Geneve Tunnel Between Compute Nodes
+
+*Why we do this:* The Geneve tunnel is the overlay transport that carries VM traffic between compute nodes. If the tunnel port is missing, misconfigured, or pointing to the wrong remote IP, traffic will not reach the other compute node. We need to verify the tunnel ports exist in `br-int` and point to the correct IPs.
+
+On compute-0:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-vsctl show
+----
+
+----
+fd4e8c3a-1b2c-3d4e-5f6a-7b8c9d0e1f2a
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "c3d4e5f6"
+            Interface "c3d4e5f6"
+                external_ids: {iface-id="c3d4e5f6-a7b8-9012-cdef-123456789012"}
+        Port "ovn-f6a7b8-0"
+            Interface "ovn-f6a7b8-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.12"}
+                bfd_status: {}
+        Port patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+            Interface patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                type: patch
+                options: {peer=patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port ens5
+            Interface ens5
+        Port patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int
+            Interface patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int
+                type: patch
+                options: {peer=patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
+    ovs_version: "3.1.0"
+----
+
+On compute-1:
+
+[source,bash]
+----
+[root@compute-1 ~]# ovs-vsctl show
+----
+
+----
+9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "d4e5f6a7"
+            Interface "d4e5f6a7"
+                external_ids: {iface-id="d4e5f6a7-b8c9-0123-defa-234567890123"}
+        Port "ovn-e5f6a7-0"
+            Interface "ovn-e5f6a7-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.11"}
+                bfd_status: {}
+        Port patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+            Interface patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                type: patch
+                options: {peer=patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port ens5
+            Interface ens5
+        Port patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int
+            Interface patch-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890-to-br-int
+                type: patch
+                options: {peer=patch-br-int-to-provnet-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
+    ovs_version: "3.1.0"
+----
+
+*What this tells us:* Both compute nodes have Geneve tunnel ports in `br-int`:
+
+* compute-0 has tunnel port `ovn-f6a7b8-0` pointing to `remote_ip="10.0.0.12"` (compute-1)
+* compute-1 has tunnel port `ovn-e5f6a7-0` pointing to `remote_ip="10.0.0.11"` (compute-0)
+
+The tunnel configuration is correct: `type: geneve`, `key=flow` (the tunnel key is set per-packet based on the logical port), and `csum="true"` (UDP checksum is enabled for integrity). Both VMs' OVS ports exist with the correct `iface-id` external IDs matching the Neutron port UUIDs.
+
+*Finding:* Tunnel ports are correctly configured on both compute nodes. This is normal. The tunnels are properly pointed at each other.
+
+'''
+
+=== Step 10: tcpdump on the Tunnel Interface
+
+*Why we do this:* We have confirmed that the OVN logical pipeline, OVS flows, and tunnel configuration are all correct. Now we need to check whether packets are actually being transmitted into the tunnel. If OVS says it is outputting to the tunnel port but no packets appear on the wire, there may be a kernel-level issue. If packets are entering the tunnel, we need to trace them further.
+
+On compute-0, capture traffic on the Geneve tunnel system interface:
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i genev_sys_6081 -nn -c 10 icmp
+----
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on genev_sys_6081, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+14:32:01.234567 IP 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 1, length 64
+14:32:02.235678 IP 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 2, length 64
+14:32:03.236789 IP 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 3, length 64
+14:32:04.237890 IP 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 4, length 64
+14:32:05.238901 IP 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 5, length 64
+5 packets captured
+5 packets received by filter
+0 packets dropped by kernel
+----
+
+We can see ICMP echo requests leaving VM-A toward VM-B through the tunnel. But there are NO echo replies coming back. Now check the same on compute-1 to see if the packets arrive:
+
+[source,bash]
+----
+[root@compute-1 ~]# tcpdump -i genev_sys_6081 -nn -c 10 icmp
+----
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on genev_sys_6081, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+
+0 packets captured
+0 packets received by filter
+0 packets dropped by kernel
+----
+
+(After waiting 15 seconds with VM-A pinging VM-B, no packets appear on compute-1's tunnel interface.)
+
+*What this tells us:* Packets are being correctly encapsulated and sent into the Geneve tunnel on compute-0 (we see them on `genev_sys_6081`), but they never arrive on compute-1's tunnel interface. This means the packets are being lost somewhere between the two compute nodes - either on the physical NIC, on the wire, or on the receiving end.
+
+
+[WARNING]
+====
+Do not confuse `genev_sys_6081` (the kernel Geneve device that handles encapsulation/decapsulation) with the physical NIC. Seeing packets on `genev_sys_6081` means OVS has handed the inner packet to the kernel Geneve module for encapsulation, but it does not guarantee the encapsulated packet has left the physical NIC.
+====
+
+
+*Finding:* Packets enter the tunnel on compute-0 but never arrive at compute-1. This is NOT normal. The problem is in the physical network path between the two compute nodes.
+
+'''
+
+=== Step 11: tcpdump on the Physical Interface
+
+*Why we do this:* The previous step narrowed the problem to the physical transport layer. Now we capture directly on the physical NIC that carries Geneve traffic to determine whether encapsulated packets are actually leaving compute-0 and whether any responses come back. Geneve uses UDP port 6081.
+
+On compute-0, capture Geneve-encapsulated traffic on the physical NIC (`ens4`, the tunnel/overlay interface):
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i ens4 -nn -c 20 'udp port 6081'
+----
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on ens4, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+14:35:01.123456 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 12, length 64
+14:35:02.124567 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 13, length 64
+14:35:03.125678 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 14, length 64
+14:35:04.126789 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 15, length 64
+14:35:05.127890 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 16, length 64
+5 packets captured
+5 packets received by filter
+0 packets dropped by kernel
+----
+
+We see Geneve-encapsulated packets leaving compute-0's physical NIC (`10.0.0.11 -> 10.0.0.12`, UDP dst port 6081). But there are ZERO incoming packets from `10.0.0.12`.
+
+Now check on compute-1 whether the packets arrive at its physical NIC:
+
+[source,bash]
+----
+[root@compute-1 ~]# tcpdump -i ens4 -nn -c 20 'udp port 6081'
+----
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on ens4, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+
+0 packets captured
+0 packets received by filter
+0 packets dropped by kernel
+----
+
+(After waiting 15 seconds, no Geneve packets arrive at compute-1's physical NIC.)
+
+Verify basic IP connectivity between the compute nodes on the tunnel network:
+
+[source,bash]
+----
+[root@compute-0 ~]# ping -c 3 10.0.0.12
+----
+
+----
+PING 10.0.0.12 (10.0.0.12) 56(84) bytes of data.
+64 bytes from 10.0.0.12: icmp_seq=1 ttl=64 time=0.234 ms
+64 bytes from 10.0.0.12: icmp_seq=2 ttl=64 time=0.187 ms
+64 bytes from 10.0.0.12: icmp_seq=3 ttl=64 time=0.192 ms
+
+--- 10.0.0.12 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+rtt min/avg/max/mdev = 0.187/0.204/0.234/0.021 ms
+----
+
+*What this tells us:* This is a critical finding:
+
+. Geneve-encapsulated packets (UDP port 6081) leave compute-0's physical NIC but never arrive at compute-1's physical NIC.
+. However, plain ICMP ping between the compute nodes works perfectly (0% loss, sub-millisecond latency).
+
+This means the physical network path between the two nodes is functional for ICMP traffic but is selectively blocking or dropping UDP port 6081 traffic. This is the classic signature of a firewall rule blocking the Geneve overlay port.
+
+
+[NOTE]
+.Key Concept
+====
+Geneve (Generic Network Virtualization Encapsulation, RFC 8926) uses UDP destination port 6081. Unlike VXLAN (which uses UDP port 4789), Geneve is a newer protocol that some network administrators and firewall appliances may not have rules for. When a firewall is configured to allow "standard" traffic but does not explicitly allow UDP 6081, Geneve tunnels will break while everything else appears to work normally.
+====
+
+
+*Finding:* UDP port 6081 traffic is being dropped between the compute nodes while other traffic works fine. This is NOT normal. This points strongly to a firewall or ACL on the physical network.
+
+'''
+
+=== Step 12: Check MTU Along the Path
+
+*Why we do this:* MTU mismatches are a common cause of intermittent connectivity issues with overlay networks, because the encapsulation headers add overhead. If the physical MTU is too small, encapsulated packets that exceed it may be silently dropped (especially if DF bit is set and ICMP "too big" messages are not delivered). We should rule this out, even though our specific symptoms (100% loss, not intermittent) suggest a different cause.
+
+Check the physical NIC MTU on both compute nodes:
+
+[source,bash]
+----
+[root@compute-0 ~]# ip link show ens4
+----
+
+----
+3: ens4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qlen 1000
+    link/ether 52:54:00:ab:cd:11 brd ff:ff:ff:ff:ff:ff
+    altname enp0s4
+----
+
+[source,bash]
+----
+[root@compute-1 ~]# ip link show ens4
+----
+
+----
+3: ens4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qlen 1000
+    link/ether 52:54:00:ab:cd:12 brd ff:ff:ff:ff:ff:ff
+    altname enp0s4
+----
+
+Test with a large packet to check for MTU issues along the path:
+
+[source,bash]
+----
+[root@compute-0 ~]# ping -c 3 -M do -s 1422 10.0.0.12
+----
+
+----
+PING 10.0.0.12 (10.0.0.12) 1422(1450) bytes of data.
+1430 bytes from 10.0.0.12: icmp_seq=1 ttl=64 time=0.312 ms
+1430 bytes from 10.0.0.12: icmp_seq=2 ttl=64 time=0.287 ms
+1430 bytes from 10.0.0.12: icmp_seq=3 ttl=64 time=0.291 ms
+
+--- 10.0.0.12 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2004ms
+rtt min/avg/max/mdev = 0.287/0.296/0.312/0.011 ms
+----
+
+Check the inner VM interface MTU:
+
+[source,bash]
+----
+[root@vm-a ~]# ip link show eth0 | grep mtu
+----
+
+----
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 state UP group default qlen 1000
+----
+
+*What this tells us:* The physical MTU is 1500 bytes on both sides. Large ICMP packets (1422 bytes payload + 28 bytes IP/ICMP header = 1450 bytes) pass through with no issues, and the DF (Don't Fragment) bit is set, meaning if there were an MTU issue along the path we would get an error. The inner VM MTU of 1442 is correctly set to account for the Geneve overhead (1500 - 58 = 1442).
+
+
+[NOTE]
+====
+If you were seeing intermittent failures only with large packets while small packets worked, MTU would be the primary suspect. In that case, you would want to enable jumbo frames (MTU 9000) on the physical network or adjust the inner MTU downward. But in this scenario, we have 100% packet loss regardless of packet size, which rules out MTU as the cause.
+====
+
+
+*Finding:* MTU is correctly configured and is NOT the cause of this issue. This is normal.
+
+'''
+
+=== Step 13: Check for Firewall Rules
+
+*Why we do this:* We have systematically narrowed the problem to: Geneve packets (UDP port 6081) leave compute-0 but never arrive at compute-1, while other IP traffic between the two nodes works fine. The most likely cause is a firewall rule - either on the compute node hosts themselves (iptables/nftables) or on the physical network infrastructure between them (switch ACLs, hardware firewall appliances, etc.).
+
+First, check the local firewall on both compute nodes:
+
+[source,bash]
+----
+[root@compute-0 ~]# nft list ruleset 2>/dev/null || iptables -L -n -v
+----
+
+----
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        ct state established,related accept
+        iifname "lo" accept
+        ct state new tcp dport 22 accept
+        ct state new tcp dport 6642 accept comment "OVN Southbound DB"
+        ct state new tcp dport 6643 accept comment "OVN Northbound DB"
+        ct state new udp dport 6081 accept comment "Geneve tunnels"
+        ct state new tcp dport 9696 accept comment "Neutron API"
+        icmp type echo-request accept
+        counter packets 12 bytes 720 reject
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}
+----
+
+[source,bash]
+----
+[root@compute-1 ~]# nft list ruleset 2>/dev/null || iptables -L -n -v
+----
+
+----
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        ct state established,related accept
+        iifname "lo" accept
+        ct state new tcp dport 22 accept
+        ct state new tcp dport 6642 accept comment "OVN Southbound DB"
+        ct state new tcp dport 6643 accept comment "OVN Northbound DB"
+        ct state new udp dport 6081 accept comment "Geneve tunnels"
+        ct state new tcp dport 9696 accept comment "Neutron API"
+        icmp type echo-request accept
+        counter packets 8 bytes 480 reject
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}
+----
+
+*What this tells us:* Both compute node host firewalls explicitly allow UDP port 6081 (Geneve). The host firewall is NOT the problem.
+
+Now we need to look beyond the compute nodes. Since we confirmed that packets leave compute-0's physical NIC but never arrive at compute-1's physical NIC, and the host firewalls are open, the problem must be in the physical network between them.
+
+Contact the network team and ask them to check for any recent firewall or ACL changes on the network equipment between the two compute nodes. In this case, the customer confirms:
+
+
+[quote]
+____
+"The network security team applied a new firewall policy to the data center core switch at 09:00 this morning. The policy was intended to block unauthorized UDP traffic. They did not consult with the OpenStack team."
+____
+
+
+Ask the network team to check the firewall rule on the core switch. They provide the following output from the Cisco Nexus switch:
+
+----
+switch# show access-lists DATACENTER-SECURITY
+IP access list DATACENTER-SECURITY
+    10 permit tcp any any established
+    20 permit tcp any any eq 22
+    30 permit tcp any any eq 443
+    40 permit tcp any any eq 8080
+    50 permit tcp any any eq 5900-5999
+    60 permit icmp any any
+    70 permit udp any any eq 4789 (VXLAN)
+    80 deny udp any any log
+    90 permit ip any any
+----
+
+*There it is.* Line 80 is a catch-all `deny udp any any` rule. The network team added rules to allow specific UDP ports they knew about (VXLAN on port 4789 at line 70) but did NOT add a permit rule for Geneve on UDP port 6081. Since line 80 (`deny udp any any`) comes before line 90 (`permit ip any any`), ALL UDP traffic that is not VXLAN is being dropped. This includes Geneve.
+
+
+[WARNING]
+====
+This is an extremely common issue when network security teams apply firewall rules without understanding the full set of protocols used by the cloud platform. VXLAN (UDP 4789) is widely known, but Geneve (UDP 6081) is often overlooked, especially in environments that recently migrated from ML2/OVS (which used VXLAN) to ML2/OVN (which uses Geneve).
+====
+
+
+*Finding:* The physical network firewall is blocking UDP port 6081 between compute nodes. This IS the root cause.
+
+'''
+
+== Root Cause
+
+The root cause is a firewall rule on the physical data center network equipment (core switch) that blocks UDP port 6081 between compute nodes.
+
+The network security team applied a new access control list (ACL) to the core switch. This ACL explicitly allows VXLAN traffic (UDP 4789) but denies all other UDP traffic before the general "permit ip any any" rule. Since OVN uses Geneve encapsulation (not VXLAN), and Geneve uses UDP destination port 6081, all overlay tunnel traffic between compute nodes is dropped by the firewall.
+
+=== What is Geneve and Why Port 6081?
+
+Geneve (Generic Network Virtualization Encapsulation) is defined in RFC 8926. It was designed as a flexible overlay encapsulation protocol that can carry arbitrary metadata in its variable-length options header. OVN chose Geneve over VXLAN because:
+
+. *Extensible metadata:* Geneve options can carry OVN-specific metadata (logical datapath, logical ports, flags) that VXLAN's fixed 24-bit VNI cannot accommodate.
+. *Protocol evolution:* Geneve's TLV (Type-Length-Value) options allow adding new features without changing the protocol format.
+. *IANA-assigned port:* Geneve uses UDP destination port 6081, assigned by IANA.
+
+The Geneve packet structure on the wire:
+
+----
++--------------------------------------------------+
+| Outer Ethernet Header (14 bytes)                  |
++--------------------------------------------------+
+| Outer IP Header (20 bytes)                        |
+|   src: 10.0.0.11  dst: 10.0.0.12                 |
+|   protocol: UDP (17)                              |
++--------------------------------------------------+
+| Outer UDP Header (8 bytes)                        |
+|   src: <hash-based>  dst: 6081                    |
++--------------------------------------------------+
+| Geneve Header (8+ bytes)                          |
+|   VNI: <logical datapath ID>                      |
+|   Options: <OVN metadata - port keys, flags>      |
++--------------------------------------------------+
+| Inner Ethernet Frame                              |
+|   src: fa:16:3e:aa:bb:cc  dst: fa:16:3e:dd:ee:ff |
+|   Inner IP: 192.168.100.10 -> 192.168.100.20     |
+|   ICMP echo request                               |
++--------------------------------------------------+
+----
+
+When the firewall drops the outer UDP packet (because dst port 6081 is denied), the entire inner frame - including the VM's ICMP ping - is lost.
+
+'''
+
+== Resolution
+
+=== Immediate Fix
+
+Request the network/firewall team to add a permit rule for UDP port 6081 (Geneve) in the ACL on the core switch. The rule must be inserted BEFORE the `deny udp any any` rule:
+
+For Cisco NX-OS:
+
+----
+switch# configure terminal
+switch(config)# ip access-list DATACENTER-SECURITY
+switch(config-acl)# 75 permit udp any any eq 6081
+switch(config-acl)# end
+switch# copy running-config startup-config
+----
+
+The updated ACL should now look like:
+
+----
+switch# show access-lists DATACENTER-SECURITY
+IP access list DATACENTER-SECURITY
+    10 permit tcp any any established
+    20 permit tcp any any eq 22
+    30 permit tcp any any eq 443
+    40 permit tcp any any eq 8080
+    50 permit tcp any any eq 5900-5999
+    60 permit icmp any any
+    70 permit udp any any eq 4789 (VXLAN)
+    75 permit udp any any eq 6081 (Geneve)
+    80 deny udp any any log
+    90 permit ip any any
+----
+
+
+[NOTE]
+====
+For a more restrictive rule, you can limit the permit to only the compute node network: ```text 75 permit udp 10.0.0.0/24 10.0.0.0/24 eq 6081 ``` This allows Geneve only between hosts on the tunnel network, which is more secure than allowing it from any source.
+====
+
+
+=== Verify the Fix
+
+After the firewall rule is applied, verify from the compute nodes:
+
+. Check that UDP 6081 traffic now passes:
+
+[source,bash]
+----
+[root@compute-0 ~]# tcpdump -i ens4 -nn -c 10 'udp port 6081'
+----
+
+----
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on ens4, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+14:52:01.345678 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 45, length 64
+14:52:01.346012 IP 10.0.0.12.38291 > 10.0.0.11.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:dd:ee:ff > fa:16:3e:aa:bb:cc, ethertype IPv4 (0x0800), length 98: 192.168.100.20 > 192.168.100.10: ICMP echo reply, id 1234, seq 45, length 64
+14:52:02.346789 IP 10.0.0.11.52734 > 10.0.0.12.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:aa:bb:cc > fa:16:3e:dd:ee:ff, ethertype IPv4 (0x0800), length 98: 192.168.100.10 > 192.168.100.20: ICMP echo request, id 1234, seq 46, length 64
+14:52:02.347123 IP 10.0.0.12.38291 > 10.0.0.11.6081: Geneve, Flags [C], vni 0x2, proto TEB: fa:16:3e:dd:ee:ff > fa:16:3e:aa:bb:cc, ethertype IPv4 (0x0800), length 98: 192.168.100.20 > 192.168.100.10: ICMP echo reply, id 1234, seq 46, length 64
+4 packets captured
+4 packets received by filter
+0 packets dropped by kernel
+----
+
+We now see both requests AND replies flowing through the Geneve tunnel.
+
+. Verify VM-to-VM connectivity is restored:
+
+[source,bash]
+----
+[root@vm-a ~]# ping -c 5 192.168.100.20
+----
+
+----
+PING 192.168.100.20 (192.168.100.20) 56(84) bytes of data.
+64 bytes from 192.168.100.20: icmp_seq=1 ttl=64 time=1.234 ms
+64 bytes from 192.168.100.20: icmp_seq=2 ttl=64 time=0.567 ms
+64 bytes from 192.168.100.20: icmp_seq=3 ttl=64 time=0.523 ms
+64 bytes from 192.168.100.20: icmp_seq=4 ttl=64 time=0.498 ms
+64 bytes from 192.168.100.20: icmp_seq=5 ttl=64 time=0.512 ms
+
+--- 192.168.100.20 ping statistics ---
+5 packets transmitted, 5 received, 0% packet loss, time 4006ms
+rtt min/avg/max/mdev = 0.498/0.666/1.234/0.282 ms
+----
+
+Connectivity is fully restored.
+
+=== Alternative Approaches if the Firewall Rule Cannot Be Changed
+
+If the security team insists on blocking UDP 6081 and cannot make an exception:
+
+. *Use IPsec tunnels:* OVN supports IPsec encryption of tunnel traffic. IPsec uses ESP (protocol 50) or AH (protocol 51), which might be permitted by the firewall. Configure with:
+
+[source,bash]
+----
+[root@controller-0 ~]# ovn-nbctl set nb_global . ipsec=true
+----
+
+. *Switch to STT encapsulation:* OVN can use STT (Stateless Transport Tunneling) which uses TCP instead of UDP. However, STT has limitations and is not widely recommended.
+
+. *Request a dedicated VLAN for tunnel traffic:* Place all compute node tunnel interfaces on a dedicated VLAN that bypasses the UDP firewall rule. This is often the simplest organizational solution.
+
+
+[WARNING]
+====
+Never attempt to work around firewall rules by tunneling traffic over allowed ports (e.g., encapsulating Geneve inside an SSH tunnel). This creates fragile, unsupported configurations that will cause future troubleshooting nightmares and may violate security policies.
+====
+
+
+'''
+
+== Prevention
+
+=== Document Required Firewall Ports for OVN Deployments
+
+Maintain a clear document of all ports required by OVN and share it with the network and security teams BEFORE deployment. The minimum set of ports for OVN in RHOSP is:
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Port
+|Protocol
+|Direction
+|Purpose
+
+|6081
+|UDP
+|Compute <-> Compute, Compute <-> Networker
+|Geneve overlay tunnels
+
+|6641
+|TCP
+|Controller
+|OVN Northbound DB OVSDB connection
+
+|6642
+|TCP
+|Controller <-> Compute
+|OVN Southbound DB OVSDB connection
+
+|6643
+|TCP
+|Controller (HA)
+|OVN Northbound DB raft cluster
+
+|6644
+|TCP
+|Controller (HA)
+|OVN Southbound DB raft cluster
+
+|===
+
+
+=== Set Up BFD Monitoring for Tunnel Connectivity
+
+BFD (Bidirectional Forwarding Detection) can detect tunnel failures within seconds, providing early warning before users report issues. Configure BFD on OVN tunnel interfaces:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-vsctl set interface ovn-f6a7b8-0 bfd:enable=true
+[root@compute-0 ~]# ovs-vsctl set interface ovn-f6a7b8-0 bfd:min_tx=1000
+[root@compute-0 ~]# ovs-vsctl set interface ovn-f6a7b8-0 bfd:min_rx=1000
+[root@compute-0 ~]# ovs-vsctl set interface ovn-f6a7b8-0 bfd:decay_min_rx=5000
+----
+
+Verify BFD status:
+
+[source,bash]
+----
+[root@compute-0 ~]# ovs-vsctl get interface ovn-f6a7b8-0 bfd_status
+----
+
+----
+{diagnostic="No Diagnostic", flap_count="0", forwarding="true", remote_diagnostic="No Diagnostic", remote_state=up, state=up}
+----
+
+
+[NOTE]
+====
+In newer versions of OVN (21.06+), BFD can be configured centrally via the OVN northbound database rather than on each compute node individually. Check your OVN version with `ovn-controller --version` to determine which method to use.
+====
+
+
+=== Include Network Requirements in Deployment Documentation
+
+Add a pre-deployment checklist that includes:
+
+* Verify all required ports are open between all node roles (controller, compute, networker)
+* Test UDP 6081 connectivity explicitly between compute nodes before deploying workloads
+* Establish a change management process that requires OpenStack team approval before network firewall changes
+* Document the overlay protocol in use (Geneve vs VXLAN) and its port number
+
+A simple pre-deployment connectivity test:
+
+[source,bash]
+----
+# On compute-1, start a UDP listener on port 6081:
+[root@compute-1 ~]# nc -u -l 6081 &
+
+# On compute-0, send a test message:
+[root@compute-0 ~]# echo "geneve-test" | nc -u -w 2 10.0.0.12 6081
+
+# On compute-1, check if the message was received:
+[root@compute-1 ~]# # If "geneve-test" appeared, UDP 6081 is open.
+# Kill the listener:
+[root@compute-1 ~]# kill %1
+----
+
+=== Set Up Monitoring and Alerting
+
+Configure monitoring to detect tunnel failures proactively:
+
+[source,bash]
+----
+# Check BFD status across all tunnel interfaces (can be run from a monitoring script):
+[root@compute-0 ~]# ovs-vsctl --columns=name,bfd_status list interface | grep -A1 "ovn-"
+----
+
+----
+name                : "ovn-f6a7b8-0"
+bfd_status          : {diagnostic="No Diagnostic", flap_count="0", forwarding="true", remote_diagnostic="No Diagnostic", remote_state=up, state=up}
+----
+
+If `state` is `down` or `forwarding` is `false`, generate an alert immediately.
+
+'''
+
+== Key Commands Reference
+
+
+[cols="1,1",options="header"]
+|===
+|Command
+|Purpose
+
+|`ping -c 5 <ip>`
+|Basic connectivity test from inside VMs
+
+|`ip addr show <iface>`
+|Show interface IP, MAC, MTU, and state
+
+|`ip route show`
+|Show routing table
+
+|`openstack port show <uuid>`
+|Show Neutron port details including status and binding
+
+|`ovn-nbctl show <switch>`
+|Display OVN northbound logical switch and its ports
+
+|`ovn-nbctl lsp-list <switch>`
+|List all logical switch ports
+
+|`ovn-nbctl get logical_switch_port <port> addresses port_security enabled`
+|Check port addressing and security config
+
+|`ovn-sbctl show`
+|Display OVN southbound chassis registrations and port bindings
+
+|`ovn-sbctl find port_binding logical_port=<port>`
+|Show detailed port binding including chassis and up state
+
+|`systemctl status ovn-controller`
+|Check ovn-controller service status
+
+|`ovs-appctl -t ovn-controller connection-status`
+|Verify ovn-controller connection to SB database
+
+|`ovn-trace --detailed <switch> '<flow>'`
+|Simulate packet through OVN logical pipeline
+
+|`ovs-ofctl dump-flows br-int`
+|Dump all OpenFlow rules on the integration bridge
+
+|`ovs-ofctl dump-flows br-int table=<n>`
+|Dump flows from a specific OpenFlow table
+
+|`ovs-vsctl show`
+|Show OVS bridge, port, and interface configuration
+
+|`tcpdump -i genev_sys_6081 -nn icmp`
+|Capture inner (decapsulated) tunnel traffic
+
+|`tcpdump -i <nic> -nn 'udp port 6081'`
+|Capture Geneve-encapsulated traffic on the physical NIC
+
+|`ping -M do -s <size> <ip>`
+|Test path MTU (DF bit set, custom payload size)
+
+|`nft list ruleset`
+|Show nftables firewall rules
+
+|`iptables -L -n -v`
+|Show iptables firewall rules (legacy)
+
+|`ovs-vsctl set interface <iface> bfd:enable=true`
+|Enable BFD on a tunnel interface
+
+|`ovs-vsctl get interface <iface> bfd_status`
+|Check BFD forwarding state
+
+|===
+
+
+'''
+
+== Key Takeaways
+
+* *Always check the physical network.* OVN and OVS can be perfectly configured, but if the underlying physical network blocks the overlay protocol's UDP port, VM traffic will fail. A systematic layer-by-layer investigation is the only reliable way to isolate whether the problem is in the logical layer (OVN), the virtual forwarding layer (OVS), or the physical transport layer.
+
+* *Geneve uses UDP port 6081 - not 4789.* Environments migrating from ML2/OVS (VXLAN) to ML2/OVN (Geneve) must update firewall rules to allow UDP 6081 in addition to (or instead of) UDP 4789. Network teams familiar with VXLAN may not know about Geneve.
+
+* *ovn-trace validates logic, not transport.* A successful `ovn-trace` proves that OVN's logical pipeline would deliver the packet correctly, but it says nothing about whether the Geneve tunnel, OVS flows, or physical network will actually carry it. Always follow `ovn-trace` with OVS flow inspection and physical-layer verification when the trace looks clean but traffic is failing.
+
+* *tcpdump at multiple layers tells the story.* Capturing on `genev_sys_6081` (inner/decapsulated), on the physical NIC with `udp port 6081` (outer/encapsulated), and verifying basic IP connectivity between nodes (plain ICMP) is the fastest way to determine exactly where packets are being lost. When inner packets exist but outer packets do not arrive at the remote end, the physical network is the suspect.
+
+* *Proactive monitoring prevents outages.* BFD on tunnel interfaces detects failures in seconds. Documenting required firewall ports and establishing change management processes between the OpenStack team and the network security team prevents this class of issue entirely.
+
+'''
+
+*Back to:* xref:12-troubleshooting.adoc[Module 12 - Troubleshooting OVS and OVN]
+*Next scenario:* xref:ts-02-overlay-issues.adoc[Scenario 02 - Intermittent Packet Loss on Overlay Network]
+

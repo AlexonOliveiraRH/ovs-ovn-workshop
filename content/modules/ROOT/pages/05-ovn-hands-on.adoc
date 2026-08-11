@@ -1,0 +1,1838 @@
+= Module 05 - OVN Hands-On Lab
+
+
+== Prerequisites
+
+=== Lab Environment
+
+This lab requires 2-3 virtual machines (or physical machines) running RHEL 9 or Fedora. One machine serves as the central OVN controller, and the others serve as compute nodes (chassis).
+
+
+[cols="1,1,1,1,1",options="header"]
+|===
+|Node
+|Role
+|Hostname
+|Management IP
+|Tunnel IP
+
+|Node 1
+|Central + Compute
+|central
+|192.168.122.10
+|192.168.100.10
+
+|Node 2
+|Compute
+|compute1
+|192.168.122.11
+|192.168.100.11
+
+|Node 3 (optional)
+|Compute
+|compute2
+|192.168.122.12
+|192.168.100.12
+
+|===
+
+
+[NOTE]
+====
+If you only have a single machine, you can still complete Exercises 1-4, 6-7, and 9-10 using a single node. Exercise 5 requires at least 2 nodes. Exercise 8 benefits from 2 nodes but can be adapted for a single node.
+====
+
+
+[NOTE]
+====
+The "Tunnel IP" is the IP address used for Geneve tunnel encapsulation between nodes. In production, this would typically be on a dedicated tenant/tunnel network. For this lab, it can be the same as the management IP if you only have one network.
+====
+
+
+=== Required Packages
+
+*On the central node:*
+
+* `ovn-central` - Provides ovn-northd and the NB/SB databases
+* `ovn-host` - Provides ovn-controller (since this node is also a compute)
+* `openvswitch` - Provides OVS
+
+*On compute nodes:*
+
+* `ovn-host` - Provides ovn-controller
+* `openvswitch` - Provides OVS
+
+=== Network Topology
+
+The lab builds up this topology across the exercises:
+
+----
+                  Exercise 8: External connectivity
+                        (NAT/Gateway)
+                             |
+                    +--------+--------+
+                    |     router1      |
+                    | 10.0.0.1/24     10.0.1.1/24 |
+                    +--------+--------+
+                        |           |
+             +----------+     +----+-------+
+             |                             |
+    +--------+--------+          +--------+--------+
+    | Logical Switch   |          | Logical Switch   |
+    |    network1      |          |    network2      |
+    | 10.0.0.0/24      |          | 10.0.1.0/24      |
+    +--+----+----+-----+          +--+----+----+-----+
+       |    |    |                   |    |    |
+     vm1  vm2  vm3                 vm4  vm5  vm6
+   (Ex.3) (Ex.3) (Ex.5)         (Ex.6) (Ex.6) (Ex.9)
+
+    Exercise 4: DHCP on network1
+    Exercise 7: ACLs on network1
+    Exercise 9: Load balancer on network2
+----
+
+'''
+
+== Exercise 1: Installing and Starting OVN
+
+*Objective:* Install OVN packages, start services, and establish connectivity between the central node and compute nodes.
+
+=== Step 1.1: Install packages on the central node
+
+Run these commands on the central node (`central`):
+
+[source,bash]
+----
+# Install OVN central packages and OVS
+sudo dnf install -y ovn-central ovn-host openvswitch
+----
+
+Expected output:
+
+----
+...
+Installed:
+  openvswitch-3.x.x-x.el9.x86_64
+  ovn-central-2x.xx.x-x.el9.x86_64
+  ovn-host-2x.xx.x-x.el9.x86_64
+  ...
+Complete!
+----
+
+=== Step 1.2: Install packages on compute nodes
+
+Run these commands on each compute node (`compute1`, `compute2`):
+
+[source,bash]
+----
+# Install OVN host packages and OVS
+sudo dnf install -y ovn-host openvswitch
+----
+
+=== Step 1.3: Start services on the central node
+
+[source,bash]
+----
+# Start and enable OVS
+sudo systemctl enable --now openvswitch
+
+# Start and enable OVN central services
+# This starts ovsdb-server instances for NB and SB databases, plus ovn-northd
+sudo systemctl enable --now ovn-northd
+
+# Verify services are running
+sudo systemctl status openvswitch ovn-northd
+----
+
+Expected output (abbreviated):
+
+----
+● openvswitch.service - Open vSwitch
+     Active: active (exited) ...
+● ovn-northd.service - Open Virtual Network central components
+     Active: active (running) ...
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `ovn-northd` systemd unit manages three processes: (1) ovsdb-server for the Northbound Database, (2) ovsdb-server for the Southbound Database, and (3) the ovn-northd daemon itself. You can verify them with `ps aux | grep -E 'ovsdb-server|ovn-northd'`.
+====
+
+
+=== Step 1.4: Verify central services
+
+[source,bash]
+----
+# Check that the NB and SB databases are listening
+sudo ovn-nbctl show
+sudo ovn-sbctl show
+----
+
+Expected output:
+
+----
+# ovn-nbctl show - empty database, no logical networks yet
+(empty output)
+
+# ovn-sbctl show - empty, no chassis registered yet
+(empty output)
+----
+
+[source,bash]
+----
+# Check the database connection endpoints
+sudo ss -tlnp | grep -E '6641|6642'
+----
+
+Expected output:
+
+----
+LISTEN  0  10  0.0.0.0:6641  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
+LISTEN  0  10  0.0.0.0:6642  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
+----
+
+Port 6641 is the NB DB and port 6642 is the SB DB.
+
+
+[NOTE]
+====
+By default, the databases may only listen on `localhost` (punix sockets). If your compute nodes are separate machines, you need to configure the databases to listen on TCP. See the next step.
+====
+
+
+=== Step 1.5: Configure databases for remote access (multi-node only)
+
+If your compute nodes are on separate machines, configure the SB DB to accept remote connections:
+
+[source,bash]
+----
+# On the central node, set the SB DB to listen on TCP
+sudo ovn-sbctl set-connection ptcp:6642
+
+# Optionally, also expose the NB DB for remote management
+sudo ovn-nbctl set-connection ptcp:6641
+
+# Verify
+sudo ovn-sbctl get-connection
+sudo ovn-nbctl get-connection
+----
+
+Expected output:
+
+----
+ptcp:6642
+ptcp:6641
+----
+
+=== Step 1.6: Start OVN on the central node (as a compute node too)
+
+Since the central node also serves as a compute node in this lab, start ovn-controller:
+
+[source,bash]
+----
+# Start and enable ovn-controller
+sudo systemctl enable --now ovn-controller
+
+# Configure OVS to point to the local OVN southbound database
+sudo ovs-vsctl set open_vswitch . \
+    external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \
+    external_ids:ovn-encap-type=geneve \
+    external_ids:ovn-encap-ip=192.168.100.10 \
+    external_ids:system-id=central
+----
+
+
+[NOTE]
+.Key Concept
+====
+These `external_ids` on the `Open_vSwitch` table tell ovn-controller: - `ovn-remote`: Where to find the SB DB (local Unix socket since this node is the central node) - `ovn-encap-type`: Use Geneve encapsulation for tunnels - `ovn-encap-ip`: This node's tunnel endpoint IP - `system-id`: A unique identifier for this chassis
+====
+
+
+=== Step 1.7: Start OVN on compute nodes
+
+Run on each compute node (`compute1`, `compute2`):
+
+[source,bash]
+----
+# Start and enable OVS
+sudo systemctl enable --now openvswitch
+
+# Start and enable ovn-controller
+sudo systemctl enable --now ovn-controller
+
+# Configure OVS to connect to the central SB DB
+# Replace 192.168.122.10 with your central node's IP
+sudo ovs-vsctl set open_vswitch . \
+    external_ids:ovn-remote=tcp:192.168.122.10:6642 \
+    external_ids:ovn-encap-type=geneve \
+    external_ids:ovn-encap-ip=192.168.100.11 \
+    external_ids:system-id=compute1
+----
+
+For `compute2`, use `ovn-encap-ip=192.168.100.12` and `system-id=compute2`.
+
+=== Step 1.8: Verify connectivity
+
+Back on the central node, verify that all chassis have registered:
+
+[source,bash]
+----
+sudo ovn-sbctl show
+----
+
+Expected output:
+
+----
+Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+Chassis compute1
+    hostname: compute1
+    Encap geneve
+        ip: "192.168.100.11"
+        options: {csum="true"}
+Chassis compute2
+    hostname: compute2
+    Encap geneve
+        ip: "192.168.100.12"
+        options: {csum="true"}
+----
+
+[source,bash]
+----
+# Verify the OVS bridge was created
+sudo ovs-vsctl show
+----
+
+Expected output (on each node):
+
+----
+Bridge br-int
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal
+----
+
+=== What just happened?
+
+You installed and configured a complete OVN deployment:
+. The central node runs the NB DB, SB DB, and ovn-northd
+. Each node runs ovn-controller, which registered itself as a chassis in the SB DB
+. ovn-controller created the integration bridge `br-int` on each node
+. The system is ready to create logical networks
+
+=== Try it yourself
+
+* Run `ovn-sbctl list Chassis` to see detailed chassis information
+* Run `ovn-sbctl list Encap` to see encapsulation details
+* Run `ovs-vsctl list Open_vSwitch` and look at the `external_ids` column
+
+'''
+
+== Exercise 2: Creating Your First Logical Switch
+
+*Objective:* Create a logical switch, add ports, and understand what happens in the NB DB and SB DB when you do.
+
+=== Step 2.1: Create a logical switch
+
+Run on the central node (where `ovn-nbctl` talks to the NB DB):
+
+[source,bash]
+----
+# Create a logical switch called "network1"
+sudo ovn-nbctl ls-add network1
+----
+
+=== Step 2.2: Verify the logical switch in the NB DB
+
+[source,bash]
+----
+# Show all logical switches
+sudo ovn-nbctl show
+----
+
+Expected output:
+
+----
+switch 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx (network1)
+----
+
+[source,bash]
+----
+# Detailed view of the logical switch
+sudo ovn-nbctl list Logical_Switch
+----
+
+Expected output:
+
+----
+_uuid               : 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+acls                : []
+dns_records         : []
+external_ids        : {}
+forwarding_groups   : []
+load_balancer       : []
+load_balancer_group : []
+name                : network1
+other_config        : {}
+ports               : []
+qos_rules           : []
+----
+
+=== Step 2.3: Create logical switch ports
+
+[source,bash]
+----
+# Create port "vm1" on network1
+sudo ovn-nbctl lsp-add network1 vm1
+
+# Set the port's MAC and IP address
+sudo ovn-nbctl lsp-set-addresses vm1 "00:00:00:00:00:01 10.0.0.11"
+
+# Enable port security (prevent MAC/IP spoofing)
+sudo ovn-nbctl lsp-set-port-security vm1 "00:00:00:00:00:01 10.0.0.11"
+
+# Create a second port "vm2"
+sudo ovn-nbctl lsp-add network1 vm2
+sudo ovn-nbctl lsp-set-addresses vm2 "00:00:00:00:00:02 10.0.0.12"
+sudo ovn-nbctl lsp-set-port-security vm2 "00:00:00:00:00:02 10.0.0.12"
+----
+
+=== Step 2.4: Verify ports in the NB DB
+
+[source,bash]
+----
+sudo ovn-nbctl show
+----
+
+Expected output:
+
+----
+switch 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx (network1)
+    port vm2
+        addresses: ["00:00:00:00:00:02 10.0.0.12"]
+    port vm1
+        addresses: ["00:00:00:00:00:01 10.0.0.11"]
+----
+
+[source,bash]
+----
+# Detailed view of a port
+sudo ovn-nbctl list Logical_Switch_Port vm1
+----
+
+Expected output:
+
+----
+_uuid               : a1b2c3d4-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+addresses           : ["00:00:00:00:00:01 10.0.0.11"]
+dhcpv4_options      : []
+dhcpv6_options      : []
+dynamic_addresses   : []
+enabled             : []
+external_ids        : {}
+ha_chassis_group    : []
+name                : vm1
+options             : {}
+parent_name         : []
+port_security       : ["00:00:00:00:00:01 10.0.0.11"]
+tag                 : []
+tag_request         : []
+type                : ""
+up                  : false
+----
+
+
+[NOTE]
+.Key Concept
+====
+Notice `up: false`. This means no actual workload has bound to this port yet. The port exists in the logical configuration, but nothing is physically connected to it. It will become `up: true` when ovn-controller on some chassis detects an OVS port with `iface-id=vm1`.
+====
+
+
+=== Step 2.5: Examine the SB DB
+
+[source,bash]
+----
+# See what ovn-northd generated in the SB DB
+sudo ovn-sbctl show
+----
+
+[source,bash]
+----
+# See the logical flows generated for network1
+sudo ovn-sbctl lflow-list network1
+----
+
+Expected output (abbreviated - there will be many flows):
+
+----
+Datapath: "network1" (3f2a1b9c-...)  Pipeline: ingress
+  table=0 (ls_in_check_port_sec), priority=100, match=(vlan.present), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=50,  match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+  table=1 (ls_in_apply_port_sec), priority=50,  match=(reg0[15] == 1), action=(drop;)
+  table=1 (ls_in_apply_port_sec), priority=0,   match=(1), action=(next;)
+  ...
+  table=17(ls_in_l2_lkup),       priority=50,   match=(eth.dst == 00:00:00:00:00:01), action=(outport = "vm1"; output;)
+  table=17(ls_in_l2_lkup),       priority=50,   match=(eth.dst == 00:00:00:00:00:02), action=(outport = "vm2"; output;)
+  ...
+Datapath: "network1" (3f2a1b9c-...)  Pipeline: egress
+  table=0 (ls_out_pre_acl),      priority=0,    match=(1), action=(next;)
+  ...
+----
+
+=== What just happened?
+
+. You created a logical switch (`network1`) in the NB DB
+. You added two logical ports (`vm1`, `vm2`) with specific MAC and IP addresses
+. ovn-northd detected the NB DB changes and compiled them into logical flows in the SB DB
+. The logical flows implement: port security (verify source MAC/IP), ARP handling, L2 forwarding (MAC lookup), and the ingress/egress pipeline
+
+=== Try it yourself
+
+* Run `sudo ovn-sbctl lflow-list network1 | grep -i arp` to see the ARP responder flows
+* Run `sudo ovn-sbctl lflow-list network1 | grep port_sec` to see the port security flows
+* Run `sudo ovn-sbctl list Datapath_Binding` to see the datapath binding for network1
+* Try creating a third port and observe what new flows appear
+
+'''
+
+== Exercise 3: Connecting Workloads to OVN
+
+*Objective:* Create network namespaces that simulate VMs, connect them to OVN logical ports, and test L2 connectivity.
+
+=== Step 3.1: Create a network namespace for vm1
+
+Run on the central node (we will bind vm1 and vm2 to this node):
+
+[source,bash]
+----
+# Create a network namespace to simulate a VM
+sudo ip netns add vm1
+
+# Create an OVS internal port for vm1
+sudo ovs-vsctl add-port br-int vm1 -- set interface vm1 \
+    type=internal \
+    external_ids:iface-id=vm1
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `external_ids:iface-id=vm1` is the critical link between the OVS port and the OVN logical port. When ovn-controller sees an OVS interface with `iface-id=vm1`, it binds logical port `vm1` to this chassis and begins installing the relevant OpenFlow flows.
+====
+
+
+=== Step 3.2: Configure the vm1 namespace
+
+[source,bash]
+----
+# Move the interface into the namespace
+sudo ip link set vm1 netns vm1
+
+# Configure the MAC address to match what we set in OVN
+sudo ip netns exec vm1 ip link set vm1 address 00:00:00:00:00:01
+
+# Bring the interface up
+sudo ip netns exec vm1 ip link set vm1 up
+
+# Assign the IP address
+sudo ip netns exec vm1 ip addr add 10.0.0.11/24 dev vm1
+----
+
+=== Step 3.3: Create and configure the vm2 namespace
+
+[source,bash]
+----
+# Create namespace and OVS port for vm2
+sudo ip netns add vm2
+sudo ovs-vsctl add-port br-int vm2 -- set interface vm2 \
+    type=internal \
+    external_ids:iface-id=vm2
+
+# Configure the namespace
+sudo ip link set vm2 netns vm2
+sudo ip netns exec vm2 ip link set vm2 address 00:00:00:00:00:02
+sudo ip netns exec vm2 ip link set vm2 up
+sudo ip netns exec vm2 ip addr add 10.0.0.12/24 dev vm2
+----
+
+=== Step 3.4: Verify port binding
+
+[source,bash]
+----
+# Check that ovn-controller bound the ports
+sudo ovn-sbctl show
+----
+
+Expected output:
+
+----
+Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+    Port_Binding vm1
+    Port_Binding vm2
+...
+----
+
+[source,bash]
+----
+# Check port status in NB DB
+sudo ovn-nbctl list Logical_Switch_Port vm1 | grep -E "name|up"
+----
+
+Expected output:
+
+----
+name                : vm1
+up                  : true
+----
+
+=== Step 3.5: Test L2 connectivity
+
+[source,bash]
+----
+# Ping from vm1 to vm2
+sudo ip netns exec vm1 ping -c 3 10.0.0.12
+----
+
+Expected output:
+
+----
+PING 10.0.0.12 (10.0.0.12) 56(84) bytes of data.
+64 bytes from 10.0.0.12: icmp_seq=1 ttl=64 time=0.345 ms
+64 bytes from 10.0.0.12: icmp_seq=2 ttl=64 time=0.234 ms
+64 bytes from 10.0.0.12: icmp_seq=3 ttl=64 time=0.198 ms
+
+--- 10.0.0.12 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+----
+
+[source,bash]
+----
+# Verify ARP resolution
+sudo ip netns exec vm1 ip neigh show
+----
+
+Expected output:
+
+----
+10.0.0.12 dev vm1 lladdr 00:00:00:00:00:02 REACHABLE
+----
+
+=== Step 3.6: Observe the OpenFlow flows
+
+[source,bash]
+----
+# See the OpenFlow flows installed by ovn-controller
+sudo ovs-ofctl dump-flows br-int | head -30
+----
+
+=== What just happened?
+
+. You created network namespaces to simulate VMs
+. You created OVS ports with `iface-id` matching the OVN logical port names
+. ovn-controller detected the ports, bound them in the SB DB, and installed OpenFlow flows
+. The two "VMs" can now communicate at L2 through the OVN-managed network
+. ARP resolution is handled by OVN - it responds to ARP requests using the addresses configured on the logical ports
+
+=== Try it yourself
+
+* Run `sudo ovs-ofctl dump-flows br-int | wc -l` to count the number of OpenFlow flows
+* Run `sudo ip netns exec vm1 arping -c 3 10.0.0.12` to see ARP in action
+* Try setting an incorrect MAC on the vm1 namespace (different from what OVN expects) and see if traffic still works (it should be dropped by port security)
+
+'''
+
+== Exercise 4: Enabling DHCP
+
+*Objective:* Configure OVN's built-in DHCP responder and test DHCP address assignment.
+
+=== Step 4.1: Create DHCP options
+
+[source,bash]
+----
+# Create DHCP options for the 10.0.0.0/24 subnet
+DHCP_UUID=$(sudo ovn-nbctl create DHCP_Options cidr=10.0.0.0/24 \
+    options='"server_id"="10.0.0.1" "server_mac"="00:00:00:ff:00:01" "router"="10.0.0.1" "dns_server"="8.8.8.8" "lease_time"="3600"')
+
+echo "DHCP Options UUID: $DHCP_UUID"
+----
+
+Expected output:
+
+----
+DHCP Options UUID: d4a8c3b2-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+----
+
+=== Step 4.2: Verify DHCP options
+
+[source,bash]
+----
+# List DHCP options
+sudo ovn-nbctl dhcp-options-list
+----
+
+Expected output:
+
+----
+d4a8c3b2-xxxx-xxxx-xxxx-xxxxxxxxxxxx  (10.0.0.0/24)
+----
+
+[source,bash]
+----
+# Show option details
+sudo ovn-nbctl dhcp-options-get-options $DHCP_UUID
+----
+
+Expected output:
+
+----
+dns_server=8.8.8.8 lease_time=3600 router=10.0.0.1 server_id=10.0.0.1 server_mac=00:00:00:ff:00:01
+----
+
+=== Step 4.3: Associate DHCP options with logical ports
+
+[source,bash]
+----
+# Associate DHCP options with vm1 and vm2 ports
+sudo ovn-nbctl lsp-set-dhcpv4-options vm1 $DHCP_UUID
+sudo ovn-nbctl lsp-set-dhcpv4-options vm2 $DHCP_UUID
+
+# Verify association
+sudo ovn-nbctl get Logical_Switch_Port vm1 dhcpv4_options
+----
+
+=== Step 4.4: Observe DHCP logical flows
+
+[source,bash]
+----
+# Look at the DHCP-related logical flows
+sudo ovn-sbctl lflow-list network1 | grep -i dhcp
+----
+
+
+[NOTE]
+.Key Concept
+====
+OVN constructs the DHCP response directly in the flow actions. There is no external DHCP server - OVS itself generates the DHCP offer/ack as flow actions. The `put_dhcp_opts()` action creates the DHCP options payload, and the subsequent flow rewrites headers and sends the reply back to the requesting port.
+====
+
+
+=== Step 4.5: Test DHCP from a namespace
+
+[source,bash]
+----
+# Remove the static IP from vm1 to test DHCP
+sudo ip netns exec vm1 ip addr flush dev vm1
+
+# Request a DHCP lease
+sudo ip netns exec vm1 dhclient -v vm1
+----
+
+Expected output:
+
+----
+Listening on LPF/vm1/00:00:00:00:00:01
+Sending on   LPF/vm1/00:00:00:00:00:01
+DHCPDISCOVER on vm1 to 255.255.255.255 port 67 interval 3
+DHCPOFFER of 10.0.0.11 from 10.0.0.1
+DHCPREQUEST for 10.0.0.11 on vm1 to 255.255.255.255 port 67
+DHCPACK of 10.0.0.11 from 10.0.0.1
+bound to 10.0.0.11 -- renewal in 1800 seconds.
+----
+
+
+[NOTE]
+====
+If `dhclient` is not available, install it with `sudo dnf install -y dhcp-client`. Alternatively, you can use `sudo ip netns exec vm1 nmap --script broadcast-dhcp-discover -e vm1` from the `nmap` package.
+====
+
+
+[source,bash]
+----
+# Verify the IP was assigned
+sudo ip netns exec vm1 ip addr show vm1
+----
+
+=== Step 4.6: Trace the DHCP flow with ovn-trace
+
+[source,bash]
+----
+# Simulate a DHCP discover packet from vm1
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == ff:ff:ff:ff:ff:ff && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67'
+----
+
+=== What just happened?
+
+. You created DHCP options for the 10.0.0.0/24 subnet in the NB DB
+. ovn-northd generated logical flows that intercept DHCP requests from the configured ports
+. When vm1 sent a DHCP Discover, OVS matched it against the DHCP flows and generated a DHCP Offer/Ack locally - no external DHCP server was involved
+. The `ovn-trace` tool confirmed the DHCP flow path through the logical pipeline
+
+=== Try it yourself
+
+* Modify the DHCP options to change the DNS server and verify the change
+* Create a new port with DHCP options and test that a new namespace gets an IP
+* Use `ovn-trace` with the `--detailed` flag instead of `--summary` for more information
+
+'''
+
+== Exercise 5: Multi-Node Logical Switch
+
+*Objective:* Demonstrate that an OVN logical switch spans multiple physical nodes, with automatic Geneve tunnel setup and cross-node L2 connectivity.
+
+
+[NOTE]
+====
+This exercise requires at least 2 nodes (central + compute1). If you only have a single node, review the steps to understand the concepts, then skip to Exercise 6.
+====
+
+
+=== Step 5.1: Create a port on the remote node
+
+On the central node, create a new logical port:
+
+[source,bash]
+----
+# Create a third port on network1
+sudo ovn-nbctl lsp-add network1 vm3
+sudo ovn-nbctl lsp-set-addresses vm3 "00:00:00:00:00:03 10.0.0.13"
+sudo ovn-nbctl lsp-set-port-security vm3 "00:00:00:00:00:03 10.0.0.13"
+----
+
+=== Step 5.2: Bind the port on compute1
+
+On *compute1*, create a namespace and bind the port:
+
+[source,bash]
+----
+# Create namespace and OVS port
+sudo ip netns add vm3
+sudo ovs-vsctl add-port br-int vm3 -- set interface vm3 \
+    type=internal \
+    external_ids:iface-id=vm3
+
+# Configure the namespace
+sudo ip link set vm3 netns vm3
+sudo ip netns exec vm3 ip link set vm3 address 00:00:00:00:00:03
+sudo ip netns exec vm3 ip link set vm3 up
+sudo ip netns exec vm3 ip addr add 10.0.0.13/24 dev vm3
+----
+
+=== Step 5.3: Verify port binding across nodes
+
+On the central node:
+
+[source,bash]
+----
+sudo ovn-sbctl show
+----
+
+Expected output:
+
+----
+Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+    Port_Binding vm1
+    Port_Binding vm2
+Chassis compute1
+    hostname: compute1
+    Encap geneve
+        ip: "192.168.100.11"
+        options: {csum="true"}
+    Port_Binding vm3
+----
+
+=== Step 5.4: Verify automatic Geneve tunnel creation
+
+On the central node:
+
+[source,bash]
+----
+sudo ovs-vsctl show
+----
+
+Expected output:
+
+----
+Bridge br-int
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal
+    Port vm1
+        Interface vm1
+            type: internal
+    Port vm2
+        Interface vm2
+            type: internal
+    Port ovn-comput-0
+        Interface ovn-comput-0
+            type: geneve
+            options: {csum="true", key=flow, remote_ip="192.168.100.11"}
+----
+
+
+[NOTE]
+.Key Concept
+====
+The `ovn-comput-0` port was automatically created by ovn-controller. It is a Geneve tunnel to compute1 (192.168.100.11). You did not create this tunnel - ovn-controller detected that it needs to reach a port on compute1 and set up the tunnel automatically.
+====
+
+
+=== Step 5.5: Test cross-node L2 connectivity
+
+[source,bash]
+----
+# From the central node
+sudo ip netns exec vm1 ping -c 3 10.0.0.13
+----
+
+Expected output:
+
+----
+PING 10.0.0.13 (10.0.0.13) 56(84) bytes of data.
+64 bytes from 10.0.0.13: icmp_seq=1 ttl=64 time=1.234 ms
+64 bytes from 10.0.0.13: icmp_seq=2 ttl=64 time=0.567 ms
+64 bytes from 10.0.0.13: icmp_seq=3 ttl=64 time=0.489 ms
+
+--- 10.0.0.13 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+----
+
+=== Step 5.6: Capture Geneve encapsulated traffic
+
+While pinging, capture the Geneve tunnel traffic on the physical interface:
+
+[source,bash]
+----
+# Capture Geneve traffic (UDP port 6081) on the physical interface
+# Replace eth0 with your actual physical interface name
+sudo tcpdump -i eth0 -nn udp port 6081 -c 5
+----
+
+In another terminal:
+
+[source,bash]
+----
+sudo ip netns exec vm1 ping -c 3 10.0.0.13
+----
+
+Expected tcpdump output:
+
+----
+15:30:01.123456 IP 192.168.100.10.12345 > 192.168.100.11.6081: Geneve, ...
+    IP 10.0.0.11 > 10.0.0.13: ICMP echo request, ...
+15:30:01.124567 IP 192.168.100.11.12345 > 192.168.100.10.6081: Geneve, ...
+    IP 10.0.0.13 > 10.0.0.11: ICMP echo reply, ...
+----
+
+
+[NOTE]
+.Key Concept
+====
+You can see two layers of IP headers: - *Outer IP:* 192.168.100.10 -> 192.168.100.11 (the physical tunnel endpoints) - *Inner IP:* 10.0.0.11 -> 10.0.0.13 (the actual VM traffic)
+====
+
+
+=== Step 5.7: Examine Geneve headers
+
+[source,bash]
+----
+# Capture with verbose Geneve header decoding
+sudo tcpdump -i eth0 -nn -v udp port 6081 -c 2
+----
+
+The Geneve TLV options carry the logical datapath tunnel key, logical inport, and logical outport metadata.
+
+=== What just happened?
+
+. You created a port on a different physical node but on the same logical switch
+. ovn-controller automatically created Geneve tunnels between the nodes
+. L2 connectivity works seamlessly across nodes - vm1 and vm3 communicate as if on the same physical switch
+. The Geneve encapsulation carries logical metadata that allows the receiving node to process the packet correctly
+
+=== Try it yourself
+
+* Ping from vm3 to vm2 to verify all cross-node combinations work
+* Run `sudo ovs-ofctl dump-flows br-int | grep geneve` on both nodes to see the tunnel-related flows
+* Delete the vm3 port and observe that the tunnel is eventually removed
+
+'''
+
+== Exercise 6: Logical Routing
+
+*Objective:* Create a logical router to connect two logical switches, enabling L3 (IP) routing between different subnets.
+
+=== Step 6.1: Create a second logical switch
+
+[source,bash]
+----
+# Create a second logical switch for a different subnet
+sudo ovn-nbctl ls-add network2
+
+# Create ports on network2
+sudo ovn-nbctl lsp-add network2 vm4
+sudo ovn-nbctl lsp-set-addresses vm4 "00:00:00:00:00:04 10.0.1.11"
+sudo ovn-nbctl lsp-set-port-security vm4 "00:00:00:00:00:04 10.0.1.11"
+
+sudo ovn-nbctl lsp-add network2 vm5
+sudo ovn-nbctl lsp-set-addresses vm5 "00:00:00:00:00:05 10.0.1.12"
+sudo ovn-nbctl lsp-set-port-security vm5 "00:00:00:00:00:05 10.0.1.12"
+----
+
+=== Step 6.2: Create and configure the workloads for network2
+
+[source,bash]
+----
+# Create namespace and OVS port for vm4
+sudo ip netns add vm4
+sudo ovs-vsctl add-port br-int vm4 -- set interface vm4 \
+    type=internal \
+    external_ids:iface-id=vm4
+sudo ip link set vm4 netns vm4
+sudo ip netns exec vm4 ip link set vm4 address 00:00:00:00:00:04
+sudo ip netns exec vm4 ip link set vm4 up
+sudo ip netns exec vm4 ip addr add 10.0.1.11/24 dev vm4
+
+# Create namespace and OVS port for vm5
+sudo ip netns add vm5
+sudo ovs-vsctl add-port br-int vm5 -- set interface vm5 \
+    type=internal \
+    external_ids:iface-id=vm5
+sudo ip link set vm5 netns vm5
+sudo ip netns exec vm5 ip link set vm5 address 00:00:00:00:00:05
+sudo ip netns exec vm5 ip link set vm5 up
+sudo ip netns exec vm5 ip addr add 10.0.1.12/24 dev vm5
+----
+
+=== Step 6.3: Verify that cross-subnet communication does NOT work yet
+
+[source,bash]
+----
+# Try pinging from vm1 (10.0.0.11) to vm4 (10.0.1.11)
+sudo ip netns exec vm1 ping -c 2 -W 2 10.0.1.11
+----
+
+Expected output:
+
+----
+PING 10.0.1.11 (10.0.1.11) 56(84) bytes of data.
+
+--- 10.0.1.11 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 2003ms
+----
+
+=== Step 6.4: Create a logical router
+
+[source,bash]
+----
+# Create a logical router
+sudo ovn-nbctl lr-add router1
+----
+
+=== Step 6.5: Connect the router to network1
+
+[source,bash]
+----
+# Create a router port for network1 (the gateway for 10.0.0.0/24)
+sudo ovn-nbctl lrp-add router1 rtr-to-network1 00:00:00:00:ff:01 10.0.0.1/24
+
+# Create the corresponding switch port on network1
+sudo ovn-nbctl lsp-add network1 network1-to-rtr
+sudo ovn-nbctl lsp-set-type network1-to-rtr router
+sudo ovn-nbctl lsp-set-addresses network1-to-rtr router
+sudo ovn-nbctl lsp-set-options network1-to-rtr router-port=rtr-to-network1
+----
+
+=== Step 6.6: Connect the router to network2
+
+[source,bash]
+----
+# Create a router port for network2 (the gateway for 10.0.1.0/24)
+sudo ovn-nbctl lrp-add router1 rtr-to-network2 00:00:00:00:ff:02 10.0.1.1/24
+
+# Create the corresponding switch port on network2
+sudo ovn-nbctl lsp-add network2 network2-to-rtr
+sudo ovn-nbctl lsp-set-type network2-to-rtr router
+sudo ovn-nbctl lsp-set-addresses network2-to-rtr router
+sudo ovn-nbctl lsp-set-options network2-to-rtr router-port=rtr-to-network2
+----
+
+=== Step 6.7: Verify the topology
+
+[source,bash]
+----
+sudo ovn-nbctl show
+----
+
+=== Step 6.8: Configure default gateways in the namespaces
+
+[source,bash]
+----
+# Set the default gateway for vm1
+sudo ip netns exec vm1 ip route add default via 10.0.0.1
+
+# Set the default gateway for vm4
+sudo ip netns exec vm4 ip route add default via 10.0.1.1
+
+# Also set it for vm2 and vm5
+sudo ip netns exec vm2 ip route add default via 10.0.0.1
+sudo ip netns exec vm5 ip route add default via 10.0.1.1
+----
+
+=== Step 6.9: Test L3 connectivity
+
+[source,bash]
+----
+# Ping from vm1 (10.0.0.11) to vm4 (10.0.1.11) - cross-subnet!
+sudo ip netns exec vm1 ping -c 3 10.0.1.11
+----
+
+Expected output:
+
+----
+PING 10.0.1.11 (10.0.1.11) 56(84) bytes of data.
+64 bytes from 10.0.1.11: icmp_seq=1 ttl=63 time=0.567 ms
+64 bytes from 10.0.1.11: icmp_seq=2 ttl=63 time=0.345 ms
+64 bytes from 10.0.1.11: icmp_seq=3 ttl=63 time=0.298 ms
+
+--- 10.0.1.11 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+----
+
+
+[NOTE]
+.Key Concept
+====
+Notice `ttl=63` (instead of 64). The TTL was decremented by 1 because the packet passed through the logical router, just as it would with a physical router.
+====
+
+
+=== Step 6.10: Trace the routing path
+
+[source,bash]
+----
+# Use ovn-trace to see the full routing path
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:ff:01 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.1.11 && ip.ttl == 64'
+----
+
+The trace shows the packet traveling through three datapaths:
+. *network1 (ingress + egress):* L2 lookup sends the packet to the router port
+. *router1 (ingress + egress):* IP routing selects the output port, TTL is decremented, MACs are rewritten
+. *network2 (ingress + egress):* L2 lookup delivers the packet to vm4
+
+=== What just happened?
+
+. You created a second logical switch (network2) on a different subnet
+. You created a logical router (router1) and connected both switches to it
+. ovn-northd generated logical flows for routing, ARP resolution, and MAC rewriting
+. Cross-subnet traffic now works - the router provides L3 connectivity
+. The routing is *distributed* - if vm1 and vm4 are on the same compute node, routing happens locally
+
+=== Try it yourself
+
+* Add a static route: `sudo ovn-nbctl lr-route-add router1 172.16.0.0/16 10.0.0.254`
+* Run `sudo ovn-nbctl lr-route-list router1` to see routes
+* Run `sudo ovn-sbctl lflow-list router1 | grep ip_routing` to see routing flows
+* Try `ovn-trace` from vm4 to vm1 and compare the path
+
+'''
+
+== Exercise 7: ACLs (Security Groups)
+
+*Objective:* Implement network security using OVN ACLs. Understand stateful vs. stateless rules and connection tracking.
+
+=== Step 7.1: Verify baseline connectivity
+
+[source,bash]
+----
+# ICMP should work
+sudo ip netns exec vm1 ping -c 2 10.0.0.12
+
+# Start a simple TCP listener on vm2 (port 8080)
+sudo ip netns exec vm2 python3 -m http.server 8080 &
+VM2_PID=$!
+
+# TCP should work
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.0.12:8080/
+
+# Clean up the listener
+kill $VM2_PID 2>/dev/null
+----
+
+=== Step 7.2: View default ACL behavior
+
+[source,bash]
+----
+sudo ovn-nbctl acl-list network1
+----
+
+By default, OVN allows all traffic when no ACLs are configured. Once you add any ACL, the implicit default becomes *deny* for the direction where ACLs are applied.
+
+
+[WARNING]
+====
+Adding your first ACL changes the behavior. Traffic that was previously allowed will be denied unless explicitly permitted by an ACL rule.
+====
+
+
+=== Step 7.3: Create ACLs to allow only specific traffic
+
+[source,bash]
+----
+# Allow established and related connections (critical for stateful operation)
+sudo ovn-nbctl acl-add network1 to-lport 65535 \
+    'ct.est && !ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
+
+sudo ovn-nbctl acl-add network1 to-lport 65535 \
+    '!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
+
+# Allow inbound ICMP
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 && icmp4' allow-related
+
+# Allow inbound SSH (TCP port 22)
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 && tcp.dst == 22' allow-related
+
+# Allow all outbound traffic
+sudo ovn-nbctl acl-add network1 from-lport 1000 \
+    'ip4' allow-related
+
+# Drop all other inbound traffic
+sudo ovn-nbctl acl-add network1 to-lport 900 \
+    'ip4' drop
+----
+
+=== Step 7.4: Verify ACLs
+
+[source,bash]
+----
+sudo ovn-nbctl acl-list network1
+----
+
+=== Step 7.5: Test ACL enforcement
+
+[source,bash]
+----
+# ICMP should still work (allowed by ACL)
+sudo ip netns exec vm1 ping -c 2 10.0.0.12
+----
+
+[source,bash]
+----
+# Start a TCP listener on port 8080 on vm2
+sudo ip netns exec vm2 python3 -m http.server 8080 &
+VM2_PID=$!
+
+# TCP to port 8080 should be BLOCKED (not in allowed ports)
+sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
+echo "Exit code: $?"
+# Exit code 28 = connection timed out (ACL dropped the packet)
+
+kill $VM2_PID 2>/dev/null
+----
+
+=== Step 7.6: Add an ACL to allow HTTP
+
+[source,bash]
+----
+# Allow inbound HTTP on port 8080
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 && tcp.dst == 8080' allow-related
+----
+
+[source,bash]
+----
+# Start the listener again and verify it works now
+sudo ip netns exec vm2 python3 -m http.server 8080 &
+VM2_PID=$!
+sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
+kill $VM2_PID 2>/dev/null
+----
+
+=== Step 7.7: Understand connection tracking behavior
+
+[source,bash]
+----
+# Use ovn-trace to see how ACLs use connection tracking
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && tcp.dst == 8080 && ip.ttl == 64'
+----
+
+The trace shows the connection tracking lifecycle:
+. `ct_next` performs a conntrack lookup
+. For new connections matching an allow rule, `ct_commit` commits the connection
+. Subsequent packets of the same connection match the established/related rules
+
+=== Step 7.8: Stateful vs. stateless ACLs
+
+[source,bash]
+----
+# Create a stateless ACL for comparison
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 && udp.dst == 5000' allow-stateless
+----
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Action
+|Connection Tracking
+|Return Traffic
+|Performance
+
+|`allow-related`
+|Yes (ct_commit)
+|Automatically allowed
+|Slight CT overhead, but convenient
+
+|`allow-stateless`
+|No
+|Must have explicit rules
+|Higher throughput, more rules needed
+
+|===
+
+
+=== What just happened?
+
+. You added ACLs to control traffic on network1
+. ICMP and SSH are allowed inbound, everything else is dropped
+. You verified that blocked traffic was denied and that adding a new allow ACL permits traffic
+. You examined how connection tracking enables stateful firewalling
+
+=== Try it yourself
+
+* Remove the ICMP allow ACL and verify ping stops working
+* Add an ACL that allows traffic only from a specific source IP
+* Use `sudo ovn-sbctl lflow-list network1 | grep acl` to see the ACL logical flows
+* Try the `reject` action instead of `drop` and observe the difference
+
+'''
+
+== Exercise 8: NAT (SNAT and DNAT)
+
+*Objective:* Configure NAT on a logical router for external network access.
+
+=== Step 8.1: Create an external logical switch
+
+[source,bash]
+----
+sudo ovn-nbctl ls-add external
+
+sudo ovn-nbctl lsp-add external ext-gw
+sudo ovn-nbctl lsp-set-addresses ext-gw "00:00:00:00:ee:01 172.16.0.1"
+sudo ovn-nbctl lsp-set-port-security ext-gw "00:00:00:00:ee:01 172.16.0.1"
+----
+
+=== Step 8.2: Connect router1 to the external network
+
+[source,bash]
+----
+sudo ovn-nbctl lrp-add router1 rtr-to-external 00:00:00:00:ff:ee 172.16.0.100/24
+
+sudo ovn-nbctl lsp-add external external-to-rtr
+sudo ovn-nbctl lsp-set-type external-to-rtr router
+sudo ovn-nbctl lsp-set-addresses external-to-rtr router
+sudo ovn-nbctl lsp-set-options external-to-rtr router-port=rtr-to-external
+----
+
+=== Step 8.3: Create the external gateway namespace
+
+[source,bash]
+----
+sudo ip netns add ext-gw
+sudo ovs-vsctl add-port br-int ext-gw -- set interface ext-gw \
+    type=internal \
+    external_ids:iface-id=ext-gw
+sudo ip link set ext-gw netns ext-gw
+sudo ip netns exec ext-gw ip link set ext-gw address 00:00:00:00:ee:01
+sudo ip netns exec ext-gw ip link set ext-gw up
+sudo ip netns exec ext-gw ip addr add 172.16.0.1/24 dev ext-gw
+
+# Add a route back to the internal networks via the router
+sudo ip netns exec ext-gw ip route add 10.0.0.0/16 via 172.16.0.100
+----
+
+=== Step 8.4: Add a default route on router1
+
+[source,bash]
+----
+sudo ovn-nbctl lr-route-add router1 0.0.0.0/0 172.16.0.1
+----
+
+=== Step 8.5: Test routing without NAT
+
+[source,bash]
+----
+sudo ip netns exec vm1 ping -c 2 172.16.0.1
+----
+
+
+[NOTE]
+====
+This works because we added a static route on ext-gw back to 10.0.0.0/16. In the real world, external hosts would not have this route, so NAT is needed.
+====
+
+
+=== Step 8.6: Configure SNAT
+
+[source,bash]
+----
+# Add SNAT rules
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.0.0/24
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.1.0/24
+
+# Verify NAT rules
+sudo ovn-nbctl lr-nat-list router1
+----
+
+=== Step 8.7: Verify SNAT behavior
+
+[source,bash]
+----
+# Remove the static route on ext-gw to prove NAT works
+sudo ip netns exec ext-gw ip route del 10.0.0.0/16
+
+# Ping should still work - ext-gw sees traffic from 172.16.0.100
+sudo ip netns exec vm1 ping -c 2 172.16.0.1
+----
+
+To verify the source IP is translated:
+
+[source,bash]
+----
+# Capture traffic on ext-gw
+sudo ip netns exec ext-gw tcpdump -i ext-gw -nn icmp -c 4 &
+sudo ip netns exec vm1 ping -c 2 172.16.0.1
+----
+
+Expected tcpdump output:
+
+----
+IP 172.16.0.100 > 172.16.0.1: ICMP echo request, ...
+IP 172.16.0.1 > 172.16.0.100: ICMP echo reply, ...
+----
+
+=== Step 8.8: Configure DNAT (floating IP)
+
+[source,bash]
+----
+# DNAT+SNAT rule: external IP 172.16.0.101 maps to internal IP 10.0.0.11
+sudo ovn-nbctl lr-nat-add router1 dnat_and_snat 172.16.0.101 10.0.0.11
+
+# Verify
+sudo ovn-nbctl lr-nat-list router1
+----
+
+=== Step 8.9: Test DNAT
+
+[source,bash]
+----
+# From ext-gw, ping the floating IP
+sudo ip netns exec ext-gw ping -c 2 172.16.0.101
+----
+
+Expected output:
+
+----
+PING 172.16.0.101 (172.16.0.101) 56(84) bytes of data.
+64 bytes from 172.16.0.101: icmp_seq=1 ttl=62 time=0.567 ms
+64 bytes from 172.16.0.101: icmp_seq=2 ttl=62 time=0.345 ms
+----
+
+=== Step 8.10: Verify NAT with tcpdump
+
+[source,bash]
+----
+# Capture on vm1 to see the real IP
+sudo ip netns exec vm1 tcpdump -i vm1 -nn icmp -c 4 &
+sudo ip netns exec ext-gw ping -c 2 172.16.0.101
+----
+
+vm1 sees traffic with its real IP (10.0.0.11), not the floating IP. NAT is transparent to the workload.
+
+=== What just happened?
+
+. SNAT translates outbound source IPs from internal (10.x.x.x) to external (172.16.0.100)
+. DNAT+SNAT (floating IP) translates inbound destination IPs from external (172.16.0.101) to internal (10.0.0.11)
+. NAT is transparent to the workloads
+. This is exactly how OpenStack floating IPs and Kubernetes EgressIPs work with OVN
+
+=== Try it yourself
+
+* Add a DNAT rule for vm4 with a different floating IP
+* Remove the SNAT rule and verify external connectivity breaks
+* Use `ovn-trace` to trace a packet through the NAT pipeline
+* Run `sudo ovn-sbctl lflow-list router1 | grep nat` to see NAT-related flows
+
+'''
+
+== Exercise 9: Load Balancing
+
+*Objective:* Configure OVN's built-in L4 load balancer to distribute traffic across multiple backends.
+
+=== Step 9.1: Create backend servers
+
+[source,bash]
+----
+# vm4 and vm5 are already set up on network2
+# Create a third backend: vm6
+sudo ovn-nbctl lsp-add network2 vm6
+sudo ovn-nbctl lsp-set-addresses vm6 "00:00:00:00:00:06 10.0.1.13"
+sudo ovn-nbctl lsp-set-port-security vm6 "00:00:00:00:00:06 10.0.1.13"
+
+sudo ip netns add vm6
+sudo ovs-vsctl add-port br-int vm6 -- set interface vm6 \
+    type=internal \
+    external_ids:iface-id=vm6
+sudo ip link set vm6 netns vm6
+sudo ip netns exec vm6 ip link set vm6 address 00:00:00:00:00:06
+sudo ip netns exec vm6 ip link set vm6 up
+sudo ip netns exec vm6 ip addr add 10.0.1.13/24 dev vm6
+sudo ip netns exec vm6 ip route add default via 10.0.1.1
+----
+
+=== Step 9.2: Start web servers on the backends
+
+[source,bash]
+----
+# Start simple web servers that return their identity
+sudo ip netns exec vm4 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm4\n" | nc -l -p 8080 -q 1; done' &
+VM4_LB_PID=$!
+
+sudo ip netns exec vm5 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm5\n" | nc -l -p 8080 -q 1; done' &
+VM5_LB_PID=$!
+
+sudo ip netns exec vm6 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm6\n" | nc -l -p 8080 -q 1; done' &
+VM6_LB_PID=$!
+----
+
+=== Step 9.3: Test direct access to backends
+
+[source,bash]
+----
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.11:8080/
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.12:8080/
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.13:8080/
+----
+
+=== Step 9.4: Create a load balancer
+
+[source,bash]
+----
+# VIP 10.0.1.100:80 distributes to backends on port 8080
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080,10.0.1.13:8080
+
+sudo ovn-nbctl lb-list
+----
+
+=== Step 9.5: Associate the load balancer with the router
+
+[source,bash]
+----
+sudo ovn-nbctl lr-lb-add router1 web-lb
+----
+
+=== Step 9.6: Test load balancing
+
+[source,bash]
+----
+# Send multiple requests to the VIP from vm1
+for i in $(seq 1 9); do
+    sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.100:80/
+done
+----
+
+You should see requests distributed across the three backends.
+
+=== Step 9.7: Verify load balancer flows
+
+[source,bash]
+----
+# See connection tracking entries
+sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"
+----
+
+=== Step 9.8: Add and remove backends
+
+[source,bash]
+----
+# Remove a backend (vm6)
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080
+
+# Test - traffic only goes to vm4 and vm5
+
+# Add vm6 back
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080,10.0.1.13:8080
+----
+
+=== Step 9.9: Clean up listeners
+
+[source,bash]
+----
+kill $VM4_LB_PID $VM5_LB_PID $VM6_LB_PID 2>/dev/null
+----
+
+=== What just happened?
+
+. You created an OVN load balancer with a VIP pointing to three backends
+. Traffic to the VIP is distributed across backends using conntrack DNAT
+. The load balancing happens entirely within the OVS datapath
+. This is the same mechanism OVN-Kubernetes uses to implement Kubernetes Services
+
+=== Try it yourself
+
+* Create a UDP load balancer: `sudo ovn-nbctl lb-add udp-lb 10.0.1.200:5353 10.0.1.11:5353,10.0.1.12:5353 udp`
+* Associate a load balancer with a logical switch instead of a router
+* Create a second VIP on the same load balancer for a different port
+
+'''
+
+== Exercise 10: OVN Trace and Debugging
+
+*Objective:* Master the debugging tools available in OVN.
+
+=== Step 10.1: Using ovn-trace (summary mode)
+
+[source,bash]
+----
+# Trace an ICMP packet from vm1 to vm2 (same switch)
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && icmp4 && ip.ttl == 64'
+----
+
+=== Step 10.2: Using ovn-trace (detailed mode)
+
+[source,bash]
+----
+sudo ovn-trace --detailed network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && icmp4 && ip.ttl == 64'
+----
+
+=== Step 10.3: Using ovn-trace (minimal mode)
+
+[source,bash]
+----
+sudo ovn-trace --minimal network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && icmp4 && ip.ttl == 64'
+----
+
+Expected output:
+
+----
+# icmp,reg14=0x1,...,nw_src=10.0.0.11,nw_dst=10.0.0.12,...
+output("vm2");
+----
+
+=== Step 10.4: Tracing cross-subnet traffic through a router
+
+[source,bash]
+----
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:ff:01 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.1.11 && ip.ttl == 64'
+----
+
+=== Step 10.5: Tracing a dropped packet
+
+[source,bash]
+----
+# Trace a packet that should be dropped by ACLs (TCP port 9999)
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && tcp.dst == 9999 && ip.ttl == 64'
+----
+
+
+[NOTE]
+.Key Concept
+====
+`ovn-trace` is invaluable for debugging. When a packet is not reaching its destination, trace it to find which table drops it. The output tells you the exact table name and flow that made the decision.
+====
+
+
+=== Step 10.6: Using ovn-detrace
+
+[source,bash]
+----
+# Map physical OVS flows back to OVN logical flows
+sudo ovs-ofctl dump-flows br-int | sudo ovn-detrace --ovnsb=unix:/run/ovn/ovnsb_db.sock
+----
+
+=== Step 10.7: Reading ovn-controller logs
+
+[source,bash]
+----
+# View ovn-controller logs
+sudo journalctl -u ovn-controller --no-pager -n 30
+
+# Increase log verbosity temporarily for debugging
+sudo ovs-appctl -t ovn-controller vlog/set dbg
+
+# Do something (create a port, etc.)
+sudo journalctl -u ovn-controller --no-pager -n 50
+
+# Reset log level to normal
+sudo ovs-appctl -t ovn-controller vlog/set info
+----
+
+
+[WARNING]
+====
+Debug logging is very verbose and can fill disk space quickly. Always reset to `info` after debugging.
+====
+
+
+=== Step 10.8: Filtering logical flows
+
+[source,bash]
+----
+# List all logical flows for a specific datapath
+sudo ovn-sbctl lflow-list network1
+
+# Filter by table name
+sudo ovn-sbctl lflow-list network1 | grep "ls_in_l2_lkup"
+
+# Filter by match expression
+sudo ovn-sbctl lflow-list network1 | grep "00:00:00:00:00:01"
+----
+
+=== Step 10.9: Correlating NB -> SB -> OVS
+
+*Step A: Check the NB DB*
+
+[source,bash]
+----
+sudo ovn-nbctl list Logical_Switch_Port vm1
+----
+
+*Step B: Find the corresponding logical flows in the SB DB*
+
+[source,bash]
+----
+sudo ovn-sbctl lflow-list network1 | grep "vm1"
+----
+
+*Step C: Find the corresponding OpenFlow flows in OVS*
+
+[source,bash]
+----
+# Find the tunnel key for port vm1
+sudo ovn-sbctl find Port_Binding logical_port=vm1 | grep -E "tunnel_key|datapath"
+
+# Look for flows using that tunnel key (e.g., if tunnel_key is 1)
+sudo ovs-ofctl dump-flows br-int | grep "reg14=0x1"
+----
+
+*Step D: Use ovn-detrace to connect the dots*
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | grep "reg14=0x1" | \
+    sudo ovn-detrace --ovnsb=unix:/run/ovn/ovnsb_db.sock
+----
+
+=== Step 10.10: Common debugging scenarios
+
+*Scenario 1: Port is not coming up*
+
+[source,bash]
+----
+sudo ovn-nbctl get Logical_Switch_Port vm1 up
+# If 'false':
+sudo ovn-sbctl find Port_Binding logical_port=vm1
+# If not bound:
+sudo ovs-vsctl find Interface external_ids:iface-id=vm1
+----
+
+*Scenario 2: Packets are being dropped*
+
+[source,bash]
+----
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && ip.ttl == 64'
+# Look for "drop" in the output. The table name tells you what dropped it:
+#   ls_in_check_port_sec -> Port security (wrong MAC/IP)
+#   ls_in_acl_eval       -> ACL rule
+#   ls_out_check_port_sec -> Egress port security
+----
+
+*Scenario 3: Cross-node traffic not working*
+
+[source,bash]
+----
+sudo ovs-vsctl show | grep geneve
+sudo ovs-ofctl show br-int | grep geneve
+sudo ovn-sbctl show
+sudo ovs-vsctl get Interface ovn-comput-0 statistics
+----
+
+=== What just happened?
+
+. You learned to use `ovn-trace` in three modes (summary, detailed, minimal)
+. You traced packets through L2 forwarding, L3 routing, and ACL evaluation
+. You used `ovn-detrace` to map physical OVS flows back to OVN logical flows
+. You practiced the NB -> SB -> OVS correlation workflow for debugging
+. You reviewed common debugging scenarios and how to investigate them
+
+=== Try it yourself
+
+* Trace a DHCP packet and follow the entire flow
+* Trace a packet destined for the load balancer VIP
+* Trace a packet that undergoes NAT (SNAT or DNAT)
+* Use `ovs-appctl ofproto/trace br-int` to trace at the OpenFlow level and compare with `ovn-trace` output
+
+'''
+
+== Lab Cleanup
+
+When you are done with the lab, clean up the environment:
+
+[source,bash]
+----
+# Remove network namespaces
+for ns in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+    sudo ip netns del $ns 2>/dev/null
+done
+
+# Remove OVS ports (also removes the OVN port bindings)
+for port in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+    sudo ovs-vsctl --if-exists del-port br-int $port
+done
+
+# Remove OVN logical configuration
+sudo ovn-nbctl lr-del router1
+sudo ovn-nbctl ls-del network1
+sudo ovn-nbctl ls-del network2
+sudo ovn-nbctl ls-del external
+sudo ovn-nbctl lb-del web-lb
+
+# Verify everything is clean
+sudo ovn-nbctl show
+sudo ovn-sbctl show
+----
+
+'''
+
+xref:04-ovn-architecture.adoc[Previous: Module 04 - OVN Architecture] | xref:06-ovs-vs-ovn.adoc[Next: Module 06 - OVS vs OVN]
+

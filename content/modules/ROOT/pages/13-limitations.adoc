@@ -1,0 +1,3121 @@
+= Module 13: Limitations and Considerations
+
+== Overview
+
+Every technology has boundaries. Understanding where OVS and OVN stop working well is just as important as understanding where they excel. This module covers the limitations, scaling boundaries, performance considerations, and known issues that you will encounter in real-world deployments.
+
+Why does this matter for post-sales and support engineers? Because customers rarely hit limitations during initial deployment. They hit them six months later, after the environment has grown. A customer who deployed 50 virtual machines on OVN will have a very different experience from one running 5,000. If you understand these boundaries before the customer reaches them, you can set correct expectations during architecture reviews, proactively recommend configuration changes, and avoid escalations that consume engineering resources.
+
+This module is also essential for capacity planning. When a customer asks "how many logical switches can I create?" or "what happens when my ACL count reaches 10,000?", you need concrete answers backed by technical understanding - not vague reassurances.
+
+
+[NOTE]
+.Key Concept
+====
+Limitations are not bugs. They are engineering tradeoffs. Every design decision that makes OVS fast at switching also constrains what it can do. Every decision that makes OVN scalable also introduces overhead. Understanding the tradeoffs helps you recommend the right solution for each customer.
+====
+
+
+'''
+
+== 1. OVS Limitations
+
+=== 1.1 Flow Table Size Limits
+
+OVS organizes its forwarding logic into flow tables. Each table can hold a large number of flow entries, but there are practical limits that affect real deployments.
+
+*How flow tables work:*
+
+OVS supports up to 255 flow tables (numbered 0 through 254) in a single bridge. Each table can theoretically hold millions of flow entries, but memory and performance constraints set practical limits far below the theoretical maximum.
+
+Each flow entry in the kernel datapath consumes memory. A typical flow entry uses approximately 1-2 KB of kernel memory, depending on the number of match fields and actions. In the userspace datapath (DPDK mode), each flow entry consumes similar amounts of memory from hugepage allocations.
+
+*TCAM analogy for hardware offload:*
+
+If you are familiar with physical switches, you know about TCAM (Ternary Content-Addressable Memory). TCAM is the hardware that stores forwarding entries and can look up any entry in a single clock cycle. Physical switches have finite TCAM - a typical top-of-rack switch might have space for 4,000 to 16,000 entries.
+
+OVS does not use TCAM (it runs in software), but the analogy is useful when discussing hardware offload. When OVS offloads flows to a SmartNIC or DPU (via TC flower offload or similar mechanisms), the NIC hardware has finite table space. If you exceed the hardware table capacity, flows fall back to software processing, and performance drops dramatically.
+
+[source,bash]
+----
+# Check how many flows are currently installed in the kernel datapath
+sudo ovs-dpctl show
+
+# Check flow counts per table in br-int
+sudo ovs-ofctl dump-aggregate br-int
+
+# Check flows in a specific table
+sudo ovs-ofctl dump-flows br-int table=0 | wc -l
+----
+
+----
+# Example output from ovs-dpctl show
+system@ovs-system:
+  lookups: hit:983742 missed:12034 lost:0
+  flows: 1842
+  masks: hit:4923847 total:156 hit/pkt:4.87
+  port 0: ovs-system (internal)
+  port 1: br-int (internal)
+  port 2: genev_sys_6081 (geneve: packet_type=ptap)
+----
+
+*Impact of large flow tables:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Flow Count
+|Memory Usage (approx.)
+|Revalidation Time
+|Practical Impact
+
+|< 10,000
+|< 20 MB
+|< 1 second
+|Normal operation
+
+|10,000 - 50,000
+|20 - 100 MB
+|1 - 5 seconds
+|Slightly increased CPU
+
+|50,000 - 200,000
+|100 - 400 MB
+|5 - 30 seconds
+|Noticeable control plane delays
+
+|> 200,000
+|> 400 MB
+|> 30 seconds
+|Significant performance impact
+
+|===
+
+
+*Workarounds:*
+
+* Use megaflow wildcarding to reduce the number of datapath flows. Megaflows match on multiple packets rather than per-connection exact matches.
+* Monitor flow counts regularly and alert when they exceed thresholds.
+* Use conjunction flows (covered in Module 11) to reduce ACL-related flow explosion.
+* Consider whether all flows are necessary - sometimes overly specific OpenFlow rules create unnecessary datapath entries.
+
+
+[WARNING]
+====
+When flow tables grow very large, revalidation (the process where ovs-vswitchd checks if cached datapath flows are still valid) can consume significant CPU. In extreme cases, revalidation can take so long that it creates a feedback loop: slow revalidation causes flow timeouts, which causes new flow misses, which creates more work for ovs-vswitchd.
+====
+
+
+'''
+
+=== 1.2 Performance with Large Flow Counts
+
+Flow lookup is the most critical performance path in OVS. Every packet that enters the switch must be matched against the flow table to determine how to forward it. The speed of this lookup directly determines throughput.
+
+*Datapath flow lookup:*
+
+The kernel datapath uses a hash-based lookup mechanism. For exact-match flows, this is O(1) - constant time regardless of table size. However, OVS does not use exact-match flows exclusively. It uses megaflows (wildcard flows) in the datapath, and looking up a packet against wildcarded fields requires checking multiple masks.
+
+The `masks: hit/pkt` ratio in `ovs-dpctl show` output tells you how many mask lookups are needed per packet on average. A ratio of 1.0 means every packet matches on the first mask checked (ideal). A ratio of 5.0 means five masks are checked on average. Higher ratios mean worse performance.
+
+[source,bash]
+----
+# Check megaflow mask statistics
+sudo ovs-appctl dpctl/show -s
+
+# Check per-PMD statistics (DPDK)
+sudo ovs-appctl dpif-netdev/pmd-stats-show
+----
+
+----
+# Example output showing mask statistics
+system@ovs-system:
+  lookups: hit:15234567 missed:23456 lost:0
+  flows: 3421
+  masks: hit:34521890 total:287 hit/pkt:2.26
+  per-mask stats:
+    mask  0: hit:8234567  size:  6  megaflow_hit:8234567
+    mask  1: hit:4123456  size:  9  megaflow_hit:4123456
+    mask  2: hit:2345678  size: 11  megaflow_hit:2345678
+----
+
+*Revalidation cost:*
+
+Revalidation runs periodically (every 500ms by default) and checks every cached datapath flow against the current OpenFlow rules. If you have 100,000 datapath flows, revalidation must check all 100,000 against the current OpenFlow pipeline. This is a CPU-intensive operation.
+
+[source,bash]
+----
+# Check revalidation statistics
+sudo ovs-appctl upcall/show
+
+# Adjust revalidation interval (temporary, for debugging)
+sudo ovs-appctl bridge/set-revalidation-interval br-int 1000
+----
+
+*Megaflow cache behavior:*
+
+The megaflow cache is the key optimization that makes OVS fast. Instead of creating one datapath flow per TCP connection (which would mean millions of flows on a busy server), OVS creates wildcard flows that match many connections at once. For example, instead of:
+
+----
+# Exact match (bad - one flow per connection)
+src=10.0.0.1,dst=10.0.0.2,sport=12345,dport=80 -> output:5
+src=10.0.0.1,dst=10.0.0.2,sport=12346,dport=80 -> output:5
+src=10.0.0.1,dst=10.0.0.2,sport=12347,dport=80 -> output:5
+----
+
+OVS creates:
+
+----
+# Megaflow (good - one flow matches many connections)
+src=10.0.0.1,dst=10.0.0.2,dport=80 -> output:5
+----
+
+The megaflow optimization depends on the OpenFlow rules being "wildcardable." If your OpenFlow rules match on every field (as some controllers generate), megaflow optimization is defeated and performance degrades significantly.
+
+
+[NOTE]
+.Key Concept
+====
+The number of megaflow masks (`total` in the `masks:` line) is often more important than the number of flows. More masks means more comparisons per packet. Keep mask count below 200 for good performance. Above 500 masks, performance degradation becomes severe.
+====
+
+
+'''
+
+=== 1.3 Single-Threaded vswitchd
+
+The `ovs-vswitchd` daemon is the central component of OVS. It handles:
+
+* OpenFlow flow programming
+* Flow revalidation
+* Upcall processing (packets that do not match any datapath flow)
+* Database monitoring (watching for configuration changes)
+* LACP, STP, BFD protocol processing
+
+All of these functions run in a single thread within `ovs-vswitchd`. This means that no matter how many CPU cores your server has, `ovs-vswitchd` control plane operations are limited to the performance of a single core.
+
+*Impact:*
+
+On a busy hypervisor with thousands of VMs, the single-threaded nature of `ovs-vswitchd` can become a bottleneck. Symptoms include:
+
+* Slow port creation (seconds instead of milliseconds)
+* High upcall processing latency (new flows take long to install)
+* OpenFlow rule installation delays
+* Increased packet loss during periods of high churn (many VMs starting/stopping)
+
+[source,bash]
+----
+# Check if vswitchd is CPU-bound
+top -p $(pidof ovs-vswitchd) -H
+
+# Check upcall processing statistics
+sudo ovs-appctl upcall/show
+
+# Check flow revalidation timing
+sudo ovs-appctl coverage/show | grep -i reval
+----
+
+----
+# Example showing high upcall latency
+handler 0:
+  flows         : (current 2345) (avg 2100) (alloc 4096) (delete 1751)
+  recv: 45672 (requests: 45670, lost: 2)
+  avg processing time: 3245 usec
+  max processing time: 125000 usec
+----
+
+*PMD threads for DPDK - but only for data plane:*
+
+When OVS is used with DPDK, Poll Mode Driver (PMD) threads handle packet forwarding. PMD threads are multi-threaded and can use multiple CPU cores for data plane forwarding. However, the control plane - flow programming, revalidation, upcall processing for new flows - is still single-threaded in `ovs-vswitchd`.
+
+This means DPDK mode solves the data plane performance problem but not the control plane bottleneck. If your DPDK deployment has high flow churn (many new connections per second), the single-threaded control plane can still become a bottleneck even though data plane forwarding is fast.
+
+*Workarounds:*
+
+* Ensure the CPU core running `ovs-vswitchd` is not shared with other CPU-intensive processes.
+* Pin `ovs-vswitchd` to a high-performance core using taskset or cgroup CPU pinning.
+* Reduce flow churn by designing networks that reuse existing flows rather than creating new ones.
+* Increase the `max-idle` time for datapath flows so they are evicted less frequently (reduces revalidation work).
+* In OVN environments, tune `ovn-controller` to batch OpenFlow updates rather than sending them one at a time.
+
+[source,bash]
+----
+# Pin ovs-vswitchd to CPU core 0
+sudo taskset -cp 0 $(pidof ovs-vswitchd)
+
+# Increase flow max-idle time (default 10000ms)
+sudo ovs-vsctl set Open_vSwitch . other_config:max-idle=30000
+----
+
+
+[NOTE]
+====
+There is ongoing upstream work to make parts of `ovs-vswitchd` multi-threaded, but as of OVS 3.x, the control plane remains fundamentally single-threaded. Design your deployments with this constraint in mind.
+====
+
+
+'''
+
+=== 1.4 No Built-In L3/L4 Services
+
+OVS is a Layer 2 switch. It forwards Ethernet frames based on MAC addresses and VLAN tags. It does not natively provide:
+
+* IP routing (L3 forwarding between subnets)
+* NAT (Network Address Translation)
+* Load balancing
+* DHCP
+* DNS
+* Firewalling (stateful packet inspection)
+
+While OVS can be programmed via OpenFlow to perform some of these functions (for example, an OpenFlow controller can install rules that rewrite IP headers to implement NAT), OVS itself does not implement any L3/L4 logic. It relies entirely on an external controller.
+
+*This is why OVN exists.* OVN adds the L3/L4 intelligence on top of OVS. It programs OVS flow tables to implement routing, NAT, load balancing, ACLs, and DHCP. But it is important to understand that the L3/L4 processing is happening in OVS flow rules - OVN just generates those rules.
+
+*Impact for customers:*
+
+Customers who deploy OVS without OVN (or without another SDN controller like OpenDaylight) get a very capable L2 switch but no L3 services. They will need to provide their own routing and NAT, either through Linux kernel networking or through physical routers.
+
+*Conntrack integration:*
+
+OVS does integrate with the Linux kernel conntrack subsystem (`nf_conntrack`), which provides stateful connection tracking. This enables stateful ACLs (allow established connections back through) and NAT. However, the conntrack integration is a kernel feature that OVS invokes via OpenFlow actions (`ct()`) - it is not built into OVS itself.
+
+[source,bash]
+----
+# Check if conntrack actions are being used
+sudo ovs-ofctl dump-flows br-int | grep "ct("
+
+# Check conntrack table entries
+sudo conntrack -C
+sudo conntrack -L | head -20
+----
+
+'''
+
+=== 1.5 No Native HA for ovs-vswitchd
+
+If the `ovs-vswitchd` daemon crashes or is restarted, there is a brief period of traffic disruption. The kernel datapath continues to forward packets using cached flows during the outage, but:
+
+* New flows cannot be installed (packets requiring upcall processing are dropped or queued)
+* Flow revalidation stops (stale flows may forward traffic incorrectly)
+* No new configuration changes take effect
+
+There is no built-in active-standby mechanism for `ovs-vswitchd`. You cannot run two instances of `ovs-vswitchd` on the same host with one as a standby.
+
+*What happens during ovs-vswitchd restart:*
+
+. `ovs-vswitchd` stops processing upcalls
+. Kernel datapath continues forwarding on cached flows (seconds to minutes of continued operation for existing connections)
+. `ovs-vswitchd` restarts and reconnects to `ovsdb-server`
+. `ovs-vswitchd` reads the database and reprograms the datapath
+. New flows start being installed
+. Normal operation resumes
+
+The duration of disruption depends on the size of the configuration. A host with 10 ports recovers in under a second. A host with 1,000 ports may take several seconds.
+
+*Workarounds:*
+
+* Use systemd to automatically restart `ovs-vswitchd` if it crashes (this is the default configuration in RHEL).
+* Monitor `ovs-vswitchd` health with external monitoring systems.
+* During planned maintenance, drain traffic from the host before restarting OVS.
+* In DPDK mode, consider using the `keep-flows` option during restart to preserve datapath flows.
+
+[source,bash]
+----
+# Check systemd restart configuration
+systemctl show openvswitch-vswitchd | grep Restart
+
+# Check ovs-vswitchd uptime
+sudo ovs-appctl version
+ps -eo pid,etime,cmd | grep ovs-vswitchd
+----
+
+
+[WARNING]
+====
+In DPDK mode, restarting `ovs-vswitchd` is more disruptive because the DPDK datapath runs in userspace as part of the vswitchd process. When the process stops, all data plane forwarding stops immediately. There is no kernel datapath to continue forwarding cached flows.
+====
+
+
+'''
+
+=== 1.6 Kernel Module Compatibility
+
+OVS includes a kernel module (`openvswitch.ko`) that implements the kernel datapath. This module must be compatible with the running kernel version, which creates dependency challenges.
+
+*In-tree vs out-of-tree:*
+
+Starting with Linux kernel 3.3, a version of the OVS kernel module is included in the upstream Linux kernel (in-tree). However, the in-tree version often lags behind the latest OVS userspace features. To get the newest features, you may need to compile and install the out-of-tree module from the OVS source.
+
+RHEL includes the OVS kernel module as part of the distribution kernel. Red Hat maintains compatibility between the kernel and OVS versions shipped in each RHEL release, so this is not an issue for supported Red Hat configurations. The problem arises when customers:
+
+* Use third-party kernel modules that conflict with OVS
+* Upgrade the kernel without upgrading OVS (or vice versa)
+* Use custom-compiled kernels
+* Run on distributions where OVS is installed from source
+
+*DKMS challenges:*
+
+DKMS (Dynamic Kernel Module Support) can automatically rebuild the OVS kernel module when the kernel is upgraded. However, DKMS introduces its own problems:
+
+* Build failures if kernel headers are not installed
+* Version conflicts if the DKMS module is incompatible with the new kernel
+* Race conditions during boot if the module is not built before OVS starts
+
+[source,bash]
+----
+# Check which OVS kernel module is loaded
+modinfo openvswitch
+
+# Check if it is in-tree or out-of-tree
+modinfo openvswitch | grep filename
+# In-tree: /lib/modules/<version>/kernel/net/openvswitch/openvswitch.ko
+# Out-of-tree: /lib/modules/<version>/extra/openvswitch.ko
+
+# Check module version
+modinfo openvswitch | grep version
+----
+
+----
+# Example output
+filename:       /lib/modules/5.14.0-362.el9.x86_64/kernel/net/openvswitch/openvswitch.ko.xz
+version:        2.17.0
+license:        GPL
+description:    Open vSwitch switching datapath
+----
+
+*Workarounds:*
+
+* Always use the OVS version shipped with your RHEL or RHOSP release.
+* When upgrading the kernel, verify OVS compatibility before rebooting.
+* Keep kernel headers installed if using DKMS.
+* In OpenShift, the OVS kernel module runs inside a container, which mitigates kernel compatibility issues (the container includes the correct module for the node's kernel).
+
+'''
+
+=== 1.7 DPDK Tradeoffs
+
+DPDK (Data Plane Development Kit) mode significantly increases OVS throughput and reduces latency by bypassing the kernel for packet processing. However, it comes with significant tradeoffs.
+
+*Dedicated CPU cores:*
+
+DPDK PMD threads poll NICs continuously in a tight loop. Each PMD thread consumes 100% of a CPU core, regardless of traffic volume. If you allocate 4 cores for PMD threads, those cores are completely unavailable for VMs or other workloads, even when there is no network traffic.
+
+*Memory overhead (hugepages):*
+
+DPDK requires hugepages (2 MB or 1 GB pages) for its memory allocations. A typical DPDK-OVS deployment requires at least 1 GB of hugepages for OVS itself, plus additional hugepages for each VM using vhost-user interfaces.
+
+[source,bash]
+----
+# Check hugepage allocation
+cat /proc/meminfo | grep Huge
+
+# Typical hugepage configuration for DPDK
+# In /etc/default/grub:
+# GRUB_CMDLINE_LINUX="... default_hugepagesz=1G hugepagesz=1G hugepages=32"
+----
+
+----
+# Example output
+AnonHugePages:    245760 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:      32
+HugePages_Free:       20
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:    1048576 kB
+----
+
+*Loss of kernel networking features:*
+
+When packets are processed by DPDK, they bypass the kernel network stack entirely. This means:
+
+* `tcpdump` cannot capture DPDK-processed packets (you must use OVS-DPDK specific tools)
+* `iptables`/`nftables` rules do not apply to DPDK traffic
+* Kernel QoS (`tc`) does not apply
+* Network monitoring tools that rely on kernel counters do not see DPDK traffic
+
+[source,bash]
+----
+# Instead of tcpdump, use pdump for DPDK traffic
+sudo ovs-appctl dpctl/dump-flows -m
+
+# Use OVS-specific packet tracing
+sudo ovs-appctl ofproto/trace br-int in_port=1,tcp,nw_src=10.0.0.1,nw_dst=10.0.0.2,tp_dst=80
+----
+
+*Application compatibility:*
+
+Not all NIC drivers support DPDK. Before deploying DPDK, verify that the customer's NIC model and firmware version are on the DPDK compatibility list. Common NICs with good DPDK support include Intel X710/XL710/E810, Mellanox ConnectX-5/6, and Broadcom NetXtreme-E.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Aspect
+|Kernel Datapath
+|DPDK Datapath
+
+|CPU usage (idle)
+|Near zero
+|100% per PMD core
+
+|Memory requirements
+|Standard kernel memory
+|Hugepages required
+
+|tcpdump available
+|Yes
+|No (need alternatives)
+
+|iptables/nftables
+|Yes
+|No (bypassed)
+
+|Maximum throughput
+|~10 Gbps per core
+|~40+ Gbps per core
+
+|Latency
+|~50-100 us
+|~10-20 us
+
+|NIC compatibility
+|All Linux-supported NICs
+|DPDK-supported NICs only
+
+|Debugging difficulty
+|Standard Linux tools
+|Specialized DPDK tools
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+DPDK is not a universal performance improvement. It is a tradeoff: higher throughput and lower latency in exchange for dedicated CPU cores, increased memory usage, and loss of kernel networking features. Only recommend DPDK for workloads that genuinely need the performance improvement, such as NFV (Network Function Virtualization) and telco workloads.
+====
+
+
+'''
+
+=== 1.8 Conntrack Table Limits
+
+OVS uses the Linux kernel's conntrack subsystem (`nf_conntrack`) for stateful connection tracking. Every stateful ACL in OVN creates conntrack entries. Every NAT translation creates conntrack entries. The conntrack table has a finite size.
+
+*Default limits:*
+
+[source,bash]
+----
+# Check current conntrack table size
+sudo sysctl net.netfilter.nf_conntrack_max
+
+# Check current conntrack table usage
+sudo sysctl net.netfilter.nf_conntrack_count
+
+# Check memory per entry
+sudo cat /proc/sys/net/netfilter/nf_conntrack_buckets
+----
+
+----
+# Typical defaults
+net.netfilter.nf_conntrack_max = 262144
+net.netfilter.nf_conntrack_count = 45231
+----
+
+*Memory per entry:*
+
+Each conntrack entry consumes approximately 300-400 bytes of kernel memory (varies by kernel version). At the default limit of 262,144 entries, the conntrack table uses approximately 80-100 MB of kernel memory. If you increase the limit to 1,048,576 entries (1M), expect 300-400 MB of memory usage.
+
+*Impact on NAT-heavy workloads:*
+
+NAT-heavy workloads (such as a Kubernetes cluster where every pod's outbound traffic is SNATed through a node IP) can exhaust the conntrack table quickly. Each TCP connection through NAT creates two conntrack entries (one for the original direction, one for the reply). A busy node with 100 pods, each making 1,000 concurrent connections, could need 200,000 conntrack entries.
+
+When the conntrack table is full, new connections are dropped silently. This manifests as:
+
+* Intermittent connection failures
+* DNS resolution failures (UDP conntrack entries also consume table space)
+* Connection timeouts that appear random
+
+*Conntrack zones:*
+
+OVN uses conntrack zones to isolate connection tracking between different logical networks. Each zone maintains its own tracking state. While zones provide logical isolation, all zones share the global conntrack table. Zones do not provide separate capacity limits.
+
+[source,bash]
+----
+# Check OVN conntrack zone assignments
+sudo ovs-ofctl dump-flows br-int | grep "ct_zone="
+
+# Monitor conntrack table utilization
+sudo conntrack -C
+----
+
+*Workarounds:*
+
+* Increase `nf_conntrack_max` on hosts with NAT-heavy workloads.
+* Reduce conntrack timeout values for UDP and TCP TIME_WAIT to reclaim entries faster.
+* Use stateless ACLs where possible to avoid creating conntrack entries.
+* Monitor conntrack table utilization as part of regular health checks.
+
+[source,bash]
+----
+# Increase conntrack table size
+sudo sysctl -w net.netfilter.nf_conntrack_max=1048576
+
+# Reduce UDP timeout (default 30 seconds)
+sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=10
+
+# Reduce TCP TIME_WAIT timeout (default 120 seconds)
+sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_time_wait=30
+
+# Make persistent in /etc/sysctl.d/99-conntrack.conf
+----
+
+
+[WARNING]
+====
+In OpenShift clusters using OVN-Kubernetes, conntrack exhaustion is one of the most common causes of intermittent networking failures. Always check `nf_conntrack_count` vs `nf_conntrack_max` when debugging connectivity issues on busy nodes.
+====
+
+
+'''
+
+== 2. OVN Limitations
+
+=== 2.1 Database Scalability
+
+OVN stores all its configuration and state in two OVSDB databases:
+
+* *Northbound Database (NB):* Logical network configuration (switches, routers, ports, ACLs)
+* *Southbound Database (SB):* Physical-logical bindings, chassis information, logical flows
+
+OVSDB is not a distributed database in the traditional sense. It is a JSON-based, schema-driven database with transaction support. Starting with OVS 2.9, OVSDB supports clustered mode using the Raft consensus protocol for high availability. However, even in clustered mode, the database has significant scalability constraints.
+
+*All data in memory:*
+
+OVSDB is memory-mapped. The entire database must fit in memory. There is no disk-based storage or paging. For the Northbound database, this is rarely an issue - even large deployments produce NB databases under 100 MB. The Southbound database, however, can grow much larger because it contains logical flows for every port on every chassis.
+
+*Practical size limits:*
+
+
+[cols="1,1,1,1,1",options="header"]
+|===
+|Database
+|Small Deployment
+|Medium Deployment
+|Large Deployment
+|Practical Maximum
+
+|NB DB
+|< 10 MB
+|10-50 MB
+|50-200 MB
+|~500 MB
+
+|SB DB
+|< 50 MB
+|50-200 MB
+|200 MB-1 GB
+|~2 GB
+
+|===
+
+
+When the database exceeds approximately 2 GB, you will start experiencing:
+
+* Slow transaction processing
+* Increased leader election time (Raft)
+* Longer reconnection time for clients after a leader failover
+* Increased memory usage on all cluster members (each holds a full copy)
+
+[source,bash]
+----
+# Check database sizes
+ls -lh /etc/openvswitch/ovnnb_db.db
+ls -lh /etc/openvswitch/ovnsb_db.db
+
+# For containerized OVN (OpenShift - IC mode, OCP 4.14+)
+oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
+  -c sbdb -- ls -lh /etc/ovn/ovnsb_db.db
+----
+
+*Workarounds:*
+
+* Monitor database size as part of regular health checks.
+* Enable periodic database compaction (discussed in Section 2.10).
+* Reduce the number of ACLs and logical flows where possible.
+* In very large deployments, consider whether the logical network design can be simplified.
+
+
+[NOTE]
+.Key Concept
+====
+OVSDB was designed for configuration storage, not for high-throughput transactional workloads. It works well for its intended purpose, but it is not comparable to databases like etcd, PostgreSQL, or CockroachDB in terms of scalability. Design your logical network topology with database size in mind.
+====
+
+
+'''
+
+=== 2.2 ovn-northd Bottleneck
+
+`ovn-northd` is the OVN component that translates Northbound database content (logical switches, routers, ACLs) into Southbound database content (logical flows, bindings). It is one of the most critical components in the OVN architecture, and it can become a bottleneck.
+
+*Single active instance:*
+
+In a clustered OVN deployment, only one `ovn-northd` instance is active at any time. The other instances are standby, ready to take over if the active instance fails. This means all NB-to-SB translation is done by a single process on a single machine.
+
+*What ovn-northd does on every change:*
+
+When you create a logical switch port, ovn-northd must:
+
+. Read the change from the NB database
+. Compute all logical flows affected by the change
+. Write the new logical flows to the SB database
+. Update bindings and other SB tables
+
+For a simple port addition, this might generate 20-50 new logical flow entries. For an ACL change that affects many ports, it might regenerate thousands of logical flows.
+
+*Incremental processing:*
+
+Older versions of OVN (before 20.06) recomputed all logical flows on every change. This was extremely expensive at scale. Modern OVN versions support incremental processing (`ovn-northd` I-P engine), which only recomputes flows affected by the specific change.
+
+However, incremental processing has limitations:
+
+* Not all change types support incremental processing. Some changes (like modifying a load balancer) trigger a full recomputation.
+* The first computation after `ovn-northd` starts is always a full computation.
+* Bugs in incremental processing can cause inconsistencies between NB and SB databases.
+
+[source,bash]
+----
+# Check ovn-northd status
+sudo ovn-appctl -t ovn-northd status
+
+# Check ovn-northd performance metrics
+sudo ovn-appctl -t ovn-northd nb-engine/status
+sudo ovn-appctl -t ovn-northd sb-engine/status
+
+# Check processing time for the last NB change
+sudo ovn-appctl -t ovn-northd stopwatch/show
+----
+
+----
+# Example output showing processing times
+Statistics for 'ovnnb_db_run':
+  Total samples: 15234
+  Maximum: 2345 msec
+  Minimum: 0 msec
+  95th percentile: 45 msec
+  Average: 12 msec
+
+Statistics for 'ovnsb_db_run':
+  Total samples: 15234
+  Maximum: 1234 msec
+  Minimum: 0 msec
+  95th percentile: 23 msec
+  Average: 8 msec
+----
+
+*Impact at scale:*
+
+In a deployment with 1,000 logical switch ports and 500 ACL rules, creating a new port triggers `ovn-northd` to process the change and generate all associated logical flows. If `ovn-northd` is already busy processing a previous change (for example, during a bulk port creation), the new changes queue up and the delay compounds.
+
+Symptoms of an overloaded `ovn-northd`:
+
+* Slow port creation (seconds to minutes instead of sub-second)
+* Inconsistency between NB and SB databases (changes not yet propagated)
+* High CPU usage on the node running `ovn-northd`
+* Alerts in OVN logs about slow processing
+
+*Workarounds:*
+
+* Batch logical network changes rather than making them one at a time.
+* Use OVSDB transactions to group related changes into a single commit.
+* Ensure the node running `ovn-northd` has sufficient CPU and memory.
+* Monitor `ovn-northd` processing times and alert on high values.
+* Consider dedicating a node for OVN central components (northd + databases) in large deployments.
+
+'''
+
+=== 2.3 Logical Flow Scaling
+
+The number of logical flows in the Southbound database is the primary scaling factor for OVN. Logical flows grow as a function of:
+
+* Number of logical switch ports
+* Number of ACL rules
+* Number of logical routers
+* Number of NAT rules
+* Number of load balancer VIPs
+
+The relationship is not linear. ACLs, in particular, can cause quadratic growth because each ACL applies to every port in the port group or address set.
+
+*Flow count estimation:*
+
+A rough formula for estimating logical flow count:
+
+----
+Logical Flows ≈ (Ports x Base_Flows_Per_Port) + (ACLs x Ports_in_Scope) + (NAT_Rules x Affected_Routers) + (LB_VIPs x Backend_Count)
+
+Where:
+  Base_Flows_Per_Port ≈ 20-30 (for basic L2/L3 forwarding)
+  ACL multiplication depends on port group membership
+----
+
+*Example scaling:*
+
+
+[cols="1,1,1,1,1,1",options="header"]
+|===
+|Ports
+|ACLs
+|NAT Rules
+|LB VIPs
+|Estimated Logical Flows
+|SB DB Size
+
+|100
+|50
+|10
+|5
+|~5,000
+|~5 MB
+
+|500
+|200
+|50
+|20
+|~50,000
+|~50 MB
+
+|1,000
+|500
+|100
+|50
+|~200,000
+|~200 MB
+
+|5,000
+|1,000
+|200
+|100
+|~1,000,000+
+|~1 GB+
+
+|===
+
+
+*Impact on ovn-controller:*
+
+Each `ovn-controller` instance on each chassis downloads and processes the logical flows relevant to that chassis. At high logical flow counts:
+
+* `ovn-controller` startup time increases (must process all flows)
+* Memory usage on each chassis increases
+* Flow installation into OVS takes longer
+* Network changes propagate more slowly
+
+[source,bash]
+----
+# Check logical flow count
+sudo ovn-sbctl count Logical_Flow
+
+# Check logical flow count per datapath (logical switch/router)
+sudo ovn-sbctl --columns=logical_datapath list Logical_Flow | sort | uniq -c | sort -rn | head -20
+
+# Check ovn-controller processing time
+sudo ovn-appctl -t ovn-controller stopwatch/show
+----
+
+*Workarounds:*
+
+* Use address sets instead of individual ACL rules. One ACL with an address set is far more efficient than many individual ACLs.
+* Use port groups to scope ACLs to only the ports that need them.
+* Avoid creating ACLs that apply to all ports when they only need to apply to a subset.
+* Regularly audit and clean up unused ACLs, NAT rules, and load balancer VIPs.
+* Monitor logical flow count as a key operational metric.
+
+
+[WARNING]
+====
+The relationship between ACL count and logical flow count is the most common cause of unexpected scaling problems in OVN. A customer who adds "just a few more security rules" may be doubling the logical flow count if those rules apply to a large port group.
+====
+
+
+'''
+
+=== 2.4 Geneve Overhead
+
+OVN uses Geneve (Generic Network Virtualization Encapsulation) as its default tunnel protocol. Geneve adds header overhead to every packet traversing the overlay network, which reduces the effective MTU available to workloads.
+
+*Geneve header breakdown:*
+
+----
++--------------------------------------------------+
+| Outer Ethernet Header          |  14 bytes        |
+| Outer IP Header                |  20 bytes        |
+| Outer UDP Header               |   8 bytes        |
+| Geneve Base Header             |   8 bytes        |
+| Geneve Options (OVN metadata)  |   8 bytes (typ.) |
++--------------------------------------------------+
+| Total Overhead                 |  58 bytes        |
++--------------------------------------------------+
+| Inner Ethernet Frame (original packet)            |
++--------------------------------------------------+
+----
+
+The 58-byte overhead means that if your physical network MTU is 1500 bytes, the effective MTU for workloads is only 1442 bytes (1500 - 58). This is covered in detail in Section 5 (MTU Considerations).
+
+*Comparison with VXLAN:*
+
+VXLAN overhead is 50 bytes (no Geneve options field). However, VXLAN cannot carry the metadata that OVN needs (logical datapath, logical input/output port, etc.). This is why OVN uses Geneve instead of VXLAN.
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Protocol
+|Total Overhead
+|Metadata Support
+|OVN Compatible
+
+|Geneve
+|58 bytes (typical)
+|Yes (variable-length options)
+|Yes (default)
+
+|VXLAN
+|50 bytes
+|Limited (24-bit VNI only)
+|Partial (gateway mode)
+
+|STT
+|58 bytes
+|Yes (64-bit context)
+|Deprecated
+
+|GRE
+|42 bytes
+|Limited
+|No
+
+|===
+
+
+*Impact:*
+
+* Reduced effective MTU for workloads (must account for encapsulation overhead)
+* Fragmentation if inner packet + overhead exceeds physical MTU
+* CPU cost of encapsulation/decapsulation (small but measurable at high packet rates)
+* Bandwidth overhead (58 extra bytes per packet, significant for small-packet workloads)
+
+For a workload sending 64-byte packets, the Geneve overhead adds 90% bandwidth overhead (58/64). For a workload sending 1400-byte packets, the overhead is only 4% (58/1400). This means small-packet workloads (DNS, VoIP, gaming) are disproportionately affected.
+
+
+[NOTE]
+.Key Concept
+====
+Geneve overhead is the price of network virtualization. It cannot be eliminated, only mitigated through MTU configuration and hardware offload. Always calculate effective MTU before deploying workloads.
+====
+
+
+'''
+
+=== 2.5 No L7 Load Balancing
+
+OVN includes a built-in load balancer, but it operates at Layer 4 (TCP/UDP) only. It can distribute connections to backend pods/VMs based on destination IP and port, but it cannot make routing decisions based on:
+
+* HTTP path (`/api/v1` vs `/api/v2`)
+* HTTP headers (Host header, cookies, authentication tokens)
+* TLS SNI (Server Name Indication)
+* gRPC service name
+* WebSocket upgrade requests
+
+*What OVN LB can do:*
+
+* Distribute TCP connections to backends using round-robin or random selection
+* Distribute UDP packets to backends
+* Perform DNAT (destination NAT) to translate a VIP to a backend IP
+* Health-check backends (with limitations)
+* Session affinity based on source IP
+
+*What OVN LB cannot do:*
+
+* HTTP path-based routing
+* TLS termination
+* Cookie-based session affinity
+* Content-based routing
+* Rate limiting per URL
+* Request/response transformation
+* WebSocket routing
+* gRPC load balancing (individual RPC calls within a single TCP connection)
+
+*Impact:*
+
+Customers who need L7 load balancing must deploy a separate load balancer. In OpenShift, this is typically handled by the ingress controller (HAProxy) or a service mesh (Istio/Envoy). In RHOSP/RHOSO, Octavia provides L7 load balancing through HAProxy backends.
+
+The OVN LB and the L7 load balancer work at different layers and are complementary, not competing:
+
+----
+Client -> OVN LB (L4, DNAT to node) -> Ingress Controller (L7, route to pod) -> Pod
+----
+
+
+[NOTE]
+====
+Do not position OVN as a replacement for L7 load balancers. It handles L4 distribution (getting traffic to the right node) while L7 load balancers handle application-layer routing (getting traffic to the right service endpoint).
+====
+
+
+'''
+
+=== 2.6 Limited QoS Support
+
+OVN provides basic Quality of Service (QoS) capabilities, but they are limited compared to what physical network equipment or Linux `tc` can provide.
+
+*What OVN QoS supports:*
+
+* Egress rate limiting (maximum bandwidth per logical port)
+* DSCP marking (setting DiffServ code points on outgoing traffic)
+
+*What OVN QoS does not support:*
+
+* Ingress rate limiting (limiting incoming traffic to a port)
+* Hierarchical Token Bucket (HTB) scheduling
+* Strict priority queuing
+* Weighted Fair Queuing (WFQ)
+* Traffic shaping (smoothing burst traffic)
+* Minimum bandwidth guarantees
+* Queue-based traffic classification
+* ECN (Explicit Congestion Notification) marking
+
+[source,bash]
+----
+# Set egress rate limiting on a logical port (10 Mbps, 1000 KB burst)
+sudo ovn-nbctl set Logical_Switch_Port port1 \
+  options:qos_max_rate=10000000 \
+  options:qos_burst=1000000
+
+# Set DSCP marking
+sudo ovn-nbctl qos-add switch1 to-lport 100 "inport == \"port1\"" dscp=46
+----
+
+*Impact:*
+
+Customers with strict QoS requirements (telco, media streaming, financial services) will find OVN's QoS insufficient. They will need to implement QoS at other layers:
+
+* Linux `tc` on the hypervisor (if using kernel datapath)
+* Physical switch QoS on the underlay network
+* Application-level traffic management
+
+
+[NOTE]
+====
+OVS itself supports more advanced QoS through its Queue and QoS tables (HTB, SFQ), but OVN does not expose these capabilities through its northbound interface. If a customer needs advanced OVS QoS with OVN, they would need to configure it directly on OVS, which bypasses OVN management and creates maintenance complexity.
+====
+
+
+'''
+
+=== 2.7 Distributed NAT Limitations
+
+OVN implements NAT (both SNAT and DNAT) but with important architectural constraints.
+
+*Centralized vs distributed NAT:*
+
+OVN supports two NAT modes:
+
+* *Distributed NAT (DNAT):* Each chassis performs DNAT locally. A packet destined for a floating IP is translated on the chassis where the destination VM/pod resides. This is efficient because traffic does not need to traverse a central point.
+
+* *Centralized SNAT:* SNAT (source NAT for outbound traffic) requires a gateway chassis. All traffic that needs SNAT must traverse the gateway chassis, which translates the source IP before sending the packet to the external network.
+
+*Why SNAT must be centralized:*
+
+SNAT requires the return traffic to come back through the same point that performed the translation. If SNAT were distributed, return traffic could arrive at any chassis, and the receiving chassis would not have the conntrack state to perform the reverse translation. Centralizing SNAT ensures that both directions of a connection traverse the same gateway.
+
+*Gateway chassis as a bottleneck:*
+
+The gateway chassis handles all SNATed traffic for the OVN deployment. In a deployment with many VMs/pods accessing external services (internet, external databases, etc.), the gateway chassis can become a bandwidth bottleneck.
+
+----
+                        External Network
+                              |
+                        Gateway Chassis (SNAT)
+                        /     |     \
+                   Chassis1  Chassis2  Chassis3
+                   (VMs)     (VMs)     (VMs)
+----
+
+*Asymmetric routing risks:*
+
+When multiple gateway chassis are configured for high availability, asymmetric routing can occur. Outbound traffic goes through gateway A (which creates the SNAT conntrack entry), but return traffic arrives at gateway B (which does not have the conntrack entry). The return traffic is dropped.
+
+OVN mitigates this using `redirect-chassis` and gateway HA groups, but the configuration must be correct. Misconfiguration is a common source of intermittent connectivity failures.
+
+[source,bash]
+----
+# Check gateway chassis configuration
+sudo ovn-nbctl show | grep -A5 "gateway"
+
+# Check redirect-chassis for distributed router ports
+sudo ovn-nbctl lr-route-list router1
+
+# Check HA chassis group membership
+sudo ovn-nbctl ha-chassis-group-list
+----
+
+*Workarounds:*
+
+* Use multiple gateway chassis with HA chassis groups to distribute the SNAT load.
+* Monitor gateway chassis bandwidth utilization.
+* Consider direct external connectivity for workloads that generate heavy outbound traffic.
+* In OpenShift, use EgressIP or EgressRouter for more control over SNAT behavior.
+
+'''
+
+=== 2.8 BFD Detection Speed
+
+OVN uses BFD (Bidirectional Forwarding Detection) to detect tunnel failures between chassis. BFD is much faster than relying on tunnel timeout, but it has limitations.
+
+*Minimum detection interval:*
+
+The minimum BFD detection interval in OVS/OVN software implementation is typically 1 second (1000ms). The detection time is:
+
+----
+Detection Time = Detect Multiplier x Receive Interval
+Default: 3 x 1000ms = 3 seconds
+----
+
+This means that after a tunnel failure, it takes at least 3 seconds for BFD to detect the failure and for OVN to reroute traffic. During this period, traffic sent through the failed tunnel is lost.
+
+*Comparison with hardware BFD:*
+
+Hardware BFD implementations (on physical switches and routers) can achieve detection intervals of 3ms with a 3x multiplier, giving a detection time of 9ms. OVN's software BFD is roughly 300x slower.
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Implementation
+|Min Interval
+|Detect Multiplier
+|Detection Time
+
+|Hardware BFD
+|3 ms
+|3
+|9 ms
+
+|OVN/OVS BFD
+|100 ms*
+|3
+|300 ms*
+
+|OVN BFD (default)
+|1000 ms
+|3
+|3000 ms
+
+|===
+
+
+*100ms is technically possible but puts significant CPU load on the host and is not recommended for large-scale deployments.
+
+*Impact:*
+
+For workloads that require sub-second failover, OVN's BFD detection speed may be insufficient. This affects:
+
+* Real-time communication (VoIP, video conferencing)
+* Financial trading applications
+* High-availability database clusters with tight heartbeat timeouts
+
+[source,bash]
+----
+# Check BFD status for all tunnels
+sudo ovs-appctl bfd/show
+
+# Check BFD configuration on a specific tunnel
+sudo ovs-appctl bfd/show genev_sys_6081
+
+# Adjust BFD intervals (per tunnel)
+sudo ovs-vsctl set Interface genev_sys_6081 \
+  bfd:min_rx=500 bfd:min_tx=500 bfd:decay_min_rx=1000
+----
+
+----
+# Example BFD status output
+ Forwarding: true
+ Detect Multiplier: 3
+ Concatenation: false
+ TX Interval: 1000ms
+ RX Interval: 1000ms
+ Detect Time: 3000ms
+ Next TX Time: 456ms
+ Last TX Time: 544ms ago
+
+ Local Flags: none
+ Remote Flags: none
+ Diagnostic: No Diagnostic
+
+ Remote DM: 3
+ Remote TX Interval: 1000ms
+ Remote RX Interval: 1000ms
+----
+
+*Workarounds:*
+
+* Reduce BFD intervals for critical tunnels (at the cost of increased CPU usage).
+* Design applications to tolerate 3-second failover windows.
+* Use redundant network paths to reduce the probability of tunnel failures.
+* Consider deploying critical workloads on chassis with direct connectivity (no tunnel) where possible.
+
+'''
+
+=== 2.9 Cold Start Behavior
+
+When `ovn-controller` starts (or restarts) on a chassis, it must:
+
+. Connect to the Southbound database
+. Download all logical flows relevant to this chassis
+. Compute the physical flows (translating logical flows to OpenFlow rules)
+. Program all OpenFlow rules into OVS (br-int)
+. Set up tunnel ports to other chassis
+
+During this process, the existing flows in OVS are replaced. There is a brief period where:
+
+* Some flows are missing (traffic is dropped)
+* Some flows are being installed (race conditions possible)
+* New flows may conflict with stale flows from the previous run
+
+*Impact at scale:*
+
+The cold start time depends on the number of logical flows that `ovn-controller` must process. On a chassis with 100 logical ports and 50,000 associated logical flows, the cold start can take 5-30 seconds. During this time, all VMs/pods on this chassis experience traffic disruption.
+
+----
+Cold Start Time (approximate):
+  100 ports, 5,000 flows   -> 1-2 seconds
+  500 ports, 25,000 flows  -> 5-10 seconds
+  1,000 ports, 50,000 flows -> 10-30 seconds
+  2,000+ ports, 100,000+ flows -> 30-60+ seconds
+----
+
+*Impact in OpenShift:*
+
+In OpenShift, `ovn-controller` runs inside a container (part of the `ovnkube-node` pod). If this pod is restarted (due to a crash, upgrade, or node drain), all pods on the node experience brief network disruption during the cold start.
+
+[source,bash]
+----
+# Check ovn-controller startup time (look for "full recompute" in logs)
+sudo journalctl -u ovn-controller | grep -i "recompute\|startup\|connected"
+
+# In OpenShift
+oc logs -n openshift-ovn-kubernetes ovnkube-node-<pod> -c ovn-controller | grep -i "recompute"
+----
+
+*Workarounds:*
+
+* Minimize the number of logical flows per chassis (reduce ACLs, clean up unused ports).
+* In OpenShift, use node drain procedures before maintenance to migrate pods off the node first.
+* Monitor `ovn-controller` restart events and correlate with traffic disruption reports.
+* Consider the cold start time when planning maintenance windows.
+
+
+[WARNING]
+====
+Avoid restarting `ovn-controller` on multiple chassis simultaneously. If many chassis restart at the same time (for example, during a rolling upgrade that proceeds too quickly), the Southbound database may be overwhelmed by simultaneous connections and flow requests, making the cold start even slower.
+====
+
+
+'''
+
+=== 2.10 Database Compaction Needs
+
+OVSDB uses a log-structured storage format. Every transaction (insert, update, delete) is appended to the database file as a log entry. Over time, the database file grows continuously, even if the actual data size is constant.
+
+*Why compaction is needed:*
+
+Consider a logical port that is created, updated 100 times (status changes, binding updates), and then deleted. Without compaction, the database file contains 102 log entries for this port, even though the port no longer exists. Compaction rewrites the database file with only the current state, removing all historical log entries.
+
+*Growth rate:*
+
+The growth rate depends on how frequently the database is modified. In a busy deployment:
+
+* NB database: moderate growth (configuration changes are less frequent)
+* SB database: fast growth (binding updates, chassis heartbeats, logical flow changes)
+
+A deployment with 500 chassis, each updating their status every 30 seconds, generates approximately 1,000 transactions per minute in the SB database. Each transaction appends approximately 1 KB to the database file. That is 1 MB per minute, or 1.4 GB per day, of log growth - even if the actual data size is only 100 MB.
+
+*Compaction methods:*
+
+[source,bash]
+----
+# Manual compaction (OVSDB standalone mode)
+sudo ovsdb-tool compact /etc/openvswitch/ovnnb_db.db
+sudo ovsdb-tool compact /etc/openvswitch/ovnsb_db.db
+
+# For clustered mode (Raft), compaction is triggered automatically
+# but can be forced via the database's unixctl socket
+sudo ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+sudo ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+
+# Check database size before and after compaction
+ls -lh /etc/openvswitch/ovn*_db.db
+----
+
+*Automatic compaction in Raft mode:*
+
+OVSDB in Raft (clustered) mode performs automatic log compaction when the log exceeds a configurable threshold. The default threshold is that compaction triggers when the log portion of the database exceeds the data portion by a certain ratio.
+
+However, automatic compaction can fail or fall behind if:
+
+* The database is very busy (compaction is deferred during heavy write load)
+* The system is low on disk space (compaction writes a new file before deleting the old one)
+* There are bugs in the compaction logic (rare but possible)
+
+*Workarounds:*
+
+* Monitor database file sizes as part of operational health checks.
+* Schedule manual compaction during maintenance windows if automatic compaction is not keeping up.
+* Ensure sufficient disk space for compaction (at least 2x the current database size).
+* In OpenShift, the OVN operator handles compaction automatically, but monitor for failures.
+
+
+[NOTE]
+====
+Compaction in Raft mode is a leader operation. It is replicated to followers, so it only needs to be triggered on one node. Do not attempt to compact on all nodes simultaneously.
+====
+
+
+'''
+
+=== 2.11 Raft Consensus Constraints
+
+OVN uses the Raft consensus protocol for database high availability. Raft provides strong consistency guarantees but introduces its own constraints.
+
+*Cluster size:*
+
+OVN supports Raft clusters of 3 or 5 nodes. Even numbers are not recommended because they provide no benefit over the next lower odd number (a 4-node cluster tolerates the same number of failures as a 3-node cluster but requires more resources).
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Cluster Size
+|Tolerated Failures
+|Write Quorum
+|Recommended
+
+|1
+|0
+|1
+|Dev/test only
+
+|3
+|1
+|2
+|Yes (production)
+
+|5
+|2
+|3
+|Yes (large production)
+
+|7+
+|(n-1)/2
+|(n+1)/2
+|Not recommended
+
+|===
+
+
+*Leader election latency:*
+
+When the Raft leader fails, the remaining nodes must elect a new leader before writes can proceed. The election timeout is configurable but has a practical minimum:
+
+* Default election timeout: 1000ms
+* Election can take multiple rounds if the network is partitioned
+* During election, all writes to the database are blocked
+* Reads continue to work from any node (but may be stale)
+
+In practice, a leader election takes 1-5 seconds in normal conditions. Under network stress (packet loss, high latency), it can take longer.
+
+*Split-brain scenarios:*
+
+Raft is designed to prevent split-brain, but network partitions can cause confusing behavior:
+
+----
+Partition scenario (3-node cluster):
+
+  Node A (leader)  --|--  Node B, Node C
+                     |
+              Network Partition
+
+After election timeout:
+  Node A: loses quorum, stops accepting writes
+  Node B/C: elect new leader, continue accepting writes
+
+When partition heals:
+  Node A: discovers it is no longer leader, syncs from new leader
+----
+
+If the partition isolates the leader from a majority of nodes, writes stop until a new leader is elected on the majority side. This is correct behavior (it prevents split-brain), but it means that a network partition affecting the leader causes a write outage.
+
+*Write latency with 5 nodes:*
+
+Every write must be acknowledged by a quorum of nodes before it is committed. With a 3-node cluster, the quorum is 2 (leader + 1 follower). With a 5-node cluster, the quorum is 3 (leader + 2 followers). This means writes in a 5-node cluster have higher latency because they must wait for one additional acknowledgment.
+
+If the 5 nodes are geographically distributed (for example, across data centers), the additional latency for writes can be significant:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Cluster Size
+|Write Latency (same rack)
+|Write Latency (cross-DC, 5ms RTT)
+
+|3 nodes
+|< 1 ms
+|~5 ms (wait for 1 follower)
+
+|5 nodes
+|< 1 ms
+|~10 ms (wait for 2 followers)
+
+|===
+
+
+[source,bash]
+----
+# Check Raft cluster status
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+
+# Check leader identity
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound | grep "Role:"
+
+# Check election timer
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound | grep "Election timer:"
+----
+
+----
+# Example cluster status output
+0be3 (0be3 at tcp:192.168.1.10:6643)
+  Role: leader
+  Term: 45
+  Election timer: 1000
+  Log: [234, 5678]
+  Entries not yet committed: 0
+  Entries not yet applied: 0
+  Connections:
+    ->a1b2 at tcp:192.168.1.11:6643 (last msg 123ms ago)
+    ->c3d4 at tcp:192.168.1.12:6643 (last msg 456ms ago)
+  Servers:
+    0be3 (0be3 at tcp:192.168.1.10:6643) (self) next_index=5678 match_index=5677
+    a1b2 (a1b2 at tcp:192.168.1.11:6643) next_index=5678 match_index=5677
+    c3d4 (c3d4 at tcp:192.168.1.12:6643) next_index=5678 match_index=5676
+----
+
+*Workarounds:*
+
+* Deploy all Raft nodes in the same data center (or at least in the same metro area) to minimize write latency.
+* Use 3-node clusters unless you genuinely need to tolerate 2 simultaneous failures.
+* Monitor Raft cluster health continuously - a degraded cluster (one node down in a 3-node cluster) has zero fault tolerance.
+* If a Raft node falls too far behind, remove and re-add it rather than waiting for it to catch up.
+* Ensure reliable, low-latency networking between Raft nodes.
+
+
+[WARNING]
+====
+Never deploy a Raft cluster with nodes in different continents. The write latency will be too high for OVN to function properly. OVN generates many small writes to the SB database (chassis heartbeats, binding updates), and high write latency causes cascading delays.
+====
+
+
+'''
+
+== 3. Scale Considerations
+
+=== 3.1 Practical Scale Limits
+
+The following table provides practical scale limits based on real-world deployments and testing. These are guidelines, not hard limits. Your actual limits depend on hardware, workload, network topology, and OVN version.
+
+
+[cols="1,1,1,1,1",options="header"]
+|===
+|Resource
+|Small Deployment
+|Medium Deployment
+|Large Deployment
+|Tested Maximum
+
+|Logical Switches
+|< 100
+|100-500
+|500-2,000
+|~5,000
+
+|Logical Routers
+|< 20
+|20-100
+|100-500
+|~1,000
+
+|Logical Switch Ports
+|< 1,000
+|1,000-5,000
+|5,000-20,000
+|~50,000
+
+|ACL Rules (total)
+|< 500
+|500-2,000
+|2,000-10,000
+|~20,000
+
+|Logical Flows (SB DB)
+|< 50,000
+|50,000-200,000
+|200,000-1,000,000
+|~2,000,000
+
+|Chassis Count
+|< 20
+|20-100
+|100-500
+|~1,000
+
+|NAT Rules
+|< 100
+|100-500
+|500-2,000
+|~5,000
+
+|Load Balancer VIPs
+|< 50
+|50-200
+|200-1,000
+|~5,000
+
+|Address Sets
+|< 100
+|100-500
+|500-2,000
+|~5,000
+
+|Port Groups
+|< 50
+|50-200
+|200-500
+|~2,000
+
+|===
+
+
+[NOTE]
+.Key Concept
+====
+The "Tested Maximum" column represents what has been achieved in testing environments. Production environments should aim to stay below the "Large Deployment" numbers to maintain comfortable margins for growth and burst conditions.
+====
+
+
+=== 3.2 Limits per Red Hat Product
+
+Different Red Hat products have different scale profiles because they use OVN in different ways and have been tested to different levels.
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Scale Dimension
+|RHOSP 17.1
+|RHOSO (18+)
+|OCP 4.14+
+
+|Compute Nodes
+|500
+|500 (target)
+|500 (standard), 2000+ (with tuning)
+
+|VMs / Pods per Node
+|100+
+|100+
+|250 (default), 500 (tested)
+
+|Total VMs / Pods
+|10,000+
+|10,000+ (target)
+|120,000+ (tested)
+
+|Networks (Logical Switches)
+|3,000+
+|TBD
+|16,000+
+
+|Subnets per Network
+|10+
+|TBD
+|1 per namespace (typical)
+
+|Security Groups (ACL sources)
+|500+
+|TBD
+|NetworkPolicies: thousands
+
+|Floating IPs (DNAT)
+|3,000+
+|TBD
+|EgressIPs: 100s per namespace
+
+|Load Balancer VIPs
+|100+
+|TBD
+|Services: 10,000+ (tested)
+
+|OVN DB Cluster Size
+|3
+|3
+|3
+
+|===
+
+
+[NOTE]
+====
+"TBD" entries for RHOSO reflect that scale testing for RHOSO is ongoing. As RHOSO matures, these numbers will be updated. For customer-facing recommendations, refer to the latest Red Hat documentation.
+====
+
+
+=== 3.3 What Happens When You Hit Limits
+
+When an OVN deployment approaches or exceeds its scale limits, degradation is typically gradual rather than sudden. Here are the common symptoms and their causes:
+
+*Symptom: Slow port creation (seconds to minutes)*
+
+* *Cause:* `ovn-northd` is overloaded processing logical flows. Each new port triggers flow recomputation.
+* *Diagnosis:* Check `ovn-northd` stopwatch output for increasing processing times.
+* *Mitigation:* Reduce ACL count, simplify network topology, ensure dedicated resources for northd.
+
+*Symptom: Stale flows / inconsistent forwarding*
+
+* *Cause:* `ovn-controller` falling behind in processing SB database updates.
+* *Diagnosis:* Check `ovn-controller` log for "unreasonably long" processing warnings.
+* *Mitigation:* Reduce logical flow count, ensure adequate CPU on chassis nodes.
+
+*Symptom: Database leader elections / instability*
+
+* *Cause:* OVSDB Raft cluster under excessive write load, often from SB database updates.
+* *Diagnosis:* Check Raft cluster status for frequent leader changes or uncommitted entries.
+* *Mitigation:* Compact databases, ensure low-latency networking between Raft nodes, consider reducing chassis heartbeat frequency.
+
+*Symptom: High memory usage on OVN central nodes*
+
+* *Cause:* Large SB database (many logical flows) held entirely in memory.
+* *Diagnosis:* Check database file sizes and process memory usage.
+* *Mitigation:* Compact databases, reduce logical flow count, add memory to central nodes.
+
+*Symptom: Tunnel flapping*
+
+* *Cause:* BFD timeouts due to CPU contention on chassis nodes. `ovn-controller` is too busy processing flows to respond to BFD packets in time.
+* *Diagnosis:* Check BFD status and system CPU usage during flapping events.
+* *Mitigation:* Reduce per-chassis load, isolate `ovn-controller` CPU, increase BFD detection interval.
+
+'''
+
+== 4. Performance Considerations
+
+=== 4.1 Kernel Datapath vs DPDK
+
+Choosing between kernel datapath and DPDK is one of the most impactful performance decisions in an OVS/OVN deployment.
+
+
+[cols="1,1,1",options="header"]
+|===
+|Characteristic
+|Kernel Datapath
+|DPDK Datapath
+
+|*Throughput (64-byte packets)*
+|1-3 Mpps per core
+|10-30 Mpps per core
+
+|*Throughput (1500-byte packets)*
+|5-10 Gbps per core
+|20-40 Gbps per core
+
+|*Latency (average)*
+|50-100 microseconds
+|10-20 microseconds
+
+|*Latency (99th percentile)*
+|200-500 microseconds
+|20-50 microseconds
+
+|*CPU usage (idle)*
+|Near zero
+|100% per PMD core
+
+|*CPU usage (busy)*
+|Proportional to traffic
+|100% per PMD core (always)
+
+|*Memory model*
+|Standard kernel memory
+|Hugepages (2MB or 1GB)
+
+|*Debugging tools*
+|tcpdump, iptables, perf
+|OVS-specific tools only
+
+|*NIC requirements*
+|Any Linux-supported NIC
+|DPDK-compatible NIC
+
+|*Interrupt handling*
+|Yes (interrupt-driven)
+|No (poll-mode)
+
+|*Power consumption*
+|Lower (scales with load)
+|Higher (constant)
+
+|*VM interface type*
+|tap + virtio
+|vhost-user
+
+|*Container support*
+|Full
+|Limited
+
+|*Hardware offload*
+|TC flower offload
+|Partial (varies by NIC)
+
+|===
+
+
+*When to use kernel datapath:*
+
+* General-purpose cloud workloads (OpenStack, OpenShift)
+* Workloads that do not require line-rate performance
+* Environments where debugging with standard Linux tools is important
+* Container-heavy environments (DPDK support for containers is limited)
+* Environments where CPU efficiency matters more than raw throughput
+
+*When to use DPDK:*
+
+* Telco / NFV workloads requiring line-rate performance
+* Workloads with strict latency requirements (< 20 microseconds)
+* Environments with dedicated compute nodes where CPU cores can be reserved
+* High-throughput virtual appliances (firewalls, routers, load balancers)
+* Environments where predictable (non-variable) latency is critical
+
+
+[NOTE]
+.Key Concept
+====
+Kernel datapath is the right default for most deployments. DPDK should only be deployed when there is a specific, measured performance requirement that the kernel datapath cannot meet. The operational overhead of DPDK (dedicated cores, hugepages, limited debugging tools, restricted NIC support) is significant.
+====
+
+
+'''
+
+=== 4.2 OVN Control Plane Overhead
+
+OVN adds a control plane layer on top of OVS. This control plane has measurable overhead that affects how quickly network changes take effect.
+
+*Flow computation time:*
+
+When a logical network change is made (port creation, ACL addition, etc.), the change must propagate through several stages:
+
+----
+1. Change written to NB database              -> < 1 ms
+2. ovn-northd reads NB, computes logical flows -> 10 ms - 10 s (depends on scale)
+3. Logical flows written to SB database        -> 1 ms - 100 ms
+4. ovn-controller reads SB, computes OpenFlow  -> 10 ms - 5 s (depends on scale)
+5. OpenFlow rules installed in OVS             -> 1 ms - 1 s
+                                                  ________________
+Total time from API call to traffic flowing:      ~50 ms - 20 s
+----
+
+In a small deployment (100 ports, 50 ACLs), the total time from API call to traffic flowing is typically under 200ms. In a large deployment (5,000 ports, 2,000 ACLs), the total time can be 5-20 seconds.
+
+*Impact on port creation time:*
+
+Port creation time is one of the most visible metrics for customers. When a customer creates a VM in OpenStack or a pod in OpenShift, the time until the VM/pod has network connectivity includes OVN's processing time.
+
+[source,bash]
+----
+# Measure port creation time in OVN
+time sudo ovn-nbctl lsp-add switch1 port-test
+
+# Check how long until the port appears in SB database
+sudo ovn-sbctl list Port_Binding | grep port-test
+
+# Monitor ovn-northd processing time
+sudo ovn-appctl -t ovn-northd stopwatch/show
+----
+
+*Workarounds:*
+
+* Batch port creation operations (create multiple ports in a single OVSDB transaction).
+* Pre-create network infrastructure (switches, routers, ACLs) before workload deployment.
+* Monitor control plane latency and set alerts for degradation.
+* Ensure OVN central components (northd, databases) run on dedicated, high-performance nodes.
+
+'''
+
+=== 4.3 Conntrack Performance Impact
+
+Stateful ACLs in OVN use the Linux kernel's conntrack subsystem. Conntrack adds measurable overhead to packet processing.
+
+*Stateful vs stateless ACLs:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|ACL Type
+|First Packet
+|Subsequent Packets
+|Memory per Connection
+
+|Stateless
+|Fast (flow match only)
+|Same as first packet
+|None
+
+|Stateful
+|Slow (conntrack lookup + insert)
+|Moderate (conntrack lookup)
+|~300-400 bytes
+
+|===
+
+
+For the first packet of a new connection, a stateful ACL requires:
+
+. Hash computation on the packet's 5-tuple
+. Conntrack table lookup (hash table traversal)
+. New entry insertion if no match exists
+. Zone-based isolation check
+. Return to OVS with the conntrack state
+
+This adds approximately 1-5 microseconds per packet for the first packet of a connection, and 0.5-2 microseconds for subsequent packets. At high packet rates (millions of packets per second), this overhead is measurable.
+
+*Conntrack entry lookup time:*
+
+The conntrack table uses a hash table, so lookups are O(1) on average. However, hash collisions increase as the table fills up, degrading to O(n) in the worst case. At 80%+ table utilization, collision rates increase significantly.
+
+[source,bash]
+----
+# Check conntrack table utilization
+TOTAL=$(sudo sysctl -n net.netfilter.nf_conntrack_max)
+USED=$(sudo sysctl -n net.netfilter.nf_conntrack_count)
+echo "Conntrack usage: $USED / $TOTAL ($(( USED * 100 / TOTAL ))%)"
+
+# Check hash table bucket distribution
+sudo sysctl net.netfilter.nf_conntrack_buckets
+----
+
+*Zone overhead:*
+
+OVN uses conntrack zones to isolate connection tracking between logical networks. Each zone requires its own hash lookup. If a packet traverses multiple zones (for example, crossing from one logical switch to a logical router to another logical switch), multiple conntrack lookups are performed per packet.
+
+*Workarounds:*
+
+* Use stateless ACLs where possible (for traffic that does not need connection tracking).
+* In OVN, use `acl-log` and `reject` actions judiciously, as they create additional conntrack load.
+* Increase conntrack hash table size proportionally to the maximum entry count.
+* Monitor conntrack insert failure rates (indicates table full).
+
+[source,bash]
+----
+# Increase hash table size for better distribution
+sudo sysctl -w net.netfilter.nf_conntrack_buckets=131072
+
+# Check for conntrack insert failures
+sudo conntrack -S | grep insert_failed
+----
+
+'''
+
+=== 4.4 Geneve Encapsulation Overhead
+
+The CPU cost of Geneve encapsulation and decapsulation is often overlooked.
+
+*CPU cost per packet:*
+
+Geneve encapsulation requires:
+
+. Allocate space for outer headers (memory operation)
+. Construct outer Ethernet header (14 bytes)
+. Construct outer IP header (20 bytes, including checksum)
+. Construct outer UDP header (8 bytes, with optional checksum)
+. Construct Geneve header (8+ bytes, including options)
+. Update packet length fields
+
+Each encapsulation operation takes approximately 0.5-1 microsecond in software. Decapsulation is slightly faster (no checksum computation needed if outer UDP checksum is not verified).
+
+*Bandwidth impact:*
+
+The bandwidth overhead depends on the inner packet size:
+
+
+[cols="1,1,1",options="header"]
+|===
+|Inner Packet Size
+|Geneve Overhead
+|Bandwidth Overhead
+
+|64 bytes
+|58 bytes
+|90.6%
+
+|128 bytes
+|58 bytes
+|45.3%
+
+|256 bytes
+|58 bytes
+|22.7%
+
+|512 bytes
+|58 bytes
+|11.3%
+
+|1024 bytes
+|58 bytes
+|5.7%
+
+|1442 bytes
+|58 bytes
+|4.0%
+
+|===
+
+
+For small-packet workloads (DNS queries, VoIP, game traffic, ACK-heavy TCP flows), the bandwidth overhead is significant.
+
+*Hardware offload options:*
+
+Modern NICs can offload Geneve encapsulation/decapsulation to hardware, eliminating the CPU cost:
+
+* *TX offload:* NIC adds outer headers to outgoing packets.
+* *RX offload:* NIC strips outer headers from incoming packets.
+* *TSO/LRO with Geneve:* NIC handles TCP segmentation/reassembly for encapsulated packets.
+
+[source,bash]
+----
+# Check if NIC supports Geneve offload
+ethtool -k eth0 | grep -i geneve
+ethtool -k eth0 | grep tx-udp_tnl
+
+# Check offload statistics
+ethtool -S eth0 | grep -i "tunnel\|geneve\|encap"
+----
+
+----
+# Example output showing Geneve offload support
+tx-udp_tnl-segmentation: on
+tx-udp_tnl-csum-segmentation: on
+rx-udp_tnl-port-offload: on
+----
+
+'''
+
+=== 4.5 ACL Impact on Performance
+
+The way ACLs are implemented in OVN has a direct impact on flow table size and lookup performance.
+
+*Linear vs logarithmic lookup:*
+
+Each ACL rule generates one or more OpenFlow rules. If you have 100 ACL rules, OVN generates approximately 100 OpenFlow rules for ACL matching (plus conjunction flows for optimization). Packet matching against these rules can be:
+
+* *Linear (worst case):* The packet is checked against each rule sequentially. O(n) complexity.
+* *Logarithmic (with conjunction flows):* OVN uses conjunction flows to implement multi-dimensional matching efficiently. O(log n) or better complexity.
+
+*Conjunction flows:*
+
+OVN uses conjunction flows to optimize ACL matching. Instead of creating a separate flow for every combination of source x destination x port, conjunction flows allow multi-dimensional matching:
+
+----
+Without conjunction (O(n*m) flows):
+  src=10.0.0.1,dst=10.0.1.1,dport=80 -> allow
+  src=10.0.0.1,dst=10.0.1.2,dport=80 -> allow
+  src=10.0.0.2,dst=10.0.1.1,dport=80 -> allow
+  src=10.0.0.2,dst=10.0.1.2,dport=80 -> allow
+  (4 flows for 2 sources x 2 destinations)
+
+With conjunction (O(n+m) flows):
+  src=10.0.0.1 -> conjunction(1,1/3)
+  src=10.0.0.2 -> conjunction(1,1/3)
+  dst=10.0.1.1 -> conjunction(1,2/3)
+  dst=10.0.1.2 -> conjunction(1,2/3)
+  dport=80     -> conjunction(1,3/3)
+  conjunction(1) -> allow
+  (7 flows for 2 sources x 2 destinations)
+----
+
+The savings become dramatic at scale. For 100 sources x 100 destinations x 10 ports, conjunction reduces from 100,000 flows to 210 flows.
+
+*Address sets optimization:*
+
+OVN address sets group multiple IP addresses into a named set that can be referenced in ACLs. Address sets are implemented as conjunction flow dimensions, which is far more efficient than individual ACL rules per address:
+
+[source,bash]
+----
+# Create an address set
+sudo ovn-nbctl create Address_Set name=web_servers \
+  addresses='["10.0.0.1","10.0.0.2","10.0.0.3"]'
+
+# Use it in an ACL
+sudo ovn-nbctl acl-add switch1 to-lport 100 \
+  'ip4.src == $web_servers && tcp.dst == 80' allow-related
+----
+
+
+[NOTE]
+.Key Concept
+====
+Always use address sets and port groups in ACLs. Individual rules per IP address create flow table bloat that degrades performance. A single ACL with an address set of 100 IPs is orders of magnitude more efficient than 100 individual ACLs.
+====
+
+
+'''
+
+=== 4.6 NUMA Considerations
+
+Non-Uniform Memory Access (NUMA) architecture affects OVS/OVN performance, especially in DPDK mode.
+
+*PMD thread placement:*
+
+PMD threads should be pinned to CPU cores on the same NUMA node as the NIC they are polling. If a PMD thread runs on NUMA node 0 but polls a NIC on NUMA node 1, every memory access to NIC buffers crosses the NUMA interconnect, adding approximately 40-100 nanoseconds of latency per access.
+
+[source,bash]
+----
+# Check NUMA topology
+lscpu | grep NUMA
+numactl -H
+
+# Check which NUMA node a NIC is on
+cat /sys/class/net/eth0/device/numa_node
+
+# Check PMD thread CPU affinity
+sudo ovs-appctl dpif-netdev/pmd-rxq-show
+----
+
+----
+# Example NUMA topology
+NUMA node(s):        2
+NUMA node0 CPU(s):   0-15,32-47
+NUMA node1 CPU(s):   16-31,48-63
+
+# Example NIC NUMA node
+0
+
+# PMD threads should use CPUs from NUMA node 0 for this NIC
+----
+
+*Memory channel alignment:*
+
+DPDK memory allocations should be spread across all memory channels on the correct NUMA node. Misaligned memory allocations reduce memory bandwidth, which directly impacts packet processing throughput.
+
+*NIC queue to CPU affinity:*
+
+Each NIC receive queue should be assigned to a PMD thread on the same NUMA node. OVS-DPDK allows configuring which PMD thread handles which queue:
+
+[source,bash]
+----
+# Configure PMD CPU mask (example: cores 2,4,6,8 on NUMA node 0)
+sudo ovs-vsctl set Open_vSwitch . other_config:pmd-cpu-mask=0x154
+
+# Check queue-to-PMD assignment
+sudo ovs-appctl dpif-netdev/pmd-rxq-show
+----
+
+*Impact of misconfiguration:*
+
+
+[cols="1,1,1",options="header"]
+|===
+|Configuration
+|Throughput Impact
+|Latency Impact
+
+|Correct NUMA alignment
+|Baseline
+|Baseline
+
+|PMD on wrong NUMA node
+|-20% to -40%
+|+50% to +100%
+
+|Memory on wrong NUMA node
+|-10% to -30%
+|+20% to +50%
+
+|Both wrong
+|-30% to -60%
+|+100% to +200%
+
+|===
+
+
+[WARNING]
+====
+NUMA misconfiguration is one of the most common causes of poor DPDK performance. Always verify NUMA alignment before benchmarking or deploying production DPDK workloads.
+====
+
+
+'''
+
+== 5. MTU Considerations
+
+=== 5.1 Geneve Header Overhead
+
+Understanding the exact byte breakdown of overlay encapsulation is critical for correct MTU configuration.
+
+*Geneve encapsulation - detailed breakdown:*
+
+----
++===============================================+
+| OUTER ETHERNET HEADER                         |
+|   Destination MAC     : 6 bytes               |
+|   Source MAC          : 6 bytes               |
+|   EtherType (0x0800)  : 2 bytes               |
+|   Subtotal            : 14 bytes              |
++-----------------------------------------------+
+| OUTER IP HEADER                               |
+|   Version + IHL       : 1 byte                |
+|   DSCP + ECN          : 1 byte                |
+|   Total Length        : 2 bytes               |
+|   Identification      : 2 bytes               |
+|   Flags + Frag Offset : 2 bytes               |
+|   TTL                 : 1 byte                |
+|   Protocol (17=UDP)   : 1 byte                |
+|   Header Checksum     : 2 bytes               |
+|   Source IP           : 4 bytes               |
+|   Destination IP      : 4 bytes               |
+|   Subtotal            : 20 bytes              |
++-----------------------------------------------+
+| OUTER UDP HEADER                              |
+|   Source Port         : 2 bytes               |
+|   Destination Port    : 2 bytes (6081=Geneve) |
+|   Length              : 2 bytes               |
+|   Checksum            : 2 bytes               |
+|   Subtotal            : 8 bytes               |
++-----------------------------------------------+
+| GENEVE BASE HEADER                            |
+|   Ver + Opt Len + Flags: 2 bytes              |
+|   Protocol Type       : 2 bytes               |
+|   VNI                 : 3 bytes               |
+|   Reserved            : 1 byte                |
+|   Subtotal            : 8 bytes               |
++-----------------------------------------------+
+| GENEVE OPTIONS (OVN metadata)                 |
+|   Option Header       : 4 bytes               |
+|   Option Data (VNI)   : 4 bytes               |
+|   (Additional options): varies                |
+|   Subtotal (typical)  : 8 bytes               |
++===============================================+
+| TOTAL OVERHEAD        : 58 bytes              |
++===============================================+
+| INNER ETHERNET FRAME (original packet)        |
+|   Inner Ethernet Header: 14 bytes             |
+|   Inner IP Header      : 20 bytes             |
+|   Inner TCP Header     : 20 bytes (minimum)   |
+|   Payload              : variable             |
++===============================================+
+----
+
+*Effective MTU calculation:*
+
+----
+Effective MTU = Physical MTU - Geneve Overhead
+
+With standard 1500-byte physical MTU:
+  Effective MTU = 1500 - 58 = 1442 bytes
+
+With jumbo frames (9000-byte physical MTU):
+  Effective MTU = 9000 - 58 = 8942 bytes
+----
+
+
+[NOTE]
+.Key Concept
+====
+The effective MTU of 1442 bytes means that any workload sending packets larger than 1442 bytes will either be fragmented or dropped (depending on the DF bit setting). This is 58 bytes less than the standard 1500-byte MTU that most applications expect.
+====
+
+
+'''
+
+=== 5.2 VXLAN Header Overhead
+
+For comparison, VXLAN uses a simpler header with no options field:
+
+----
++===============================================+
+| OUTER ETHERNET HEADER          : 14 bytes     |
+| OUTER IP HEADER                : 20 bytes     |
+| OUTER UDP HEADER               : 8 bytes      |
+| VXLAN HEADER                   : 8 bytes      |
++===============================================+
+| TOTAL OVERHEAD                 : 50 bytes     |
++===============================================+
+----
+
+*Comparison table:*
+
+
+[cols="1,1,1,1",options="header"]
+|===
+|Encapsulation
+|Overhead
+|Effective MTU (1500 physical)
+|Effective MTU (9000 physical)
+
+|Geneve (OVN default)
+|58 bytes
+|1442 bytes
+|8942 bytes
+
+|VXLAN
+|50 bytes
+|1450 bytes
+|8950 bytes
+
+|GRE
+|42 bytes
+|1458 bytes
+|8958 bytes
+
+|No encapsulation
+|0 bytes
+|1500 bytes
+|9000 bytes
+
+|===
+
+
+The 8-byte difference between Geneve and VXLAN is the Geneve options field carrying OVN metadata. This is the cost of OVN's richer metadata support.
+
+'''
+
+=== 5.3 Path MTU Discovery (PMTUD)
+
+Path MTU Discovery is the mechanism by which endpoints determine the largest packet size that can traverse the network path without fragmentation.
+
+*How PMTUD works:*
+
+. The sender sets the DF (Don't Fragment) bit in the IP header
+. The sender sends a full-sized packet (typically 1500 bytes)
+. If any router in the path has a smaller MTU, it drops the packet and sends an ICMP "Fragmentation Needed" (Type 3, Code 4) message back to the sender
+. The ICMP message includes the MTU of the bottleneck link
+. The sender reduces its packet size and retries
+
+*PMTUD failures in overlay networks:*
+
+PMTUD frequently fails in overlay networks for several reasons:
+
+* *ICMP filtering:* Firewalls or security groups that block ICMP prevent "Fragmentation Needed" messages from reaching the sender. The sender never learns about the MTU restriction and continues sending oversized packets.
+
+* *ICMP going to the wrong host:* In an overlay network, the "router" that needs to fragment is the OVS on the hypervisor, not the VM's default gateway. The ICMP message is sent to the outer IP (hypervisor IP), not the inner IP (VM IP). OVN must translate this ICMP and deliver it to the VM, which adds complexity.
+
+* *Tunnel source not generating ICMP:* OVS does not always generate ICMP "Fragmentation Needed" messages when it cannot encapsulate a packet because it would exceed the physical MTU. In some configurations, the oversized packet is silently dropped.
+
+[source,bash]
+----
+# Check if PMTUD is working (from inside a VM/pod)
+ping -M do -s 1442 <destination>    # Should succeed
+ping -M do -s 1443 <destination>    # Should fail with "message too long"
+
+# Check for ICMP fragmentation-needed messages
+sudo tcpdump -i eth0 'icmp[0] == 3 and icmp[1] == 4'
+
+# Check DF bit behavior on OVS bridge
+sudo ovs-ofctl dump-flows br-int | grep "nw_frag"
+----
+
+*Common PMTUD failure symptoms:*
+
+* SSH works (small packets) but SCP/SFTP fails or hangs (large packets)
+* Web pages partially load (HTML loads but large images/CSS fail)
+* NFS mounts succeed but file operations hang
+* TCP connections establish but data transfer stalls at specific sizes
+
+
+[WARNING]
+====
+PMTUD failures are one of the most difficult networking problems to diagnose because the symptoms are inconsistent. Small transfers work; large transfers fail. Connection establishment (SYN/ACK, small packets) works; bulk data transfer fails. Always check MTU configuration when you see these patterns.
+====
+
+
+*Workarounds:*
+
+* Set the workload MTU to account for encapsulation overhead (1442 for Geneve with 1500 physical MTU).
+* Enable MSS clamping to reduce TCP segment size at the overlay boundary.
+* Ensure ICMP is not filtered between workloads and the overlay network.
+* Use jumbo frames on the physical network to accommodate encapsulation without reducing workload MTU.
+
+'''
+
+=== 5.4 Jumbo Frames
+
+Jumbo frames (MTU > 1500, typically 9000 bytes) are the cleanest solution to the MTU overhead problem. With jumbo frames on the physical network:
+
+* Geneve overhead (58 bytes) is a trivial fraction of the 9000-byte MTU
+* Workloads can use a standard 1500-byte MTU without any adjustments
+* No PMTUD issues, no fragmentation, no MSS clamping needed
+
+*Requirements for jumbo frames:*
+
+Jumbo frames must be enabled on every device in the physical network path:
+
+. Server NIC
+. All physical switches (access, aggregation, core)
+. All router interfaces
+. All VLAN interfaces
+. Bond interfaces (if using bonding)
+
+If any device in the path has a standard 1500-byte MTU, jumbo frames will be fragmented or dropped at that point.
+
+[source,bash]
+----
+# Check current MTU on all interfaces
+ip link show | grep mtu
+
+# Set MTU to 9000 on a physical interface
+sudo ip link set eth0 mtu 9000
+
+# Set MTU persistently (RHEL/CentOS, via nmcli)
+sudo nmcli connection modify eth0 802-3-ethernet.mtu 9000
+sudo nmcli connection up eth0
+
+# Verify end-to-end MTU
+ping -M do -s 8972 <remote-host>   # 8972 + 28 (IP+ICMP headers) = 9000
+----
+
+*Common mistakes with jumbo frames:*
+
+* *Forgetting one switch in the path:* If one out of ten switches in the path has a 1500-byte MTU, jumbo frames will be dropped at that switch. This causes intermittent, hard-to-diagnose failures.
+* *Bond MTU mismatch:* Both interfaces in a bond must have the same MTU, and the bond itself must be set to the same MTU.
+* *VLAN interface MTU:* VLAN sub-interfaces inherit the parent interface MTU, but must be explicitly set if the parent MTU changes after the VLAN interface is created.
+* *OVS bridge MTU:* The OVS bridge MTU must match the physical interface MTU. OVS does not auto-adjust bridge MTU.
+
+
+[NOTE]
+.Key Concept
+====
+Jumbo frames are the recommended approach for overlay networks. They eliminate the MTU overhead problem entirely. However, they require end-to-end configuration and validation, which is often the hardest part.
+====
+
+
+'''
+
+=== 5.5 Product-Specific MTU Defaults
+
+Each Red Hat product handles MTU configuration differently.
+
+*RHOSP (Red Hat OpenStack Platform):*
+
+* Default tenant network MTU: 1442 (accounts for Geneve overhead)
+* Default physical network MTU: 1500
+* Configured via: `NeutronGlobalPhysMtu` and `NeutronTenantNetworkMTU` in TripleO templates
+* DHCP advertises the tenant MTU to VMs automatically
+
+[source,bash]
+----
+# Check configured MTU in RHOSP
+sudo grep -r "mtu" /etc/neutron/ | grep -v ".pyc"
+openstack network show <network-name> -c mtu
+----
+
+*RHOSO (Red Hat OpenStack Services on OpenShift):*
+
+* Default behavior: similar to RHOSP, MTU is set per network
+* Configured via: OpenStackControlPlane and OpenStackDataPlaneNodeSet CRs
+* Network isolation templates define MTU per network type
+
+[source,bash]
+----
+# Check MTU in RHOSO
+oc get openstackcontrolplane -o yaml | grep -i mtu
+----
+
+*OCP (Red Hat OpenShift Container Platform):*
+
+* Default cluster network MTU: determined automatically based on the physical MTU minus overhead
+* OVN-Kubernetes calculates the overlay MTU as: physical MTU - 100 (conservative margin)
+* Configured via: cluster `Network.operator` CR
+
+[source,bash]
+----
+# Check OCP network MTU configuration
+oc get network.operator cluster -o yaml | grep -i mtu
+
+# Check actual MTU on a node
+oc debug node/<node-name> -- chroot /host ip link show
+----
+
+*MTU summary table:*
+
+
+[cols="1,1,1,1,1",options="header"]
+|===
+|Product
+|Physical MTU (default)
+|Overlay MTU (default)
+|Workload MTU (default)
+|Overhead Accounted
+
+|RHOSP 17.1
+|1500
+|1500
+|1442
+|58 bytes (Geneve)
+
+|RHOSO
+|1500
+|1500
+|1442
+|58 bytes (Geneve)
+
+|OCP 4.14+
+|1500
+|1400
+|1400
+|100 bytes (conservative)
+
+|OCP with jumbo
+|9000
+|8900
+|8900
+|100 bytes (conservative)
+
+|===
+
+
+[NOTE]
+====
+OpenShift uses a conservative 100-byte overhead margin instead of the exact 58-byte Geneve overhead. This provides a safety margin for additional encapsulation (e.g., IPsec encryption adds more overhead) and for potential future protocol changes.
+====
+
+
+'''
+
+== 6. Known Issues and Workarounds
+
+This section covers frequently encountered issues in production environments. Each entry includes the problem description, impact, workaround, and fix status.
+
+=== Issue 1: OVN Conntrack Zone Exhaustion
+
+*Description:* OVN assigns conntrack zones to isolate connection tracking between logical networks. The Linux kernel supports a maximum of 65,535 conntrack zones. In large deployments with many logical networks, zone IDs can be exhausted.
+
+*Impact:* When conntrack zones are exhausted, new logical networks cannot use stateful ACLs. Existing networks continue to work, but new networks fail to apply security policies correctly.
+
+*Workaround:*
+
+* Monitor conntrack zone usage: `sudo ovs-ofctl dump-flows br-int | grep ct_zone | sed 's/.*ct_zone=\([0-9]*\).*/\1/' | sort -un | wc -l`
+* Reduce the number of logical networks that use stateful ACLs
+* Consolidate logical networks where possible
+
+*Fixed in:* This is a fundamental kernel limit. Upstream OVN versions have improved zone allocation algorithms to reuse zones more efficiently.
+
+'''
+
+=== Issue 2: ovn-controller Memory Leak on Long-Running Systems
+
+*Description:* In some OVN versions, `ovn-controller` can slowly leak memory over weeks or months of operation. The leak is typically in the IDL (Interface Definition Language) monitoring layer.
+
+*Impact:* Gradual memory growth on compute nodes. If left unchecked, `ovn-controller` can consume several GB of memory and eventually be OOM-killed, causing network disruption on that host.
+
+*Workaround:*
+
+* Monitor `ovn-controller` RSS (Resident Set Size) over time
+* Periodically restart `ovn-controller` during maintenance windows
+* Upgrade to a version with the fix
+
+[source,bash]
+----
+# Monitor ovn-controller memory usage
+ps aux | grep ovn-controller | grep -v grep | awk '{print $6 " KB"}'
+
+# Set up monitoring alert (example threshold: 2 GB)
+RSS=$(ps aux | grep ovn-controller | grep -v grep | awk '{print $6}')
+if [ "$RSS" -gt 2097152 ]; then echo "ALERT: ovn-controller using $RSS KB"; fi
+----
+
+*Fixed in:* Various fixes across OVN 21.x - 23.x releases. Check the specific OVN version in your deployment.
+
+'''
+
+=== Issue 3: SB Database Growth Causing Leader Election Failures
+
+*Description:* When the Southbound database grows very large (> 1 GB) without compaction, Raft leader elections can fail because the full database snapshot is too large to transfer to other nodes within the election timeout.
+
+*Impact:* Database cluster instability. Repeated leader election failures can cause the entire SB database to become unavailable, which breaks all OVN networking.
+
+*Workaround:*
+
+* Enable periodic compaction of the SB database
+* Monitor SB database file size and alert when it exceeds 500 MB
+* If the database is already too large, manually compact on all nodes during a maintenance window
+
+[source,bash]
+----
+# Check SB database size
+ls -lh /etc/openvswitch/ovnsb_db.db
+
+# Compact the database
+sudo ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+
+# Verify size reduction
+ls -lh /etc/openvswitch/ovnsb_db.db
+----
+
+*Fixed in:* Automatic compaction improvements in OVN 22.03+.
+
+'''
+
+=== Issue 4: MAC Learning Flood on Large OVN Logical Switches
+
+*Description:* When a logical switch has many ports (> 1,000), MAC learning can cause broadcast storms during bulk VM/pod startup. Each new port sends traffic that must be flooded to all other ports until the MAC is learned.
+
+*Impact:* Brief periods of high bandwidth usage during bulk workload creation. In extreme cases, can cause temporary network congestion.
+
+*Workaround:*
+
+* Stage VM/pod creation (do not start hundreds simultaneously)
+* Ensure OVN port-security is configured (prevents MAC spoofing and reduces unnecessary flooding)
+* Use static MAC bindings where possible
+
+*Fixed in:* Improved MAC learning in OVN 21.06+ reduces flood scope.
+
+'''
+
+=== Issue 5: DPDK Port Hotplug Failures
+
+*Description:* When adding or removing DPDK ports (vhost-user interfaces) while `ovs-vswitchd` is running, the operation can fail if the DPDK EAL (Environment Abstraction Layer) does not properly initialize the new port.
+
+*Impact:* VM startup failures when the vhost-user socket cannot be created. Requires `ovs-vswitchd` restart to recover.
+
+*Workaround:*
+
+* Pre-create vhost-user ports before starting VMs
+* If hotplug fails, restart `ovs-vswitchd` (with traffic disruption considerations)
+* Check DPDK EAL logs for initialization errors
+
+[source,bash]
+----
+# Check for DPDK initialization errors
+sudo journalctl -u openvswitch-vswitchd | grep -i "EAL\|DPDK\|vhost"
+----
+
+*Fixed in:* Improved in OVS 3.0+ with better DPDK EAL lifecycle management.
+
+'''
+
+=== Issue 6: OpenShift OVN-Kubernetes Pod Startup Delay After Node Reboot
+
+*Description:* After a node reboot in OpenShift, the `ovnkube-node` pod must start and fully initialize before any other pods on the node can have network connectivity. If `ovnkube-node` initialization is slow (due to large logical flow count), other pods start without networking and enter `CrashLoopBackOff`.
+
+*Impact:* Slow pod recovery after node maintenance. Pods that depend on network connectivity at startup will fail and require multiple restart cycles.
+
+*Workaround:*
+
+* Drain pods from a node before rebooting
+* Increase pod liveness/readiness probe timeouts to account for OVN initialization time
+* Monitor `ovnkube-node` startup time and set alerts
+
+[source,bash]
+----
+# Check ovnkube-node startup time
+oc logs -n openshift-ovn-kubernetes ovnkube-node-<pod> -c ovn-controller | \
+  grep -i "recompute\|connected\|startup"
+
+# Check for pods stuck waiting for network
+oc get pods -A --field-selector spec.nodeName=<node> | grep -E "Init|CrashLoop"
+----
+
+*Fixed in:* Ongoing improvements in OCP 4.13+ with faster `ovn-controller` initialization.
+
+'''
+
+=== Issue 7: OVS Bond Failover Causes Brief Traffic Loss
+
+*Description:* When an OVS bond member fails and traffic switches to the remaining member, there is a brief period (100ms - 2s) of packet loss. The duration depends on the bond mode and LACP configuration.
+
+*Impact:* Brief connectivity disruption during NIC or cable failures. Most TCP connections survive, but some UDP traffic may be lost.
+
+*Workaround:*
+
+* Use `balance-tcp` bond mode with LACP for fastest failover
+* Tune LACP timeout (`lacp-time=fast` for 3-second detection)
+* Design applications to tolerate sub-second network interruptions
+
+[source,bash]
+----
+# Check bond status
+sudo ovs-appctl bond/show bond0
+
+# Set LACP fast timeout
+sudo ovs-vsctl set port bond0 other_config:lacp-time=fast
+----
+
+*Fixed in:* Not a bug - this is inherent to bond failover. Tuning minimizes the disruption window.
+
+'''
+
+=== Issue 8: OVN ACL Logging Causes Performance Degradation
+
+*Description:* Enabling ACL logging (`ovn-nbctl acl-add ... log`) on high-traffic rules can cause significant CPU usage and disk I/O on chassis nodes. Each matched packet generates a log entry.
+
+*Impact:* High CPU usage on compute nodes, disk space exhaustion, increased packet processing latency.
+
+*Workaround:*
+
+* Only enable ACL logging for debugging, not permanently
+* Use log rate limiting: `log(rate_limit=100)` to cap at 100 log entries per second
+* Use log meters to enforce aggregate rate limits
+* Direct ACL logs to a dedicated log file and rotate aggressively
+
+[source,bash]
+----
+# Add ACL with rate-limited logging
+sudo ovn-nbctl acl-add switch1 to-lport 100 \
+  'ip4.src == 10.0.0.0/24' allow-related \
+  -- set ACL .name="debug-rule" log=true severity=info
+
+# Check ACL log output
+sudo journalctl -u ovn-controller | grep "acl_log"
+----
+
+*Fixed in:* ACL log rate limiting available since OVN 20.06.
+
+'''
+
+=== Issue 9: Geneve Tunnel Flapping Under High CPU Load
+
+*Description:* When chassis nodes are under heavy CPU load, `ovn-controller` may not process BFD packets in time, causing BFD timeouts and tunnel flapping. The tunnel goes down and back up repeatedly.
+
+*Impact:* Traffic disruption on the affected tunnels. VMs/pods on the affected chassis experience intermittent connectivity.
+
+*Workaround:*
+
+* Increase BFD detection multiplier to tolerate more missed packets
+* Ensure `ovn-controller` and OVS daemons have CPU priority (nice, cgroups)
+* Reduce overall CPU load on the chassis
+* Consider increasing BFD intervals
+
+[source,bash]
+----
+# Increase BFD detection multiplier
+sudo ovs-vsctl set Interface genev_sys_6081 bfd:decay_min_rx=2000
+
+# Check for BFD flapping in logs
+sudo journalctl -u ovn-controller | grep -i "bfd.*down\|bfd.*up"
+----
+
+*Fixed in:* Not a bug - this is a resource contention issue. Proper CPU allocation prevents it.
+
+'''
+
+=== Issue 10: RHOSP/RHOSO DVR with OVN Routing Asymmetry
+
+*Description:* In deployments that migrated from ML2/OVS with DVR (Distributed Virtual Router) to OVN, some routing paths may not be fully distributed. OVN handles routing differently from DVR, and the migration does not always preserve the same traffic paths.
+
+*Impact:* Traffic that was previously routed locally (on the compute node) may now traverse a gateway chassis, increasing latency and bandwidth usage on the gateway.
+
+*Workaround:*
+
+* Verify routing paths after migration using `ovn-trace`
+* Ensure gateway chassis HA groups are properly configured
+* Adjust gateway chassis assignments to distribute routing load
+* Review the OVN routing model in the product documentation
+
+[source,bash]
+----
+# Trace a routing path to verify it is distributed
+sudo ovn-trace --ct=new switch1 \
+  'inport == "port1" && eth.src == aa:bb:cc:dd:ee:ff && eth.dst == 00:00:00:00:00:00 && ip4.src == 10.0.0.1 && ip4.dst == 10.0.1.1 && ip.ttl == 64'
+----
+
+*Fixed in:* OVN routing model is different by design. Documentation improvements in RHOSP 17.1 and RHOSO clarify the behavioral differences.
+
+'''
+
+== 7. Feature Gaps and Roadmap Context
+
+=== 7.1 Frequently Requested Features Not Yet Available
+
+Customers regularly ask about capabilities that OVN does not currently provide. Understanding these gaps helps you set correct expectations and suggest alternatives.
+
+*L7 network policies / application-aware firewalling:*
+
+Customers want to create ACLs based on HTTP methods, URL paths, or gRPC service names. OVN operates at L3/L4 only. For L7 policy enforcement, recommend a service mesh (Istio/Envoy in OpenShift) or a dedicated next-generation firewall appliance.
+
+*Multi-site / stretched OVN clusters:*
+
+Customers want to extend a single OVN deployment across multiple data centers with shared logical networks. OVN does not support multi-site natively. Each site should have its own OVN deployment, with inter-site connectivity handled by BGP, VPN, or federation mechanisms. OVN IC (Interconnection) provides some multi-site capabilities but is still maturing.
+
+*Advanced traffic engineering (MPLS, segment routing):*
+
+Telco customers often ask about MPLS label switching or segment routing for traffic engineering. OVS has experimental MPLS support, but OVN does not generate MPLS flows. For traffic engineering, recommend physical routers or dedicated virtual routers.
+
+*IPv6-only overlay (without IPv4 underlay):*
+
+While OVN supports IPv6 logical networks, the Geneve tunnel underlay typically requires IPv4. Full IPv6-only deployments (including the underlay) have limited support and testing. This is improving in newer OVN versions.
+
+*Bandwidth guarantees (minimum bandwidth QoS):*
+
+Customers want to guarantee a minimum bandwidth per VM or pod, not just cap the maximum. OVN does not support minimum bandwidth guarantees. For bandwidth guarantees, consider SR-IOV or physical NIC partitioning.
+
+*Distributed firewalling with stateful inspection at line rate:*
+
+Customers expect stateful ACLs to process traffic at line rate (10/25/40/100 Gbps). In practice, conntrack lookup adds per-packet overhead that reduces throughput compared to stateless forwarding. For line-rate stateful firewalling, consider hardware-accelerated solutions (SmartNIC offload).
+
+*Native integration with external BGP:*
+
+While OVN can be configured to work with external BGP speakers (via FRRouting or similar), it does not include native BGP support. The integration requires additional components and configuration.
+
+*Live migration of OVN logical networks:*
+
+Moving a logical network and all its ports from one OVN deployment to another (for data center migration or workload mobility) is not a supported operation. Each OVN deployment is independent.
+
+=== 7.2 Upstream Development Direction
+
+The OVN project is actively developing several features relevant to enterprise customers. Note that upstream development timelines are not guaranteed, and features may change or be delayed.
+
+*Active development areas:*
+
+* *Improved incremental processing:* Reducing the performance impact of `ovn-northd` recomputation by making more change types incrementally processable.
+* *Hardware offload:* Better support for offloading OVN logical flows to SmartNICs and DPUs, reducing CPU overhead for data plane forwarding.
+* *Scale improvements:* Ongoing work to reduce logical flow count per port, optimize SB database size, and improve `ovn-controller` startup time.
+* *OVN Interconnection (IC):* Maturing the multi-site interconnection feature for federated OVN deployments across multiple data centers.
+* *Stateless NAT:* Support for stateless NAT (no conntrack) for specific use cases where connection tracking is not needed.
+* *Improved observability:* Better metrics, tracing, and logging for operational monitoring.
+
+=== 7.3 Setting Customer Expectations
+
+When discussing future features with customers, follow these guidelines:
+
+* *Never commit to dates or versions.* Upstream development timelines can change. Product inclusion (in RHOSP, RHOSO, or OCP) happens on its own schedule after upstream stabilization.
+* *Distinguish upstream from product.* A feature landing in upstream OVN does not mean it will be immediately available in Red Hat products. Product inclusion requires testing, documentation, and support readiness.
+* *Recommend current alternatives.* If a customer needs a feature that is not available, recommend an alternative solution that works today rather than asking them to wait for a future release.
+* *File RFEs.* If a customer has a genuine need for a missing feature, file an RFE (Request for Enhancement) through the appropriate Red Hat process. Customer demand influences product roadmap prioritization.
+* *Point to upstream.* Customers who want to track upstream development can follow the OVN project on GitHub (ovn-org/ovn) and the OVS mailing lists.
+
+
+[NOTE]
+.Key Concept
+====
+The correct answer to "when will feature X be available?" is almost never a date. The correct answer is: "Here is how to file an RFE for this feature. In the meantime, here is how to accomplish your goal with the tools available today."
+====
+
+
+'''
+
+== 8. Exercises
+
+=== Exercise 1: Measure and Analyze Flow Scale Impact
+
+*Objective:* Understand the relationship between ACL count and logical flow count, and measure the impact on `ovn-controller` processing time.
+
+*Steps:*
+
+. Start with a clean OVN environment with one logical switch and 5 logical ports:
+
+[source,bash]
+----
+# Create logical switch and ports
+sudo ovn-nbctl ls-add scale-test
+for i in $(seq 1 5); do
+  sudo ovn-nbctl lsp-add scale-test port-$i
+  sudo ovn-nbctl lsp-set-addresses port-$i "00:00:00:00:00:0$i 10.0.0.$i"
+done
+----
+
+. Record the baseline logical flow count:
+
+[source,bash]
+----
+# Count logical flows
+echo "Baseline flows:"
+sudo ovn-sbctl count Logical_Flow
+
+# Record ovn-northd processing time
+sudo ovn-appctl -t ovn-northd stopwatch/show 2>/dev/null || echo "stopwatch not available"
+----
+
+. Add ACLs in batches and measure the impact:
+
+[source,bash]
+----
+# Add 10 ACLs
+for i in $(seq 1 10); do
+  sudo ovn-nbctl acl-add scale-test to-lport $(( 100 + i )) \
+    "ip4.src == 192.168.$i.0/24 && tcp.dst == $((8000 + i))" allow-related
+done
+
+echo "After 10 ACLs:"
+sudo ovn-sbctl count Logical_Flow
+
+# Add 50 more ACLs (60 total)
+for i in $(seq 11 60); do
+  sudo ovn-nbctl acl-add scale-test to-lport $(( 100 + i )) \
+    "ip4.src == 192.168.$i.0/24 && tcp.dst == $((8000 + i))" allow-related
+done
+
+echo "After 60 ACLs:"
+sudo ovn-sbctl count Logical_Flow
+
+# Add 40 more ACLs (100 total)
+for i in $(seq 61 100); do
+  sudo ovn-nbctl acl-add scale-test to-lport $(( 100 + i )) \
+    "ip4.src == 192.168.$i.0/24 && tcp.dst == $((8000 + i))" allow-related
+done
+
+echo "After 100 ACLs:"
+sudo ovn-sbctl count Logical_Flow
+----
+
+. Record the logical flow count at each step. Calculate the flows-per-ACL ratio. Is it linear?
+
+. Clean up:
+
+[source,bash]
+----
+sudo ovn-nbctl ls-del scale-test
+----
+
+*Expected observations:*
+
+* Logical flow count increases roughly linearly with ACL count, but with a multiplier based on port count.
+* With 5 ports and 100 ACLs, you should see several hundred to several thousand logical flows.
+* `ovn-northd` processing time increases measurably as ACL count grows.
+
+*Discussion questions:*
+
+* What would happen if you had 500 ports instead of 5?
+* How would using address sets change the flow count?
+* At what point would this become a production concern?
+
+'''
+
+=== Exercise 2: MTU Impact Investigation
+
+*Objective:* Verify the impact of Geneve encapsulation on effective MTU and understand how PMTUD works (or fails) in overlay networks.
+
+*Steps:*
+
+. Check the physical MTU of tunnel interfaces:
+
+[source,bash]
+----
+# Check physical interface MTU
+ip link show | grep -E "^[0-9]+:" | awk '{print $2, $(NF-2), $(NF-1), $NF}'
+
+# Check OVS bridge MTU
+sudo ovs-vsctl list Interface | grep -E "name|mtu|type" | head -30
+
+# Check Geneve tunnel interface MTU
+ip link show genev_sys_6081 2>/dev/null || echo "Geneve tunnel interface not found"
+----
+
+. Calculate the effective MTU:
+
+[source,bash]
+----
+# Get physical MTU
+PHYS_MTU=$(ip link show eth0 2>/dev/null | grep -o 'mtu [0-9]*' | awk '{print $2}')
+echo "Physical MTU: $PHYS_MTU"
+
+# Calculate Geneve overhead
+GENEVE_OVERHEAD=58
+EFFECTIVE_MTU=$(( PHYS_MTU - GENEVE_OVERHEAD ))
+echo "Geneve overhead: $GENEVE_OVERHEAD bytes"
+echo "Effective MTU for workloads: $EFFECTIVE_MTU bytes"
+----
+
+. If you have two hosts with OVN tunnels, test PMTUD:
+
+[source,bash]
+----
+# From a VM/pod, test maximum packet size
+# Replace <remote-ip> with the IP of a VM/pod on another host
+
+# This should succeed (within effective MTU)
+ping -M do -s $(( EFFECTIVE_MTU - 28 )) <remote-ip> -c 3
+
+# This should fail (exceeds effective MTU)
+ping -M do -s $(( EFFECTIVE_MTU - 27 )) <remote-ip> -c 3
+----
+
+. Check for fragmented packets:
+
+[source,bash]
+----
+# Monitor for fragmented packets on the physical interface
+sudo tcpdump -i eth0 '(ip[6:2] & 0x1fff) != 0 or (ip[6] & 0x20) != 0' -c 10
+----
+
+*Expected observations:*
+
+* With a 1500-byte physical MTU, the effective MTU is 1442 bytes.
+* Ping with payload of 1414 bytes (1414 + 8 ICMP + 20 IP = 1442) should succeed.
+* Ping with payload of 1415 bytes should fail if PMTUD is working, or the packet should be fragmented.
+* If ICMP is blocked, PMTUD will fail silently.
+
+*Discussion questions:*
+
+* What happens if the customer's physical network uses 1500 MTU and no one configured the workload MTU?
+* How would jumbo frames (9000 MTU) on the physical network change this situation?
+* What symptoms would a customer report if PMTUD is broken?
+
+'''
+
+=== Exercise 3: Database Health Assessment
+
+*Objective:* Learn to evaluate OVN database health, identify growth problems, and perform compaction.
+
+*Steps:*
+
+. Check database sizes and health:
+
+[source,bash]
+----
+# Check database file sizes
+echo "=== Database File Sizes ==="
+ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null || \
+ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
+echo "OVN databases not found in standard locations"
+
+# Check Raft cluster status (if clustered)
+echo "=== NB Cluster Status ==="
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound 2>/dev/null || \
+echo "NB cluster status not available"
+
+echo "=== SB Cluster Status ==="
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound 2>/dev/null || \
+echo "SB cluster status not available"
+----
+
+. Analyze database contents:
+
+[source,bash]
+----
+# Count records in key tables
+echo "=== NB Database Contents ==="
+for table in Logical_Switch Logical_Router Logical_Switch_Port ACL NAT Load_Balancer Address_Set; do
+  COUNT=$(sudo ovn-nbctl --no-headings --columns=_uuid list $table 2>/dev/null | wc -l)
+  echo "  $table: $COUNT"
+done
+
+echo "=== SB Database Contents ==="
+for table in Logical_Flow Port_Binding Chassis Datapath_Binding; do
+  COUNT=$(sudo ovn-sbctl --no-headings --columns=_uuid list $table 2>/dev/null | wc -l)
+  echo "  $table: $COUNT"
+done
+----
+
+. Perform compaction (if databases exist):
+
+[source,bash]
+----
+# Record size before compaction
+echo "=== Before Compaction ==="
+ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
+
+# Compact databases
+sudo ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact 2>/dev/null
+sudo ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact 2>/dev/null
+
+# Record size after compaction
+echo "=== After Compaction ==="
+ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
+----
+
+. Set up a simple monitoring check:
+
+[source,bash]
+----
+# Create a monitoring script concept
+echo "=== Health Check Summary ==="
+
+# Check: database size
+for DB in /etc/openvswitch/ovn*_db.db; do
+  if [ -f "$DB" ]; then
+    SIZE=$(stat -f %z "$DB" 2>/dev/null || stat -c %s "$DB" 2>/dev/null)
+    SIZE_MB=$(( SIZE / 1048576 ))
+    if [ "$SIZE_MB" -gt 500 ]; then
+      echo "WARNING: $DB is $SIZE_MB MB (threshold: 500 MB)"
+    else
+      echo "OK: $DB is $SIZE_MB MB"
+    fi
+  fi
+done
+
+# Check: conntrack table utilization
+MAX=$(sudo sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null || echo 0)
+COUNT=$(sudo sysctl -n net.netfilter.nf_conntrack_count 2>/dev/null || echo 0)
+if [ "$MAX" -gt 0 ]; then
+  PCT=$(( COUNT * 100 / MAX ))
+  if [ "$PCT" -gt 80 ]; then
+    echo "WARNING: Conntrack table at $PCT% ($COUNT / $MAX)"
+  else
+    echo "OK: Conntrack table at $PCT% ($COUNT / $MAX)"
+  fi
+fi
+----
+
+*Expected observations:*
+
+* Database size reduction after compaction depends on how much churn has occurred since last compaction.
+* In a fresh environment, compaction may show minimal reduction.
+* Raft cluster status shows leader, term, log index, and replication status.
+
+*Discussion questions:*
+
+* How often should databases be compacted in production?
+* What would you monitor in a dashboard for OVN database health?
+* What is the impact of running compaction during peak hours?
+
+'''
+
+=== Exercise 4: Conntrack Table Analysis and Tuning
+
+*Objective:* Understand conntrack table behavior, measure its impact, and practice tuning for production workloads.
+
+*Steps:*
+
+. Check current conntrack configuration:
+
+[source,bash]
+----
+echo "=== Conntrack Configuration ==="
+echo "Max entries: $(sudo sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null || echo 'N/A')"
+echo "Current count: $(sudo sysctl -n net.netfilter.nf_conntrack_count 2>/dev/null || echo 'N/A')"
+echo "Hash buckets: $(sudo sysctl -n net.netfilter.nf_conntrack_buckets 2>/dev/null || echo 'N/A')"
+echo ""
+echo "=== Conntrack Timeouts ==="
+sudo sysctl net.netfilter.nf_conntrack_tcp_timeout_established 2>/dev/null
+sudo sysctl net.netfilter.nf_conntrack_tcp_timeout_time_wait 2>/dev/null
+sudo sysctl net.netfilter.nf_conntrack_udp_timeout 2>/dev/null
+sudo sysctl net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
+----
+
+. Examine conntrack entries:
+
+[source,bash]
+----
+# List current conntrack entries (first 20)
+sudo conntrack -L 2>/dev/null | head -20
+
+# Count entries by protocol
+echo "=== Entries by Protocol ==="
+sudo conntrack -L 2>/dev/null | awk '{print $1}' | sort | uniq -c | sort -rn
+
+# Count entries by state (TCP)
+echo "=== TCP Entries by State ==="
+sudo conntrack -L -p tcp 2>/dev/null | grep -o 'state=[A-Z_]*' | sort | uniq -c | sort -rn
+----
+
+. Check for conntrack table pressure:
+
+[source,bash]
+----
+# Check conntrack statistics (drops, insert failures)
+echo "=== Conntrack Statistics ==="
+sudo conntrack -S 2>/dev/null
+
+# Check kernel messages for conntrack table full
+sudo dmesg | grep -i "conntrack" | tail -10
+----
+
+. Calculate memory usage:
+
+[source,bash]
+----
+MAX=$(sudo sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null || echo 262144)
+BYTES_PER_ENTRY=320  # approximate
+TOTAL_BYTES=$(( MAX * BYTES_PER_ENTRY ))
+TOTAL_MB=$(( TOTAL_BYTES / 1048576 ))
+
+echo "=== Conntrack Memory Estimation ==="
+echo "Max entries: $MAX"
+echo "Bytes per entry (approx): $BYTES_PER_ENTRY"
+echo "Maximum memory usage: $TOTAL_MB MB"
+echo ""
+
+# Calculate recommended settings for different workloads
+echo "=== Recommended Settings ==="
+echo "Light workload (< 100 connections):      max=65536,   memory=~20 MB"
+echo "Medium workload (100-1000 connections):   max=262144,  memory=~80 MB"
+echo "Heavy workload (1000-10000 connections):  max=1048576, memory=~320 MB"
+echo "Very heavy (NAT-intensive, Kubernetes):   max=2097152, memory=~640 MB"
+----
+
+. Practice tuning (read-only - do not apply in production without approval):
+
+[source,bash]
+----
+# Show the commands you would use to tune conntrack
+echo "=== Tuning Commands (for reference, do not run in production without approval) ==="
+echo ""
+echo "# Increase table size to 1M entries"
+echo "sudo sysctl -w net.netfilter.nf_conntrack_max=1048576"
+echo ""
+echo "# Increase hash buckets (should be max/4 to max/8)"
+echo "sudo sysctl -w net.netfilter.nf_conntrack_buckets=262144"
+echo ""
+echo "# Reduce TCP TIME_WAIT timeout (default 120s, reduce to 30s)"
+echo "sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_time_wait=30"
+echo ""
+echo "# Reduce UDP timeout (default 30s, reduce to 10s)"
+echo "sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=10"
+echo ""
+echo "# Make persistent in /etc/sysctl.d/99-conntrack.conf"
+echo "cat > /etc/sysctl.d/99-conntrack.conf << 'SYSCTL'"
+echo "net.netfilter.nf_conntrack_max = 1048576"
+echo "net.netfilter.nf_conntrack_buckets = 262144"
+echo "net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30"
+echo "net.netfilter.nf_conntrack_udp_timeout = 10"
+echo "SYSCTL"
+----
+
+*Expected observations:*
+
+* Default conntrack max is typically 262,144 on modern systems.
+* Most entries will be TCP in ESTABLISHED state on active systems.
+* The `conntrack -S` output shows drop counts - any non-zero `insert_failed` or `drop` values indicate table pressure.
+* `dmesg` messages about "nf_conntrack: table full" are a definitive sign of exhaustion.
+
+*Discussion questions:*
+
+* What is the impact of increasing `nf_conntrack_max` to 2 million entries?
+* How would you determine the right `nf_conntrack_max` value for a customer's workload?
+* Why does reducing `tcp_timeout_time_wait` help with conntrack exhaustion?
+* In a Kubernetes/OpenShift environment with many services using ClusterIP, how many conntrack entries would you expect per pod?
+
+'''
+
+== Summary
+
+Understanding limitations is not about being pessimistic - it is about being prepared. Every technology has boundaries, and the engineer who knows those boundaries can design better solutions, set accurate expectations, and resolve issues faster when they arise.
+
+*Key takeaways from this module:*
+
+. *OVS is a L2 switch.* It does not provide L3/L4 services natively. OVN adds that intelligence, but with its own overhead and limitations.
+
+. *Scale is not infinite.* OVN has practical limits on logical switches, ports, ACLs, and flows. Know the numbers for your product and stay below them.
+
+. *The control plane is the bottleneck.* Data plane performance (packet forwarding) is rarely the problem. Control plane performance (flow computation, database operations, revalidation) is where limits are hit first.
+
+. *MTU matters.* Geneve adds 58 bytes of overhead. If you do not account for this, you will have fragmentation, PMTUD failures, and mysterious connectivity issues.
+
+. *Conntrack is finite.* Stateful ACLs and NAT consume conntrack entries. In NAT-heavy environments (Kubernetes, OpenStack with floating IPs), conntrack exhaustion is a real risk.
+
+. *Databases need maintenance.* OVSDB grows without compaction. Monitor database sizes and compact regularly.
+
+. *DPDK is a tradeoff, not a free upgrade.* It provides higher throughput but at the cost of dedicated CPU cores, hugepages, and limited debugging tools.
+
+. *Set expectations, not promises.* When customers ask about missing features or future capabilities, provide honest assessments and current alternatives rather than speculative timelines.
+
+'''
+
+*Previous module:* xref:12-troubleshooting.adoc[Module 12 - Troubleshooting OVS and OVN]
+
+*Next module:* xref:14-references.adoc[Module 14 - References]
+
