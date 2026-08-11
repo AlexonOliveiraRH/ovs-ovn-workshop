@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 02 - Open vSwitch Architecture :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="01-networking-fundamentals.html">
+    <link rel="next" href="03-ovs-hands-on.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="02-ovs-architecture.html">OVS Architecture</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 02 - Open vSwitch Architecture</h1>
+<div class="sect1">
+<h2 id="_what_is_open_vswitch"><a class="anchor" href="#_what_is_open_vswitch"></a>What is Open vSwitch</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_definition_and_purpose"><a class="anchor" href="#_definition_and_purpose"></a>Definition and Purpose</h3>
+<div class="paragraph">
+<p><strong>Open vSwitch (OVS)</strong> is a production-quality, multilayer virtual switch designed to enable network automation through programmatic extension. It supports standard management interfaces and protocols, including OpenFlow, and is designed to be compatible with modern software-defined networking (SDN) architectures.</p>
+</div>
+<div class="paragraph">
+<p>In simpler terms: OVS is a software switch that runs inside a Linux host and connects virtual machines, containers, or other network endpoints. Unlike a basic switch, OVS is fully programmable - you can define exactly how every packet is handled, which makes it the foundation for modern cloud networking.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>A virtual switch does the same job as a physical switch - it forwards network traffic between connected devices - but it runs entirely in software inside a host operating system. OVS takes this concept further by adding programmability through OpenFlow, making it possible to implement complex network policies, overlays, and automation that would be impossible with a basic software bridge.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>The post office analogy:</strong> Think of OVS as a highly automated mail sorting facility. A traditional switch is like a simple mailbox - it receives letters and delivers them based on the address. OVS is like a modern sorting center with programmable rules: it can redirect mail, change addresses on envelopes, make copies, apply priority labels, tunnel mail through special routes, or drop certain mail entirely - all based on rules you define. And you can change those rules at any time without shutting down the facility.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_brief_history"><a class="anchor" href="#_brief_history"></a>Brief History</h3>
+<div class="paragraph">
+<p>Understanding where OVS came from helps explain why it exists and who stands behind it.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>2009:</strong> OVS was created at <strong>Nicira Networks</strong>, a startup founded by Martin Casado, Nick McKeown, and Scott Shenker - three pioneers of software-defined networking. Their vision was to decouple network control from the physical hardware and make networking as flexible as compute.</p>
+</li>
+<li>
+<p><strong>2009-2012:</strong> OVS matured rapidly, gaining OpenFlow support, kernel datapath acceleration, and production deployments at major cloud providers. It became the de facto virtual switch for OpenStack deployments.</p>
+</li>
+<li>
+<p><strong>2012:</strong> <strong>VMware acquired Nicira</strong> for $1.26 billion, recognizing the strategic value of software-defined networking. This acquisition brought OVS under VMware&#8217;s umbrella, though it remained an open-source project.</p>
+</li>
+<li>
+<p><strong>2016:</strong> OVS moved to the <strong>Linux Foundation</strong> as part of the Open vSwitch project, ensuring vendor-neutral governance and long-term community-driven development.</p>
+</li>
+<li>
+<p><strong>Today:</strong> OVS is a mature, battle-tested project deployed in thousands of production environments worldwide. It is the data plane for Red Hat OpenStack Platform, a core component of OVN (used in OpenShift), and the most widely deployed open-source virtual switch.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Even though VMware acquired Nicira, OVS has always been an open-source project with contributions from many companies, including Red Hat, VMware, Intel, and others. The move to the Linux Foundation reinforced this vendor-neutral status.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_why_not_just_use_linux_bridge"><a class="anchor" href="#_why_not_just_use_linux_bridge"></a>Why Not Just Use Linux Bridge</h3>
+<div class="paragraph">
+<p>Linux includes a built-in bridge (the <code>bridge</code> module), so a fair question is: why do we need OVS? The answer comes down to programmability, visibility, and scale.</p>
+</div>
+<div class="paragraph">
+<p><strong>Linux bridge</strong> is a simple L2 switch. It learns MAC addresses, forwards frames, and supports VLANs. It does its job well for simple setups. But it was designed for traditional networking, not cloud-scale software-defined networking.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVS</strong> was built from the ground up for the cloud era. Here is what it adds:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Feature</th>
+<th class="tableblock halign-left valign-top">Linux Bridge</th>
+<th class="tableblock halign-left valign-top">Open vSwitch</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OpenFlow support</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - full OpenFlow 1.0-1.5</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Programmable pipeline</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No - fixed forwarding logic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - multi-table flow pipeline</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Flow-based forwarding</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No - MAC learning only</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - match on any field, any action</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Tunnel encapsulation</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Limited</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VXLAN, Geneve, GRE, STT built-in</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DPDK support</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - userspace datapath for high performance</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>sFlow/NetFlow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - built-in monitoring</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port mirroring (SPAN)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Limited</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full SPAN/RSPAN support</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>QoS</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Basic tc integration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in per-port and per-flow QoS</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Centralized management</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes - OVSDB protocol for remote management</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Connection tracking</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Via netfilter/iptables</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Native conntrack integration in flow pipeline</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bonding</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Via Linux bonding driver</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in bond with LACP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Multi-node coordination</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB + tunnels enable distributed state</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>REST/JSON management</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB JSON-RPC protocol</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The fundamental difference is that Linux bridge makes forwarding decisions you cannot change (it always does MAC learning and forwarding), while OVS makes forwarding decisions based on rules you define. This programmability is what makes OVS suitable for cloud networking - you can implement any network policy, overlay, or service chain by writing the right flow rules.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>When Linux bridge is fine:</strong> Simple host networking, basic VM connectivity where no advanced network policies are needed, and environments where the overhead of OVS is not justified.</p>
+</div>
+<div class="paragraph">
+<p><strong>When you need OVS:</strong> Multi-tenant cloud environments, SDN deployments, overlay networks (VXLAN/Geneve), environments requiring fine-grained traffic control, telco/NFV workloads needing DPDK performance, and any deployment managed by OVN, OpenStack, or OpenShift.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_components"><a class="anchor" href="#_ovs_components"></a>OVS Components</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_architecture_overview"><a class="anchor" href="#_architecture_overview"></a>Architecture Overview</h3>
+<div class="paragraph">
+<p>OVS is not a single program - it is a system of cooperating components. Understanding how they fit together is essential for troubleshooting and for understanding how OVN works on top of OVS.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>                         Management Tools
+               +--------+--------+----------+
+               |        |        |          |
+          ovs-vsctl  ovs-ofctl  ovs-dpctl  ovs-appctl
+               |        |        |          |
+               v        v        |          v
+         +-----+--------+--------+---------+--------+
+         |                                           |
+         |             ovs-vswitchd                  |
+         |       (Main switching daemon)             |
+         |                                           |
+         |  +-------+  +----------+  +------------+ |
+         |  | Flow   |  | OpenFlow |  | DPDK/      | |
+         |  | Tables |  | Engine   |  | Userspace  | |
+         |  +-------+  +----------+  | Datapath   | |
+         |                           +------------+ |
+         +-----+-----+------------------------------+
+               |     |
+    OVSDB      |     | Netlink
+    Protocol   |     |
+               v     v
+    +----------+  +------------------+
+    | ovsdb-   |  | Kernel Module    |
+    | server   |  | (openvswitch.ko) |
+    | (Config  |  |                  |
+    |  DB)     |  | +-------------+  |
+    +----------+  | | Flow Cache  |  |
+                  | | (Datapath)  |  |
+                  | +-------------+  |
+                  +------------------+
+                         |
+                    Physical/Virtual
+                      NICs</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The two most important components are <code>ovs-vswitchd</code> (the brain that decides how to forward packets) and the kernel module <code>openvswitch.ko</code> (the fast path that actually moves packets at line speed). They communicate through Netlink. The <code>ovsdb-server</code> holds configuration data and communicates with <code>ovs-vswitchd</code> via the OVSDB protocol.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_vswitchd_the_switching_daemon"><a class="anchor" href="#_ovs_vswitchd_the_switching_daemon"></a>ovs-vswitchd - The Switching Daemon</h3>
+<div class="paragraph">
+<p><code>ovs-vswitchd</code> is the core of Open vSwitch. It is a userspace daemon that implements the actual switching logic. Think of it as the "brain" of OVS.</p>
+</div>
+<div class="paragraph">
+<p><strong>What it does:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Implements the OpenFlow flow tables - the rules that determine how packets are forwarded</p>
+</li>
+<li>
+<p>Communicates with the kernel datapath module via Netlink to install flow cache entries for fast-path forwarding</p>
+</li>
+<li>
+<p>Communicates with <code>ovsdb-server</code> to read bridge, port, and interface configuration</p>
+</li>
+<li>
+<p>Handles packets that do not match any cached flow in the kernel (the "slow path")</p>
+</li>
+<li>
+<p>Supports multiple datapath types:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>system</strong> (default): Uses the kernel module for fast-path forwarding. Packets that miss the kernel flow cache are sent up to userspace for <code>ovs-vswitchd</code> to process.</p>
+</li>
+<li>
+<p><strong>netdev</strong> (DPDK): Everything runs in userspace. The kernel module is not used for packet forwarding. Instead, DPDK poll-mode drivers (PMDs) handle packets entirely in userspace for maximum performance.</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>The restaurant analogy:</strong> <code>ovs-vswitchd</code> is like the head chef in a restaurant kitchen. When a new type of order comes in for the first time, the head chef figures out the recipe (processes the packet, decides the actions). Then the head chef writes the recipe on a card and hands it to the line cooks (installs a flow in the kernel cache). From that point on, the line cooks handle identical orders without bothering the head chef. The head chef only gets involved when a genuinely new order arrives.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check if ovs-vswitchd is running
+systemctl status ovs-vswitchd
+
+# Check the process directly
+ps aux | grep ovs-vswitchd
+
+# View the daemon's log
+journalctl -u ovs-vswitchd -f</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovsdb_server_the_configuration_database"><a class="anchor" href="#_ovsdb_server_the_configuration_database"></a>ovsdb-server - The Configuration Database</h3>
+<div class="paragraph">
+<p><code>ovsdb-server</code> is the database daemon that stores all OVS configuration. It uses the <strong>OVSDB protocol</strong> - a JSON-RPC based protocol defined in RFC 7047 - to communicate with clients.</p>
+</div>
+<div class="paragraph">
+<p><strong>What it stores (key tables in the Open_vSwitch schema):</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Table</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+<th class="tableblock halign-left valign-top">Example Data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Open_vSwitch</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Root table, global configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">System version, datapath types, external IDs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bridge</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Bridge definitions</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">br-int, br-ex, br-tun with their ports</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port definitions</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VLAN tags, bonding config, port type</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Interface</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Physical/virtual interfaces</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NIC names, MAC addresses, link state, statistics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Flow_Table</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Flow table configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Table names, overflow policy</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>QoS</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Quality of Service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rate limiting, queue assignments</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Mirror</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port mirroring</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source ports, destination port, filter</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Controller</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenFlow controller connections</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller address, connection mode</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Manager</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB management connections</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manager address for remote management</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NetFlow/sFlow/IPFIX</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Monitoring protocols</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Collector addresses, sampling rates</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>The filing cabinet analogy:</strong> <code>ovsdb-server</code> is the filing cabinet in an office. It does not make any decisions itself - it just stores information that other components need. When <code>ovs-vswitchd</code> starts, it reads the filing cabinet to learn what bridges and ports exist. When you run <code>ovs-vsctl add-br</code>, you are writing a new entry in the filing cabinet. The beauty is that multiple offices (OVN, remote management tools) can read from and write to the same filing cabinet using the OVSDB protocol.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check if ovsdb-server is running
+systemctl status ovsdb-server
+
+# View the database contents in raw JSON
+ovsdb-client dump Open_vSwitch
+
+# List all tables in the schema
+ovsdb-client list-tables Open_vSwitch
+
+# List all columns in a specific table
+ovsdb-client list-columns Open_vSwitch Bridge
+
+# Monitor changes to the database in real time
+ovsdb-client monitor Open_vSwitch Bridge
+
+# Check the database file location (typically /etc/openvswitch/conf.db)
+ls -la /etc/openvswitch/conf.db</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The OVSDB protocol is the same protocol that OVN uses for its Northbound and Southbound databases. Understanding OVSDB here will help you understand OVN later. The protocol supports transactions, monitoring, and locking - it is essentially a purpose-built database protocol for network configuration.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_kernel_module_openvswitch_ko_the_fast_path"><a class="anchor" href="#_kernel_module_openvswitch_ko_the_fast_path"></a>Kernel Module (openvswitch.ko) - The Fast Path</h3>
+<div class="paragraph">
+<p>The kernel module <code>openvswitch.ko</code> is the high-performance datapath that handles the majority of packet forwarding. It operates in kernel space, which means it can process packets without the overhead of copying them to userspace.</p>
+</div>
+<div class="paragraph">
+<p><strong>How the kernel datapath works:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  Packet arrives at NIC
+         |
+         v
+  +------+-------+
+  | Kernel Module |
+  | (datapath)    |
+  |               |
+  |  +---------+  |      Cache hit
+  |  | Exact   +--+----&gt; Execute cached actions
+  |  | Match   |  |      (forward, modify, drop)
+  |  | Cache   |  |
+  |  +---------+  |
+  |       |       |
+  |  Cache miss   |
+  |       |       |
+  |  +---------+  |      Cache miss (less specific)
+  |  | Megaflow+--+----&gt; Check megaflow table
+  |  | Cache   |  |
+  |  +---------+  |
+  |       |       |
+  |  Both miss    |
+  |       |       |
+  +------+-------+
+         |
+         | Netlink upcall
+         v
+  +------+-------+
+  | ovs-vswitchd |
+  | (userspace)  |
+  | Consults     |
+  | OpenFlow     |
+  | tables       |
+  +------+-------+
+         |
+         | Install cache entry
+         v
+  +------+-------+
+  | Kernel Module |
+  | (new cache   |
+  |  entry added)|
+  +-------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Flow caching - the key to performance:</strong></p>
+</div>
+<div class="paragraph">
+<p>The kernel module uses a two-level flow cache:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Exact-match cache (EMC / microflows):</strong> A hash table that matches on the exact combination of all packet header fields. If a packet matches, the cached actions are executed immediately with no further lookup. This is the fastest path.</p>
+</li>
+<li>
+<p><strong>Megaflow cache (datapath flows):</strong> A wildcard flow table that matches on a subset of packet fields. For example, a megaflow might say "all packets from subnet 10.0.0.0/24 going to port 80 - forward to port 3." This reduces the number of cache entries needed because one megaflow can cover thousands of exact matches.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p><strong>Why two levels?</strong> Imagine a library. The exact-match cache is like having the book already open on your desk - instant access. The megaflow cache is like knowing which shelf the book is on - fast, but you still need to reach for it. A cache miss (going to userspace) is like having to ask the librarian to find the book in the entire library system - it works, but it is slow.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View current kernel datapath flows (megaflow cache)
+ovs-dpctl dump-flows
+
+# View datapath statistics
+ovs-dpctl show
+
+# View flow cache hit/miss statistics
+ovs-appctl dpctl/show -s
+
+# View megaflow cache size
+ovs-appctl upcall/show</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If you see a high rate of kernel cache misses (upcalls to userspace), it means packets are hitting the slow path frequently. This indicates either a very diverse traffic pattern, insufficient megaflow coverage, or a misconfiguration. In production, you want the vast majority of packets to hit the kernel cache.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_vsctl_bridge_and_port_management"><a class="anchor" href="#_ovs_vsctl_bridge_and_port_management"></a>ovs-vsctl - Bridge and Port Management</h3>
+<div class="paragraph">
+<p><code>ovs-vsctl</code> is the primary command-line tool for configuring OVS. It communicates with <code>ovsdb-server</code> to create, modify, and delete bridges, ports, and interfaces.</p>
+</div>
+<div class="paragraph">
+<p><strong>Think of it as:</strong> The administrative interface for OVS - it is how you build and modify the switch topology.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show the current OVS configuration (most common command)
+ovs-vsctl show
+
+# Create a new bridge
+ovs-vsctl add-br br-int
+
+# Add a physical port to a bridge
+ovs-vsctl add-port br-int eth0
+
+# Add a port with a VLAN tag
+ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Delete a port
+ovs-vsctl del-port br-int eth0
+
+# Delete a bridge
+ovs-vsctl del-br br-int
+
+# List all bridges
+ovs-vsctl list-br
+
+# List all ports on a bridge
+ovs-vsctl list-ports br-int
+
+# Get a specific value
+ovs-vsctl get Interface eth0 statistics
+
+# Set external IDs (key-value metadata)
+ovs-vsctl set Interface eth0 external_ids:iface-id=my-vm-port
+
+# Create a VXLAN tunnel port
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan options:remote_ip=192.168.1.100
+
+# Create a Geneve tunnel port
+ovs-vsctl add-port br-int geneve0 -- set interface geneve0 type=geneve options:remote_ip=192.168.1.100
+
+# Create a patch port pair (connects two bridges)
+ovs-vsctl add-port br-int patch-to-ex -- set interface patch-to-ex type=patch options:peer=patch-to-int
+ovs-vsctl add-port br-ex patch-to-int -- set interface patch-to-int type=patch options:peer=patch-to-ex
+
+# Create a bond
+ovs-vsctl add-bond br-int bond0 eth0 eth1
+
+# View the full database record for a port
+ovs-vsctl list Port eth0
+
+# View the full database record for an interface
+ovs-vsctl list Interface eth0</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p><code>ovs-vsctl</code> commands modify the persistent database. Changes survive daemon restarts and host reboots. This is different from <code>ovs-ofctl</code>, which modifies in-memory flow tables that may or may not be persistent.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_ofctl_openflow_management"><a class="anchor" href="#_ovs_ofctl_openflow_management"></a>ovs-ofctl - OpenFlow Management</h3>
+<div class="paragraph">
+<p><code>ovs-ofctl</code> is the tool for interacting with the OpenFlow flow tables in <code>ovs-vswitchd</code>. This is where you define the actual packet forwarding rules.</p>
+</div>
+<div class="paragraph">
+<p><strong>Think of it as:</strong> The traffic engineer&#8217;s tool - while <code>ovs-vsctl</code> builds the roads, <code>ovs-ofctl</code> programs the traffic signals.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump all OpenFlow flows on a bridge
+ovs-ofctl dump-flows br-int
+
+# Dump flows in a specific table
+ovs-ofctl dump-flows br-int table=0
+
+# Add a flow: forward all traffic from port 1 to port 2
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=output:2"
+
+# Add a flow with priority: drop all ARP traffic (high priority overrides default)
+ovs-ofctl add-flow br-int "table=0,priority=100,arp,actions=drop"
+
+# Add a flow with MAC address matching
+ovs-ofctl add-flow br-int "table=0,dl_dst=00:11:22:33:44:55,actions=output:3"
+
+# Add a flow with IP matching
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.0/24,actions=output:4"
+
+# Add a flow that modifies the destination MAC
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.1,actions=mod_dl_dst:00:11:22:33:44:55,output:2"
+
+# Add a flow that resubmits to another table
+ovs-ofctl add-flow br-int "table=0,actions=resubmit(,1)"
+
+# Add a table-miss flow (lowest priority, catches unmatched packets)
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Delete all flows
+ovs-ofctl del-flows br-int
+
+# Delete flows matching specific criteria
+ovs-ofctl del-flows br-int "in_port=1"
+
+# Show the bridge's OpenFlow port numbers
+ovs-ofctl show br-int
+
+# Show OpenFlow port statistics
+ovs-ofctl dump-ports br-int
+
+# Show individual port statistics
+ovs-ofctl dump-ports br-int eth0
+
+# Monitor OpenFlow messages in real time (useful for debugging)
+ovs-ofctl monitor br-int
+
+# Show flow table descriptions
+ovs-ofctl dump-table-desc br-int</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When OVN is managing OVS, do not manually add or delete OpenFlow flows with <code>ovs-ofctl</code>. OVN&#8217;s <code>ovn-controller</code> manages the flow tables and will overwrite your manual changes. Use <code>ovs-ofctl dump-flows</code> for reading and debugging only.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_dpctl_datapath_management"><a class="anchor" href="#_ovs_dpctl_datapath_management"></a>ovs-dpctl - Datapath Management</h3>
+<div class="paragraph">
+<p><code>ovs-dpctl</code> interacts with the kernel datapath module directly. It is most useful for viewing the kernel-level flow cache and understanding what is happening in the fast path.</p>
+</div>
+<div class="paragraph">
+<p><strong>Think of it as:</strong> The inspection tool for the engine room - you rarely modify things here, but you look here to understand performance.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all datapaths and their ports
+ovs-dpctl show
+
+# Dump all kernel datapath flows (the megaflow cache)
+ovs-dpctl dump-flows
+
+# Dump flows with statistics
+ovs-dpctl dump-flows -s
+
+# Show datapath statistics
+ovs-dpctl show -s
+
+# Delete all datapath flows (forces relearning - use with caution)
+ovs-dpctl del-flows
+
+# Add a datapath (rarely needed - ovs-vswitchd handles this)
+ovs-dpctl add-dp system@ovs-system</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p><code>ovs-dpctl</code> shows the datapath flows, which are the cached entries the kernel uses for fast forwarding. These are different from the OpenFlow flows you see with <code>ovs-ofctl</code>. A single OpenFlow flow can produce many datapath flows (one for each unique traffic pattern matching that OpenFlow rule).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_appctl_runtime_management"><a class="anchor" href="#_ovs_appctl_runtime_management"></a>ovs-appctl - Runtime Management</h3>
+<div class="paragraph">
+<p><code>ovs-appctl</code> sends commands to running OVS daemons (primarily <code>ovs-vswitchd</code>) to query runtime state, adjust logging, or trigger specific behaviors. It communicates via Unix domain sockets.</p>
+</div>
+<div class="paragraph">
+<p><strong>Think of it as:</strong> The control panel for the running daemons - it lets you peek inside the engine while it is running and adjust knobs without restarting.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all available commands
+ovs-appctl list-commands
+
+# Show the number of revalidator and handler threads
+ovs-appctl upcall/show
+
+# Trace a packet through the flow tables (essential for debugging)
+ovs-appctl ofproto/trace br-int in_port=1,dl_src=00:11:22:33:44:55,dl_dst=00:66:77:88:99:aa,dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80
+
+# Show bridge memory usage
+ovs-appctl memory/show
+
+# Show coverage counters (performance metrics)
+ovs-appctl coverage/show
+
+# Change log level at runtime (no restart needed)
+ovs-appctl vlog/set dpif:dbg
+ovs-appctl vlog/set ofproto:dbg
+
+# Show current log levels
+ovs-appctl vlog/list
+
+# Force datapath flow revalidation
+ovs-appctl revalidator/purge
+
+# Show learned MAC addresses on a bridge
+ovs-appctl fdb/show br-int
+
+# Show LACP status for a bond
+ovs-appctl bond/show bond0
+
+# Show DPDK interface statistics (if using DPDK)
+ovs-appctl dpif-netdev/pmd-stats-show</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>ofproto/trace</code> command is one of the most powerful debugging tools in OVS. It simulates a packet going through the OpenFlow pipeline and shows you exactly which flows it matches, which actions are taken, and where the packet ends up - all without sending a real packet. Master this command and you can debug almost any OVS forwarding issue.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_packet_processing_pipeline"><a class="anchor" href="#_ovs_packet_processing_pipeline"></a>OVS Packet Processing Pipeline</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_the_big_picture"><a class="anchor" href="#_the_big_picture"></a>The Big Picture</h3>
+<div class="paragraph">
+<p>When a packet arrives at an OVS bridge, it goes through a well-defined pipeline. Understanding this pipeline is critical for troubleshooting and for understanding how OVN programs OVS.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  Packet arrives at OVS port
+         |
+         v
+  +------+-------------------+
+  |    Table 0 (Ingress)     |
+  |  Match against all flows |
+  |  in priority order       |
+  +------+-------------------+
+         |
+    +----+----+
+    | Match?  |
+    +----+----+
+    Yes  |    No (table-miss)
+    |    |         |
+    v    |         v
+  Execute|    table-miss flow
+  actions|    (if defined)
+    |    |         |
+    +----+---------+
+         |
+         v
+  Actions may include:
+  - output:N         (send to port N)
+  - drop              (discard packet)
+  - resubmit(,T)     (go to table T)
+  - mod_dl_dst:MAC   (change dest MAC)
+  - set_field:...    (modify any field)
+  - normal            (traditional L2 learning)
+  - controller        (send to OpenFlow controller)
+  - group:N           (apply group actions)
+         |
+         v (if resubmit)
+  +------+-------------------+
+  |    Table 1               |
+  |  Same matching process   |
+  +------+-------------------+
+         |
+         v (if resubmit)
+  +------+-------------------+
+  |    Table 2               |
+  |  Same matching process   |
+  +------+-------------------+
+         |
+         v (and so on...)
+  +------+-------------------+
+  |    Table N               |
+  |  Final actions executed  |
+  +------+-------------------+
+         |
+         v
+  Packet leaves OVS port</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The packet processing pipeline is a series of flow tables chained together using <code>resubmit</code> actions. A packet starts at table 0 and may be sent to table 1, then table 2, and so on. Each table can match on different criteria and perform different actions. This multi-table pipeline is what makes OVS so flexible - you can decompose complex forwarding logic into stages, just like stages in a factory assembly line.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_flow_table_hierarchy"><a class="anchor" href="#_flow_table_hierarchy"></a>Flow Table Hierarchy</h3>
+<div class="paragraph">
+<p>OVS supports up to 255 flow tables (table 0 through table 254). Each table operates independently and a packet can be sent from one table to any other using the <code>resubmit</code> action.</p>
+</div>
+<div class="paragraph">
+<p><strong>How tables are typically used:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Table</th>
+<th class="tableblock halign-left valign-top">Typical Purpose</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ingress classification</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Identify the source port and VLAN, normalize headers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1-9</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pre-processing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Validate packets, apply ingress ACLs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10-19</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L2 forwarding</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MAC-based forwarding decisions</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">20-29</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L3 routing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP-based routing decisions</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">30-39</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Post-processing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Apply egress ACLs, modify headers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">40+</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Output</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Final forwarding to destination port</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>These table assignments are conventions, not requirements. Different deployments use different table numbering. OVN, for example, uses a very specific table layout for its ingress and egress pipelines. Always check the actual flows with <code>ovs-ofctl dump-flows</code> rather than assuming table assignments.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># See which tables have flows
+ovs-ofctl dump-flows br-int | grep "table=" | sed 's/.*table=\([0-9]*\).*/\1/' | sort -n | uniq -c
+
+# Example: a multi-table pipeline
+# Table 0: classify by input port
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=resubmit(,10)"
+ovs-ofctl add-flow br-int "table=0,in_port=2,actions=resubmit(,10)"
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Table 10: L2 forwarding
+ovs-ofctl add-flow br-int "table=10,dl_dst=00:00:00:00:00:01,actions=output:1"
+ovs-ofctl add-flow br-int "table=10,dl_dst=00:00:00:00:00:02,actions=output:2"
+ovs-ofctl add-flow br-int "table=10,priority=0,actions=drop"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_openflow_match_fields"><a class="anchor" href="#_openflow_match_fields"></a>OpenFlow Match Fields</h3>
+<div class="paragraph">
+<p>Every OpenFlow flow rule has a match portion that specifies which packets the rule applies to. Here are the most commonly used match fields:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Field</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ingress port number</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port=1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source MAC address</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src=00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Destination MAC address</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_dst=00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_type</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EtherType</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_type=0x0800</code> (IPv4)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_vlan</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VLAN ID</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_vlan=100</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>dl_type=0x0806</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>dl_type=0x0800</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ipv6</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>dl_type=0x86dd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ipv6</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source IP address (with CIDR)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src=10.0.0.0/24</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Destination IP address (with CIDR)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_dst=192.168.1.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_proto</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP protocol number</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_proto=6</code> (TCP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>ip,nw_proto=6</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>udp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>ip,nw_proto=17</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>udp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>icmp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shorthand for <code>ip,nw_proto=1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>icmp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_src</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TCP/UDP source port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_src=80</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TCP/UDP destination port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_dst=443</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp_flags</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TCP flags</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp_flags=+syn</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct_state</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Connection tracking state</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct_state=+est+trk</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_id</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tunnel ID (VNI)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_id=0x100</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_src</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tunnel source IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_src=192.168.1.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tunnel destination IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tun_dst=192.168.1.2</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>metadata</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pipeline metadata register</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>metadata=0x1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>reg0</code>-<code>reg15</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">General-purpose registers</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>reg0=0x1</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Match fields can be combined to create very specific rules. For example, <code>tcp,nw_src=10.0.0.0/24,tp_dst=80</code> matches TCP traffic from the 10.0.0.0/24 subnet going to port 80. The more specific the match, the higher the precision of your forwarding policy.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_openflow_actions"><a class="anchor" href="#_openflow_actions"></a>OpenFlow Actions</h3>
+<div class="paragraph">
+<p>When a packet matches a flow rule, the associated actions are executed. Actions tell OVS what to do with the packet.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Action</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>output:N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send packet to port N</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=output:3</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>drop</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Discard the packet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=drop</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>normal</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Use traditional L2 learning/forwarding</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=normal</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flood</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send to all ports except ingress</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=flood</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>controller</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send to OpenFlow controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=controller</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_dl_src:MAC</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify source MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_dl_src:00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_dl_dst:MAC</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify destination MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_dl_dst:00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_nw_src:IP</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify source IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_nw_src:10.0.0.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_nw_dst:IP</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify destination IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_nw_dst:10.0.0.2</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_tp_src:PORT</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify source port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_tp_src:8080</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_tp_dst:PORT</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify destination port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_tp_dst:80</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_vlan_vid:VID</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set VLAN tag</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=mod_vlan_vid:100</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>strip_vlan</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Remove VLAN tag</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=strip_vlan</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>push_vlan:0x8100</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Push a VLAN header</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=push_vlan:0x8100</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>set_field:V&#8594;F</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set any field to a value</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=set_field:100&#8594;tun_id</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resubmit(,T)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Resubmit to table T</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=resubmit(,1)</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct(&#8230;&#8203;)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Connection tracking</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=ct(commit)</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>group:N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Execute group N actions</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=group:1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>move:F1&#8594;F2</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Copy one field to another</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=move:NXM_OF_ETH_SRC[]&#8594;NXM_OF_ETH_DST[]</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>load:V&#8594;F</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Load a value into a field</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=load:0x1&#8594;NXM_NX_REG0[]</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>conjunction(id,k/n)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Part of a conjunctive match</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=conjunction(1,1/2)</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Example: NAT-like flow - rewrite destination IP and MAC, then forward
+ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.100,actions=mod_dl_dst:00:aa:bb:cc:dd:ee,mod_nw_dst:192.168.1.10,output:5"
+
+# Example: VLAN tagging on ingress
+ovs-ofctl add-flow br-int "table=0,in_port=1,actions=mod_vlan_vid:100,resubmit(,1)"
+
+# Example: VLAN stripping on egress
+ovs-ofctl add-flow br-int "table=1,dl_vlan=100,dl_dst=00:11:22:33:44:55,actions=strip_vlan,output:1"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_flow_priority_and_matching_order"><a class="anchor" href="#_flow_priority_and_matching_order"></a>Flow Priority and Matching Order</h3>
+<div class="paragraph">
+<p>When a packet enters a flow table, OVS evaluates it against all flows in that table and selects the one with the <strong>highest priority</strong> that matches.</p>
+</div>
+<div class="paragraph">
+<p><strong>Rules:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Priority ranges from 0 to 65535.</strong> Higher numbers mean higher priority.</p>
+</li>
+<li>
+<p><strong>Default priority is 32768</strong> if not specified.</p>
+</li>
+<li>
+<p>If multiple flows match, the <strong>highest priority wins.</strong></p>
+</li>
+<li>
+<p>If multiple flows with the same priority match, the result is <strong>undefined</strong> (this is a bug in your flow rules).</p>
+</li>
+<li>
+<p>If <strong>no flow matches</strong> and no table-miss flow exists, the packet is <strong>dropped.</strong></p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Table-miss flow: catch anything that does not match a higher-priority rule
+ovs-ofctl add-flow br-int "table=0,priority=0,actions=drop"
+
+# Specific flow: high priority for SSH traffic
+ovs-ofctl add-flow br-int "table=0,priority=100,tcp,tp_dst=22,actions=output:1"
+
+# General flow: medium priority for all IP traffic
+ovs-ofctl add-flow br-int "table=0,priority=50,ip,actions=output:2"
+
+# In this example:
+# - SSH traffic (TCP port 22) matches priority 100 -&gt; goes to port 1
+# - Other IP traffic matches priority 50 -&gt; goes to port 2
+# - Non-IP traffic matches priority 0 -&gt; gets dropped</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>A common mistake is forgetting the table-miss flow. Without it, packets that match no flow in a table are silently dropped. When troubleshooting, always check if a table-miss flow exists: <code>ovs-ofctl dump-flows br-int table=0 | grep priority=0</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_kernel_fast_path_and_flow_caching"><a class="anchor" href="#_kernel_fast_path_and_flow_caching"></a>Kernel Fast Path and Flow Caching</h3>
+<div class="paragraph">
+<p>The kernel fast path is what makes OVS perform at near-wire speed. Understanding the caching mechanism helps you diagnose performance problems.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  Packet #1 (TCP SYN from 10.0.0.1:12345 to 10.0.0.2:80)
+  |
+  +-&gt; Kernel EMC: MISS
+  +-&gt; Kernel megaflow: MISS
+  +-&gt; Upcall to ovs-vswitchd (SLOW PATH)
+      |
+      +-&gt; Match in OpenFlow tables
+      +-&gt; Determine actions
+      +-&gt; Install megaflow in kernel:
+          "ip,nw_src=10.0.0.0/24,nw_dst=10.0.0.2,tcp,tp_dst=80
+           -&gt; actions: output:5"
+      +-&gt; Also install EMC entry for exact match
+      +-&gt; Forward the original packet
+
+  Packet #2 (TCP ACK from 10.0.0.3:54321 to 10.0.0.2:80)
+  |
+  +-&gt; Kernel EMC: MISS (different src IP and port)
+  +-&gt; Kernel megaflow: HIT (matches nw_src=10.0.0.0/24, nw_dst=10.0.0.2, tp_dst=80)
+  +-&gt; Execute cached actions: output:5 (FAST PATH - no userspace involved)
+
+  Packet #3 (TCP ACK from 10.0.0.1:12345 to 10.0.0.2:80, same as #1)
+  |
+  +-&gt; Kernel EMC: HIT (exact same 5-tuple)
+  +-&gt; Execute cached actions: output:5 (FASTEST PATH)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Performance implications:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Path</th>
+<th class="tableblock halign-left valign-top">Latency</th>
+<th class="tableblock halign-left valign-top">When It Happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EMC hit</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">~1 microsecond</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Same exact flow seen again</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Megaflow hit</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">~2-5 microseconds</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Similar flow matching a wildcard rule</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Userspace upcall</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">~100+ microseconds</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">New flow never seen before</p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check cache hit rates
+ovs-appctl dpctl/show -s
+
+# Look for "lost" packets (packets dropped because userspace was too busy)
+ovs-appctl upcall/show
+
+# View the number of kernel datapath flows
+ovs-dpctl dump-flows | wc -l
+
+# Check if the EMC is enabled
+ovs-appctl dpif-netdev/pmd-stats-show  # (DPDK only)</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In a healthy OVS deployment, 99%+ of packets should hit the kernel cache (either EMC or megaflow). If you see a high upcall rate, it usually means either the traffic pattern is very diverse (many unique flows), or the megaflow cache is being too specific (creating too many entries instead of wildcarding).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_bridge_types"><a class="anchor" href="#_ovs_bridge_types"></a>OVS Bridge Types</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_system_bridge"><a class="anchor" href="#_system_bridge"></a>System Bridge</h3>
+<div class="paragraph">
+<p>A system bridge is the standard OVS bridge type. It uses the kernel datapath (<code>system@ovs-system</code>) for packet forwarding.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a system bridge (default type)
+ovs-vsctl add-br br-int
+
+# Verify the bridge type
+ovs-vsctl get bridge br-int datapath_type
+# Output: ""   (empty string means "system" - the default)
+
+# Show the bridge
+ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>When you create a system bridge, OVS automatically creates an "internal" port with the same name as the bridge. This internal port has a corresponding Linux network interface that the host can use to send and receive traffic through the bridge.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_internal_ports"><a class="anchor" href="#_internal_ports"></a>Internal Ports</h3>
+<div class="paragraph">
+<p>An internal port is a virtual network interface that exists only within OVS. It creates a corresponding Linux network interface that the host&#8217;s network stack can use. The bridge&#8217;s default port is always an internal port.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># The bridge itself is an internal port
+ip addr show br-int
+
+# Create an additional internal port (useful for assigning an IP to a VLAN)
+ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Assign an IP address to the internal port
+ip addr add 10.0.100.1/24 dev vlan100
+ip link set vlan100 up</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Internal ports bridge the gap between OVS and the host&#8217;s network stack. They allow the host to participate in OVS networking - for example, to serve as a gateway or to access management traffic on a specific VLAN.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_patch_ports"><a class="anchor" href="#_patch_ports"></a>Patch Ports</h3>
+<div class="paragraph">
+<p>Patch ports connect two OVS bridges together. They always come in pairs - one port on each bridge, linked to its peer.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  +-------------+     Patch Pair      +-------------+
+  |   br-int    |                     |   br-ex     |
+  |             |                     |             |
+  |  patch-ex --+---------------------+-- patch-int |
+  |             |                     |             |
+  +-------------+                     +-------------+</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a patch port pair connecting br-int and br-ex
+ovs-vsctl add-port br-int patch-to-ex -- set interface patch-to-ex type=patch options:peer=patch-to-int
+ovs-vsctl add-port br-ex patch-to-int -- set interface patch-to-int type=patch options:peer=patch-to-ex
+
+# Verify the patch connection
+ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Why use patch ports instead of a single bridge?</strong> Patch ports let you isolate traffic domains and apply different flow rules on each bridge. In OpenStack and OVN deployments, <code>br-int</code> (integration bridge) handles internal VM traffic and <code>br-ex</code> (external bridge) handles external/provider traffic. Patch ports connect them while keeping the flow pipelines separate.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Patch port traffic stays entirely within OVS - it never touches the kernel network stack. This makes them more efficient than using a veth pair to connect two bridges.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_bond_ports"><a class="anchor" href="#_bond_ports"></a>Bond Ports</h3>
+<div class="paragraph">
+<p>Bond ports aggregate multiple physical interfaces into a single logical port for redundancy and/or increased bandwidth.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a bond with two interfaces
+ovs-vsctl add-bond br-int bond0 eth0 eth1
+
+# Create a bond with LACP
+ovs-vsctl add-bond br-int bond0 eth0 eth1 lacp=active
+
+# Set the bond mode
+ovs-vsctl set port bond0 bond_mode=balance-slb      # Source Load Balancing
+ovs-vsctl set port bond0 bond_mode=balance-tcp       # TCP-based (requires LACP)
+ovs-vsctl set port bond0 bond_mode=active-backup     # Active-backup
+
+# Check bond status
+ovs-appctl bond/show bond0
+
+# Check LACP status
+ovs-appctl lacp/show bond0</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Bond modes:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Mode</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Requires LACP</th>
+<th class="tableblock halign-left valign-top">Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>active-backup</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One active, others standby</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Simple redundancy</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>balance-slb</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Hash by source MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Load distribution without LACP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>balance-tcp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Hash by L3/L4 fields</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Best load distribution</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_data_model"><a class="anchor" href="#_ovs_data_model"></a>OVS Data Model</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_bridge_port_interface_hierarchy"><a class="anchor" href="#_bridge_port_interface_hierarchy"></a>Bridge Port Interface Hierarchy</h3>
+<div class="paragraph">
+<p>OVS uses a three-level hierarchy: <strong>Bridge &#8594; Port &#8594; Interface</strong>. Understanding this hierarchy is essential for reading <code>ovs-vsctl show</code> output and for understanding the database schema.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  +---------------------------------------------+
+  |                  Bridge: br-int              |
+  |                                              |
+  |  +----------------+  +-------------------+  |
+  |  |  Port: br-int  |  |  Port: eth0       |  |
+  |  |  (internal)    |  |                   |  |
+  |  | +-----------+  |  | +--------------+  |  |
+  |  | | Interface |  |  | | Interface    |  |  |
+  |  | | br-int    |  |  | | eth0         |  |  |
+  |  | | type:     |  |  | | type: system |  |  |
+  |  | | internal  |  |  | +--------------+  |  |
+  |  | +-----------+  |  +-------------------+  |
+  |  +----------------+                          |
+  |                                              |
+  |  +-------------------+  +----------------+  |
+  |  |  Port: bond0      |  |  Port: vxlan0  |  |
+  |  |  (bond)           |  |  (tunnel)      |  |
+  |  | +--------------+  |  | +-----------+  |  |
+  |  | | Interface    |  |  | | Interface |  |  |
+  |  | | eth1         |  |  | | vxlan0    |  |  |
+  |  | +--------------+  |  | | type:     |  |  |
+  |  | +--------------+  |  | | vxlan     |  |  |
+  |  | | Interface    |  |  | +-----------+  |  |
+  |  | | eth2         |  |  +----------------+  |
+  |  | +--------------+  |                      |
+  |  +-------------------+                      |
+  +---------------------------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Key rules:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>A <strong>Bridge</strong> contains one or more <strong>Ports.</strong></p>
+</li>
+<li>
+<p>A <strong>Port</strong> contains one or more <strong>Interfaces.</strong></p>
+</li>
+<li>
+<p>For a normal (non-bond) port, there is exactly one Interface per Port, and they typically share the same name.</p>
+</li>
+<li>
+<p>For a bond port, the Port contains multiple Interfaces (one per physical NIC in the bond).</p>
+</li>
+<li>
+<p>The Bridge always has a default Port with the same name as the Bridge, with type <code>internal</code>.</p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the full hierarchy
+ovs-vsctl show
+
+# List all bridges
+ovs-vsctl list-br
+
+# List all ports on a bridge
+ovs-vsctl list-ports br-int
+
+# List all interfaces on a port
+ovs-vsctl list-ifaces br-int
+
+# View detailed database records
+ovs-vsctl list Bridge br-int
+ovs-vsctl list Port eth0
+ovs-vsctl list Interface eth0</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_port_types"><a class="anchor" href="#_port_types"></a>Port Types</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Port Type</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Created By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>system</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maps to a Linux network interface (physical or virtual)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>add-port br-int eth0</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>internal</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Creates a virtual Linux interface</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>set interface X type=internal</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>patch</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Connects two OVS bridges</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>set interface X type=patch</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>tunnel</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Encapsulated tunnel endpoint (VXLAN, Geneve, GRE)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>set interface X type=vxlan</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>bond</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Aggregation of multiple system interfaces</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>add-bond br-int bond0 eth0 eth1</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_tunnel_ports"><a class="anchor" href="#_tunnel_ports"></a>Tunnel Ports</h3>
+<div class="paragraph">
+<p>OVS supports several tunnel encapsulation protocols. These create overlay networks by wrapping packets inside outer IP/UDP headers, allowing L2 traffic to cross L3 boundaries.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  Host A (10.0.0.1)                    Host B (10.0.0.2)
+  +------------------+                 +------------------+
+  |  VM1             |                 |             VM2  |
+  |  10.10.0.1       |                 |       10.10.0.2  |
+  |    |              |                 |              |    |
+  |  +-+---+          |                 |          +---+-+  |
+  |  |br-int|         |                 |         |br-int|  |
+  |  +-+---+          |                 |          +---+-+  |
+  |    |              |                 |              |    |
+  |  [vxlan0]         |                 |         [vxlan0]  |
+  +----+--------------+                 +--------------+----+
+       |        Outer IP: 10.0.0.1 -&gt; 10.0.0.2        |
+       +-----------------------------------------------+
+                    Underlay Network</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Tunnel type comparison:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Feature</th>
+<th class="tableblock halign-left valign-top">VXLAN</th>
+<th class="tableblock halign-left valign-top">Geneve</th>
+<th class="tableblock halign-left valign-top">GRE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Encapsulation</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">UDP (port 4789)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">UDP (port 6081)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP protocol 47</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Header overhead</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">50 bytes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">50+ bytes (variable)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">38 bytes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Metadata</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">24-bit VNI only</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Extensible TLV options</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">32-bit key</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVN support</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Limited (no metadata)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full (preferred by OVN)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not used by OVN</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Hardware offload</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Wide support</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Growing support</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Wide support</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Max segments</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">16M (24-bit VNI)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">16M (24-bit VNI)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4B (32-bit key)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Extensibility</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fixed header</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Variable-length TLV</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Limited</p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a VXLAN tunnel
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a Geneve tunnel
+ovs-vsctl add-port br-int geneve0 -- set interface geneve0 type=geneve \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a GRE tunnel
+ovs-vsctl add-port br-int gre0 -- set interface gre0 type=gre \
+  options:remote_ip=192.168.1.100 options:key=100
+
+# Create a VXLAN tunnel with flow-based remote IP (for use with OpenFlow)
+ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 type=vxlan \
+  options:remote_ip=flow options:key=flow
+
+# Verify tunnel ports
+ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN uses <strong>Geneve</strong> as its preferred tunnel protocol because Geneve supports extensible TLV (Type-Length-Value) metadata options. OVN uses this metadata to carry logical datapath, logical input port, and logical output port information inside the tunnel header. This is how OVN implements distributed virtual networking - the tunnel metadata tells the receiving OVS which logical pipeline to apply to the packet. VXLAN cannot carry this metadata, which is why OVN has limited functionality with VXLAN.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_qos_and_queue_configuration"><a class="anchor" href="#_qos_and_queue_configuration"></a>QoS and Queue Configuration</h3>
+<div class="paragraph">
+<p>OVS supports Quality of Service (QoS) to rate-limit traffic on specific ports.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Set an ingress rate limit on a port (in kbps)
+ovs-vsctl set interface eth0 ingress_policing_rate=1000
+ovs-vsctl set interface eth0 ingress_policing_burst=100
+
+# Remove the rate limit
+ovs-vsctl set interface eth0 ingress_policing_rate=0
+ovs-vsctl set interface eth0 ingress_policing_burst=0
+
+# Create an egress QoS policy with queues
+ovs-vsctl set port eth0 qos=@newqos -- \
+  --id=@newqos create qos type=linux-htb other-config:max-rate=1000000000 queues=0=@q0,1=@q1 -- \
+  --id=@q0 create queue other-config:min-rate=100000000 other-config:max-rate=500000000 -- \
+  --id=@q1 create queue other-config:min-rate=500000000 other-config:max-rate=1000000000
+
+# View QoS configuration
+ovs-vsctl list qos
+ovs-vsctl list queue</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_mirroring_and_span"><a class="anchor" href="#_mirroring_and_span"></a>Mirroring and SPAN</h3>
+<div class="paragraph">
+<p>OVS supports port mirroring (SPAN) to copy traffic from one or more ports to a monitoring port. This is essential for network troubleshooting, intrusion detection, and compliance monitoring.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Mirror all traffic from port eth0 to monitor port eth2
+ovs-vsctl -- set bridge br-int mirrors=@m \
+  -- --id=@eth0 get port eth0 \
+  -- --id=@eth2 get port eth2 \
+  -- --id=@m create mirror name=mirror0 select-src-port=@eth0 select-dst-port=@eth0 output-port=@eth2
+
+# Mirror specific VLANs
+ovs-vsctl -- set bridge br-int mirrors=@m \
+  -- --id=@eth2 get port eth2 \
+  -- --id=@m create mirror name=vlan-mirror select-vlan=100 output-port=@eth2
+
+# View mirror configuration
+ovs-vsctl list mirror
+
+# Remove a mirror
+ovs-vsctl -- --id=@m find mirror name=mirror0 -- remove bridge br-int mirrors @m
+
+# Remove all mirrors from a bridge
+ovs-vsctl clear bridge br-int mirrors</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Unlike physical switches where SPAN can impact switch performance, OVS mirroring is implemented in the datapath and has minimal performance overhead. However, the monitoring port must have sufficient bandwidth to receive the mirrored traffic - if you mirror two 10Gbps ports to a 1Gbps monitor port, you will lose packets.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_and_dpdk"><a class="anchor" href="#_ovs_and_dpdk"></a>OVS and DPDK</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_what_is_dpdk"><a class="anchor" href="#_what_is_dpdk"></a>What is DPDK</h3>
+<div class="paragraph">
+<p><strong>Data Plane Development Kit (DPDK)</strong> is a set of libraries and drivers that allow network packet processing to bypass the kernel entirely and run in userspace. Instead of packets going through the kernel&#8217;s network stack (with its interrupt handling, context switches, and memory copies), DPDK uses poll-mode drivers (PMDs) that continuously poll the NIC for new packets in a tight loop, processing them entirely in userspace.</p>
+</div>
+<div class="paragraph">
+<p><strong>The highway toll booth analogy:</strong> The kernel network stack is like a toll booth on a highway - every car (packet) must stop, pay (be processed), and then continue. This works fine at moderate traffic, but creates a bottleneck at high volume. DPDK is like removing the toll booth and replacing it with an electronic toll system - cars drive through at full speed and are processed without ever stopping. The tradeoff is that the electronic system needs dedicated infrastructure (dedicated CPU cores, special memory) to operate.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_dpdk_architecture"><a class="anchor" href="#_ovs_dpdk_architecture"></a>OVS-DPDK Architecture</h3>
+<div class="paragraph">
+<p>When OVS is configured to use DPDK (the <code>netdev</code> datapath type), the architecture changes significantly:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  Standard OVS (kernel datapath)         OVS-DPDK (userspace datapath)
+  ================================       ================================
+
+    ovs-vswitchd                           ovs-vswitchd
+        |                                      |
+    [OpenFlow tables]                     [OpenFlow tables]
+        |                                      |
+    Netlink                               +----+----+
+        |                                 |  PMD    |  &lt;-- DPDK Poll Mode
+        v                                 | Threads |      Driver threads
+    Kernel module                         +----+----+
+    (openvswitch.ko)                           |
+        |                                  Userspace
+        v                                 DPDK drivers
+    NIC driver                                 |
+        |                                      v
+        v                                    NIC
+      NIC                               (direct access)
+
+  Packet path:                            Packet path:
+  NIC -&gt; kernel -&gt; module -&gt;              NIC -&gt; DPDK PMD -&gt;
+  upcall -&gt; vswitchd -&gt;                   vswitchd flow tables -&gt;
+  module -&gt; NIC                           DPDK PMD -&gt; NIC
+  (multiple context switches)             (ZERO context switches)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Key differences:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">Kernel OVS</th>
+<th class="tableblock halign-left valign-top">OVS-DPDK</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Datapath</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel module (<code>openvswitch.ko</code>)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Userspace (DPDK libraries)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Packet processing</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel + userspace for misses</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Entirely in userspace</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NIC access</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through kernel NIC driver</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Direct via DPDK PMD</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Context switches</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes (kernel/userspace)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No (all userspace)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>CPU usage</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">On-demand (interrupt-driven)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">100% on dedicated cores (polling)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Memory</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Regular system memory</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Hugepages required</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Latency</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Microseconds</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Sub-microsecond possible</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Throughput</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Good (millions pps)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Excellent (tens of millions pps)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>CPU cost</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Proportional to traffic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fixed (dedicated cores always busy)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Setup complexity</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Requires hugepages, CPU pinning, DPDK-bound NICs</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_when_to_use_ovs_dpdk_vs_kernel_ovs"><a class="anchor" href="#_when_to_use_ovs_dpdk_vs_kernel_ovs"></a>When to Use OVS-DPDK vs Kernel OVS</h3>
+<div class="paragraph">
+<p><strong>Use kernel OVS when:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Traffic volumes are moderate (less than ~5 million packets per second)</p>
+</li>
+<li>
+<p>CPU resources are limited and cannot be dedicated to polling</p>
+</li>
+<li>
+<p>The workload is general-purpose cloud computing (VMs, containers)</p>
+</li>
+<li>
+<p>Simplicity of setup and operations is a priority</p>
+</li>
+<li>
+<p>The NIC does not have DPDK driver support</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Use OVS-DPDK when:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>High throughput is required (NFV, telco workloads, network appliances)</p>
+</li>
+<li>
+<p>Low and predictable latency is critical</p>
+</li>
+<li>
+<p>The host has sufficient CPU cores to dedicate to DPDK</p>
+</li>
+<li>
+<p>Hugepage memory is available</p>
+</li>
+<li>
+<p>The deployment is NFV/telco-focused (RHOSP with NFV features)</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVS-DPDK trades CPU efficiency for packet processing performance. Kernel OVS uses CPU only when packets arrive (interrupt-driven). OVS-DPDK uses dedicated CPU cores that poll continuously at 100% utilization even when idle. This means OVS-DPDK always consumes those CPU cores, but in return, it processes packets significantly faster with lower and more predictable latency.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_pmd_threads_hugepages_and_cpu_pinning"><a class="anchor" href="#_pmd_threads_hugepages_and_cpu_pinning"></a>PMD Threads Hugepages and CPU Pinning</h3>
+<div class="paragraph">
+<p>Setting up OVS-DPDK requires configuring three key resources:</p>
+</div>
+<div class="paragraph">
+<p><strong>1. Hugepages</strong></p>
+</div>
+<div class="paragraph">
+<p>DPDK requires hugepages (2MB or 1GB pages) for memory allocation. Hugepages reduce TLB (Translation Lookaside Buffer) misses, which improves packet processing performance.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check current hugepage allocation
+cat /proc/meminfo | grep Huge
+
+# Allocate 1024 hugepages of 2MB each (2GB total) at boot
+# Add to kernel command line: hugepagesz=2M hugepages=1024
+
+# Or allocate at runtime
+echo 1024 &gt; /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+
+# For 1GB hugepages (better TLB performance, must be set at boot)
+# Kernel command line: hugepagesz=1G hugepages=4 default_hugepagesz=1G
+
+# Mount the hugetlbfs
+mount -t hugetlbfs none /dev/hugepages</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>2. PMD (Poll Mode Driver) Threads</strong></p>
+</div>
+<div class="paragraph">
+<p>PMD threads are dedicated CPU threads that continuously poll NICs for incoming packets. They run at 100% CPU utilization by design.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Configure OVS to use DPDK
+ovs-vsctl set Open_vSwitch . other_config:dpdk-init=true
+
+# Set the CPU cores for PMD threads (CPU mask)
+# Example: use cores 2 and 4 (bitmask 0x14 = binary 10100)
+ovs-vsctl set Open_vSwitch . other_config:pmd-cpu-mask=0x14
+
+# Set the number of DPDK lcore mask (for non-PMD DPDK threads)
+ovs-vsctl set Open_vSwitch . other_config:dpdk-lcore-mask=0x01
+
+# Set memory to allocate from DPDK
+ovs-vsctl set Open_vSwitch . other_config:dpdk-socket-mem="1024,1024"
+
+# Create a DPDK bridge (note the datapath_type)
+ovs-vsctl add-br br-dpdk -- set bridge br-dpdk datapath_type=netdev
+
+# Add a DPDK port
+ovs-vsctl add-port br-dpdk dpdk0 -- set interface dpdk0 type=dpdk \
+  options:dpdk-devargs=0000:03:00.0
+
+# Check PMD thread statistics
+ovs-appctl dpif-netdev/pmd-stats-show
+
+# Check PMD thread to RxQ mapping
+ovs-appctl dpif-netdev/pmd-rxq-show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>3. CPU Pinning</strong></p>
+</div>
+<div class="paragraph">
+<p>For optimal performance, PMD threads should be pinned to specific CPU cores that are isolated from the operating system scheduler. This prevents other processes from interfering with packet processing.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Isolate CPUs from the OS scheduler (kernel command line)
+# isolcpus=2,3,4,5
+
+# In RHOSP/RHOSO, CPU pinning is typically configured via:
+# - TripleO parameters (RHOSP)
+# - NodeNetworkConfigurationPolicy (RHOSO)</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When configuring OVS-DPDK, always ensure that PMD cores, guest vCPUs, and host OS processes are on different physical cores. Sharing cores between PMD threads and other workloads will cause severe performance degradation for both. Also, be aware of NUMA topology - PMD cores and hugepages should be on the same NUMA node as the DPDK-bound NIC for optimal performance.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_summary"><a class="anchor" href="#_summary"></a>Summary</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Concept</th>
+<th class="tableblock halign-left valign-top">Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVS purpose</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Production-quality, programmable multilayer virtual switch for cloud networking</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>vs Linux bridge</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Adds OpenFlow, programmable pipeline, tunnels, DPDK, monitoring, centralized management</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovs-vswitchd</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Main switching daemon - implements OpenFlow tables, handles packet forwarding decisions</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovsdb-server</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration database - stores bridges, ports, interfaces in OVSDB schema</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Kernel module</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Fast-path datapath with two-level flow cache (EMC + megaflow) for line-speed forwarding</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovs-vsctl</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CLI for bridge/port/interface management (modifies persistent database)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovs-ofctl</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CLI for OpenFlow flow management (match fields, actions, priorities)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovs-dpctl</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CLI for kernel datapath inspection (cached flows, statistics)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ovs-appctl</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CLI for runtime daemon management (ofproto/trace, logging, stats)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Packet pipeline</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multi-table OpenFlow pipeline: table 0 &#8594; resubmit &#8594; table N, priority-based matching</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Flow caching</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel caches flows in EMC (exact) and megaflow (wildcard) tables for fast-path forwarding</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bridge types</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">System (standard), internal (host interface), patch (bridge-to-bridge), bond (aggregation)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Data model</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Bridge &#8594; Port &#8594; Interface hierarchy stored in OVSDB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Tunnel types</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VXLAN (simple), Geneve (extensible, OVN preferred), GRE (legacy)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>QoS/Mirroring</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in rate limiting, queue management, and SPAN capabilities</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVS-DPDK</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Userspace datapath using poll-mode drivers for high-performance NFV workloads</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DPDK tradeoff</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dedicated CPU cores and hugepages in exchange for higher throughput and lower latency</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<div class="paragraph">
+<p><a href="00-introduction.html" class="xref page">Previous: Module 01 - Introduction and Foundations</a> | <a href="03-ovs-hands-on.html" class="xref page">Next: Module 03 - OVS Hands-On Lab</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="01-networking-fundamentals.html" class="query-params-link">Networking Fundamentals</a></span>
+  <span class="next"><a href="03-ovs-hands-on.html" class="query-params-link">OVS Hands-On Lab</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

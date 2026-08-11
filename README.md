@@ -61,10 +61,10 @@ ovs-ovn-workshop/
 Run the site locally with Podman:
 
 ```bash
-podman run --rm --name antora -v $PWD:/antora -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
+podman run --rm --name antora -v $PWD:/antora:Z -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
 ```
 
-Then open http://localhost:8080 in your browser.
+Then open http://localhost:8080 in your browser. The site rebuilds automatically when you edit `.adoc` or `.yml` files.
 
 Alternatively, build with npm:
 

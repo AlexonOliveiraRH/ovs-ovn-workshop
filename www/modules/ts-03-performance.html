@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Scenario 03: Severe Performance Degradation Under Load :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="ts-02-overlay-issues.html">
+    <link rel="next" href="ts-04-ovn-controller.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Troubleshooting Scenarios</li>
+    <li><a href="ts-03-performance.html">Performance</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Scenario 03: Severe Performance Degradation Under Load</h1>
+<div class="sect1">
+<h2 id="_the_problem"><a class="anchor" href="#_the_problem"></a>The Problem</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Customer report:</strong> "Network throughput between pods dropped from 9 Gbps to under 1 Gbps
+after deploying new security group rules. CPU usage on compute nodes is very high."</p>
+</div>
+<div class="paragraph">
+<p>The customer recently deployed over 200 NetworkPolicy objects to meet new compliance
+requirements. Before the policies were applied, pod-to-pod throughput was consistently
+around 9.2 Gbps. After applying the policies, throughput dropped to 0.7 Gbps and
+applications began timing out. The <code>ovs-vswitchd</code> process on worker nodes is consuming
+near 100% of a CPU core.</p>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_environment"><a class="anchor" href="#_environment"></a>Environment</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Platform</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 4.14 with OVN-Kubernetes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3 (control-plane-0, control-plane-1, control-plane-2)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Worker nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">15 (worker-0 through worker-14)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Worker node specs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">32 cores, 128 GB RAM, 25GbE Mellanox ConnectX-6</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CNI</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes (default for OCP 4.14)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pod network CIDR</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10.128.0.0/14</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Service CIDR</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.30.0.0/16</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Overlay</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Geneve</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Recent change</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">200+ NetworkPolicy objects deployed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Before policies</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">9.2 Gbps pod-to-pod throughput</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After policies</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0.7 Gbps pod-to-pod throughput</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_step_by_step_investigation"><a class="anchor" href="#_step_by_step_investigation"></a>Step-by-Step Investigation</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_step_1_baseline_performance_test_with_iperf3"><a class="anchor" href="#_step_1_baseline_performance_test_with_iperf3"></a>Step 1: Baseline Performance Test with iperf3</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> We need to quantify the performance degradation and understand the pattern. Testing
+both same-node and cross-node gives us a comparison baseline.</p>
+</div>
+<div class="paragraph">
+<p>Deploy iperf3 pods for testing:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc run iperf-server --image=registry.redhat.io/ubi9/ubi -- iperf3 -s -p 5201
+[user@bastion ~]$ oc run iperf-client --image=registry.redhat.io/ubi9/ubi -- sleep infinity</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Wait for pods to be ready and check their placement:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc get pods -o wide | grep iperf</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME            READY   STATUS    RESTARTS   AGE   IP             NODE                          NOMINATED NODE   READINESS GATES
+iperf-server    1/1     Running   0          45s   10.128.2.147   worker-3.ocp.example.com      &lt;none&gt;           &lt;none&gt;
+iperf-client    1/1     Running   0          42s   10.128.5.201   worker-7.ocp.example.com      &lt;none&gt;           &lt;none&gt;</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Run the performance test (cross-node):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec iperf-client -- iperf3 -c 10.128.2.147 -p 5201 -t 30 -P 4</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Connecting to host 10.128.2.147, port 5201
+[  5] local 10.128.5.201 port 43210 connected to 10.128.2.147 port 5201
+[  7] local 10.128.5.201 port 43212 connected to 10.128.2.147 port 5201
+[  9] local 10.128.5.201 port 43214 connected to 10.128.2.147 port 5201
+[ 11] local 10.128.5.201 port 43216 connected to 10.128.2.147 port 5201
+[ ID] Interval           Transfer     Bitrate         Retransmits
+[  5]   0.00-30.00  sec   612 MBytes   171 Mbits/sec  4521
+[  7]   0.00-30.00  sec   598 MBytes   167 Mbits/sec  4892
+[  9]   0.00-30.00  sec   623 MBytes   174 Mbits/sec  4234
+[ 11]   0.00-30.00  sec   605 MBytes   169 Mbits/sec  4678
+[SUM]   0.00-30.00  sec  2.38 GBytes   682 Mbits/sec  18325
+- - - - - - - - - - - - - - - - - - - - - - - - -
+[ ID] Interval           Transfer     Bitrate         Retransmits
+[SUM]   0.00-30.00  sec  2.38 GBytes   682 Mbits/sec  18325       sender
+[SUM]   0.00-30.00  sec  2.37 GBytes   680 Mbits/sec                  receiver
+
+iperf Done.</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Cross-node throughput is only <strong>682 Mbits/sec</strong> with <strong>18,325 retransmissions</strong>.
+This is catastrophically poor for a 25GbE network. The high retransmit count indicates
+that packets are being delayed or dropped in the datapath.</p>
+</div>
+<div class="paragraph">
+<p>Compare with the customer&#8217;s historical baseline:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Before NetworkPolicies (from customer's records):
+  Cross-node throughput: 9.2 Gbps
+  Retransmissions: &lt; 50 over 30 seconds
+
+After NetworkPolicies:
+  Cross-node throughput: 0.68 Gbps (93% reduction)
+  Retransmissions: 18,325 (366x increase)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For completeness, test same-node performance by scheduling both pods on the same node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec iperf-client-same-node -- iperf3 -c 10.128.2.148 -p 5201 -t 10</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ ID] Interval           Transfer     Bitrate         Retransmits
+[  5]   0.00-10.00  sec  4.12 GBytes  3.54 Gbits/sec  234
+
+iperf Done.</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Same-node performance is also degraded (3.54 Gbps vs expected ~15+ Gbps) but
+not as severely. This tells us the problem is in the OVS datapath processing, not just
+tunnel overhead.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_2_check_node_cpu_usage"><a class="anchor" href="#_step_2_check_node_cpu_usage"></a>Step 2: Check Node CPU Usage</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Performance degradation combined with high CPU is a strong indicator that the
+datapath processing is the bottleneck. We need to identify which processes are consuming
+CPU and correlate with the performance drop.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host top -bn1 -o %CPU | head -20</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>top - 14:23:45 up 45 days,  3:12,  0 users,  load average: 28.34, 27.91, 26.45
+Tasks: 487 total,   3 running, 484 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 12.3 us,  8.7 sy,  0.0 ni, 74.2 id,  0.0 wa,  3.1 hi,  1.7 si,  0.0 st
+MiB Mem : 131072.0 total,  42567.2 free,  67234.1 used,  21270.7 buff/cache
+MiB Swap:      0.0 total,      0.0 free,      0.0 used.  61234.5 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  14523 root      10  -5 4823456 2.1g  18764 R  97.3   1.6  12847:23 ovs-vswitchd
+  14891 root      20   0 1234567 456.2m 12345 R  43.2   0.3   5234:12 ovn-controller
+   2345 root      20   0  987654 234.1m  8765 S   8.7   0.2    987:45 kubelet
+   3456 root      20   0  654321 123.4m  6543 S   3.2   0.1    456:23 crio
+   4567 root      20   0  432198  98.7m  4321 S   1.8   0.1    234:12 node-exporter</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> This is the smoking gun:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovs-vswitchd</code> is consuming <strong>97.3% of a CPU core</strong> - this is the OVS userspace daemon
+that handles flow table management and datapath misses</p>
+</li>
+<li>
+<p><code>ovn-controller</code> is consuming <strong>43.2% of a CPU core</strong> - this translates logical flows
+to OpenFlow rules</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Under normal conditions, these processes should be using less than 5-10% CPU each.</p>
+</div>
+<div class="paragraph">
+<p>Check per-thread CPU usage for more detail:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host pidstat -t -p 14523 1 3</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Linux 5.14.0-284.52.1.el9_2.x86_64 (worker-3.ocp.example.com)     04/15/2025     _x86_64_
+
+02:23:45 PM   UID  TGID   TID    %usr %system  %guest   %CPU   CPU  Command
+02:23:46 PM     0 14523     -   62.00   35.00    0.00  97.00    12  ovs-vswitchd
+02:23:46 PM     0     - 14524    0.00    0.00    0.00   0.00     5  |__ovs-vswitchd
+02:23:46 PM     0     - 14525   18.00   12.00    0.00  30.00    14  |__handler26
+02:23:46 PM     0     - 14526   16.00   10.00    0.00  26.00    15  |__handler27
+02:23:46 PM     0     - 14527   14.00    8.00    0.00  22.00     8  |__revalidator28
+02:23:46 PM     0     - 14528   12.00    7.00    0.00  19.00     9  |__revalidator29</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The handler and revalidator threads are consuming significant CPU. Handler
+threads process "upcalls" (packets that miss the datapath cache and need userspace
+processing). Revalidator threads check that cached datapath flows are still valid. Both
+being heavily loaded means the fast path is not working efficiently.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVS processes packets in two paths: - <strong>Fast path (kernel datapath):</strong> Packets matching an existing datapath flow are handled entirely in the kernel, achieving line-rate performance. - <strong>Slow path (userspace):</strong> Packets that don&#8217;t match any datapath flow generate an "upcall" to <code>ovs-vswitchd</code> in userspace. The daemon looks up the correct action in the OpenFlow tables, installs a new datapath flow for future packets, and handles the current packet. This is orders of magnitude slower than the fast path.  When most packets take the slow path, performance degrades severely because every packet requires a context switch to userspace and back.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_3_check_ovs_flow_count"><a class="anchor" href="#_step_3_check_ovs_flow_count"></a>Step 3: Check OVS Flow Count</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> A large number of OpenFlow flows in br-int causes slower flow table lookups and
+makes it harder for OVS to create efficient wildcard (megaflow) entries in the datapath
+cache. We need to see how many flows exist and how they changed.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>87234</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> There are <strong>87,234 OpenFlow flows</strong> in br-int. For a typical OCP cluster, a
+healthy flow count ranges from 2,000 to 5,000 per node. 87,000+ is a <strong>flow explosion</strong>.</p>
+</div>
+<div class="paragraph">
+<p>Check flow count on a node that is less affected for comparison:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-m3p2q -c ovnkube-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>84891</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The problem is cluster-wide, not isolated to a single node. All nodes have
+similarly inflated flow counts because the NetworkPolicies affect the entire OVN logical
+topology.</p>
+</div>
+<div class="paragraph">
+<p>Look at a sample of the flows to understand the explosion:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovs-ofctl dump-flows br-int table=44 | head -20</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre> cookie=0x2a5b8c01, duration=3456.789s, table=44, n_packets=12345, n_bytes=1234567, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.15,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c02, duration=3456.789s, table=44, n_packets=234, n_bytes=23456, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.16,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c03, duration=3456.789s, table=44, n_packets=567, n_bytes=56789, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.17,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c04, duration=3456.789s, table=44, n_packets=89, n_bytes=8901, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.18,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c05, duration=3456.789s, table=44, n_packets=1234, n_bytes=123456, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.19,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c06, duration=3456.789s, table=44, n_packets=345, n_bytes=34567, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.2.20,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c07, duration=3456.789s, table=44, n_packets=678, n_bytes=67890, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.3.11,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+ cookie=0x2a5b8c08, duration=3456.789s, table=44, n_packets=90, n_bytes=9012, priority=2000,ct_state=+est+trk,ip,metadata=0x3,nw_src=10.128.3.12,nw_dst=10.128.2.147,tp_dst=8080 actions=resubmit(,45)
+...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Table 44 (ACL/security group evaluation in OVN&#8217;s pipeline) has individual
+per-source-IP rules. Each pod that is allowed to communicate has its own flow entry.
+With hundreds of pods and hundreds of NetworkPolicies, this creates a combinatorial
+explosion of flow entries.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN translates Kubernetes NetworkPolicies into OVN ACLs, which ovn-controller then compiles into OpenFlow flows in OVS. A NetworkPolicy that selects individual pods (rather than using broad label selectors) generates one ACL per pod per port per direction. For 200 pods with 200 policies, this can generate 200 x 200 = 40,000+ individual ACLs, each becoming multiple OpenFlow rules.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_4_check_datapath_flows"><a class="anchor" href="#_step_4_check_datapath_flows"></a>Step 4: Check Datapath Flows</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> The kernel datapath is where the fast-path processing happens. We need to check
+whether the datapath is able to create efficient wildcard flows (megaflows) or is being
+forced into per-packet (microflow) processing.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl dpctl/dump-flows -m | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>124567</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> 124,567 datapath flows. This is extremely high. A healthy OVS datapath
+typically has 5,000-20,000 flows.</p>
+</div>
+<div class="paragraph">
+<p>Examine the megaflow masks to understand the wildcarding efficiency:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl dpctl/dump-flows -m | head -5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ufid:a1b2c3d4-e5f6-7890-abcd-ef1234567890, recirc_id(0x45),dp_hash(0/0),skb_priority(0/0),in_port(3),skb_mark(0/0),ct_state(0x22/0xff),ct_zone(0x8/0xffff),ct_mark(0/0),ct_label(0/0),eth(src=0a:58:0a:80:02:0f/ff:ff:ff:ff:ff:ff,dst=0a:58:0a:80:02:93/ff:ff:ff:ff:ff:ff),eth_type(0x0800),ipv4(src=10.128.2.15/255.255.255.255,dst=10.128.2.147/255.255.255.255,proto=6/0xff,tos=0/0,ttl=64/0,frag=no),tcp(src=43210/0xffff,dst=8080/0xffff), packets:1234, bytes:123456, used:0.234s, flags:SRP, actions:ct(zone=9),recirc(0x46)
+ufid:b2c3d4e5-f6a7-8901-bcde-f12345678901, recirc_id(0x45),dp_hash(0/0),skb_priority(0/0),in_port(3),skb_mark(0/0),ct_state(0x22/0xff),ct_zone(0x8/0xffff),ct_mark(0/0),ct_label(0/0),eth(src=0a:58:0a:80:02:10/ff:ff:ff:ff:ff:ff,dst=0a:58:0a:80:02:93/ff:ff:ff:ff:ff:ff),eth_type(0x0800),ipv4(src=10.128.2.16/255.255.255.255,dst=10.128.2.147/255.255.255.255,proto=6/0xff,tos=0/0,ttl=64/0,frag=no),tcp(src=43212/0xffff,dst=8080/0xffff), packets:567, bytes:56789, used:0.567s, flags:SRP, actions:ct(zone=9),recirc(0x46)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The datapath flows have <strong>exact match masks</strong> (<code>/255.255.255.255</code> for IPs,
+<code>/0xffff</code> for ports). This means OVS cannot wildcard - each unique 5-tuple (src IP, dst IP,
+src port, dst port, protocol) creates a separate datapath entry. This is a <strong>microflow
+explosion</strong>.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVS uses <strong>megaflows</strong> to optimize the datapath. A megaflow is a wildcarded flow entry that matches many packets at once. For example, a megaflow with mask <code>src=10.128.2.0/255.255.255.0</code> would match all packets from the 10.128.2.0/24 subnet in a single entry. When the OpenFlow table has many specific rules (per-IP matches), OVS cannot create wildcarded megaflows and falls back to microflows (exact match per-connection). With microflows, the datapath grows with the number of active connections, quickly overwhelming the system.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Check megaflow mask statistics:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl dpctl/dump-mega-stats</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Mega flow masks:
+  Total masks: 2847
+  Hit masks: 248923456
+  Masks/lookup: 12.47</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> There are <strong>2,847 unique masks</strong> and the average <strong>masks per lookup is 12.47</strong>.
+In a healthy system, you want masks/lookup to be under 4-5. At 12.47, every packet lookup
+must check an average of 12.47 masks before finding a match, which is extremely slow.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_5_check_conntrack_table"><a class="anchor" href="#_step_5_check_conntrack_table"></a>Step 5: Check Conntrack Table</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> OVN uses connection tracking (conntrack) for stateful ACL enforcement. Every allowed
+connection gets a conntrack entry. If the conntrack table fills up, new connections are
+dropped or severely delayed.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  cat /proc/sys/net/netfilter/nf_conntrack_max</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>262144</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  cat /proc/sys/net/netfilter/nf_conntrack_count</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>248901</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The conntrack table is at <strong>248,901 / 262,144</strong> entries - that is <strong>95%
+full</strong>. When the table is nearly full, performance degrades because:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Hash bucket chains become long, slowing lookups</p>
+</li>
+<li>
+<p>New connections may be dropped if the table fills completely</p>
+</li>
+<li>
+<p>Garbage collection runs more frequently, consuming CPU</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Get more detailed conntrack statistics:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl dpctl/ct-stats-show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Total: 248901
+TCP: 234567
+UDP: 12345
+ICMP: 1989
+  Entries:
+    TCP established: 198765
+    TCP time_wait: 23456
+    TCP close_wait: 12346
+    UDP replied: 10234
+    UDP unreplied: 2111
+    ICMP replied: 1567
+    ICMP unreplied: 422</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Most conntrack entries are TCP established connections (198,765). The
+"unreplied" counts (UDP: 2,111, ICMP: 422) indicate connections that are waiting for
+responses that may never come - these consume conntrack slots without being productive.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When the conntrack table is full, Linux silently drops new connections without sending any error message. Applications see connection timeouts with no clear indication that conntrack exhaustion is the cause. This makes the problem extremely difficult to diagnose without explicitly checking the conntrack count.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Check for conntrack drops:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  conntrack -S</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>cpu=0       found=12345678 invalid=23456 ignore=987654 insert=0 insert_failed=8234 drop=8234 early_drop=3456 error=0 search_restart=45678
+cpu=1       found=11234567 invalid=21345 ignore=876543 insert=0 insert_failed=7123 drop=7123 early_drop=2345 error=0 search_restart=34567
+cpu=2       found=10123456 invalid=19234 ignore=765432 insert=0 insert_failed=6012 drop=6012 early_drop=1234 error=0 search_restart=23456
+...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> <code>drop=8234</code> and <code>insert_failed=8234</code> on cpu=0 alone confirm that conntrack
+entries are being dropped because the table is full. The <code>early_drop</code> counts show the kernel
+is aggressively expiring entries to make room, which also hurts performance.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_6_check_ovn_acl_count"><a class="anchor" href="#_step_6_check_ovn_acl_count"></a>Step 6: Check OVN ACL Count</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> OVN ACLs are the logical representation of security rules. Each ACL becomes one
+or more OpenFlow flows. We need to see how many ACLs exist and understand the scale of
+the problem.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovn-nbctl --no-leader-only acl-list neutron-a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>from-lport  2000 (inport == @pg_compliance_web &amp;&amp; ip4) allow-related
+from-lport  2000 (inport == @pg_compliance_web &amp;&amp; ip4.dst == 10.128.2.15 &amp;&amp; tcp.dst == 8080) allow-related
+from-lport  2000 (inport == @pg_compliance_web &amp;&amp; ip4.dst == 10.128.2.16 &amp;&amp; tcp.dst == 8080) allow-related
+from-lport  2000 (inport == @pg_compliance_web &amp;&amp; ip4.dst == 10.128.2.17 &amp;&amp; tcp.dst == 8080) allow-related
+from-lport  2000 (inport == @pg_compliance_web &amp;&amp; ip4.dst == 10.128.2.18 &amp;&amp; tcp.dst == 8080) allow-related
+...
+[output continues for thousands of lines]</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Count total ACLs across all port groups and logical switches:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovn-nbctl --no-leader-only --columns=_uuid list acl | grep _uuid | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>42367</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> There are <strong>42,367 ACLs</strong> in the OVN Northbound DB. A healthy OCP cluster
+typically has a few hundred ACLs. The 200+ NetworkPolicies expanded into 42,367 individual
+ACL rules.</p>
+</div>
+<div class="paragraph">
+<p>Check how many per direction:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovn-nbctl --no-leader-only find acl direction=from-lport | grep _uuid | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>21456</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovn-nbctl --no-leader-only find acl direction=to-lport | grep _uuid | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>20911</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> ACLs are roughly evenly split between ingress (to-lport: 20,911) and egress
+(from-lport: 21,456). This is consistent with NetworkPolicies that specify both ingress
+and egress rules.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_7_examine_the_problematic_networkpolicies"><a class="anchor" href="#_step_7_examine_the_problematic_networkpolicies"></a>Step 7: Examine the Problematic NetworkPolicies</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> We need to understand why the NetworkPolicies generated so many ACLs. Poorly
+written policies that select individual pods instead of using label selectors are a common
+cause.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc get networkpolicy -A | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>237</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Look at one of the problematic policies:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc get networkpolicy compliance-web-policy -n microservices -o yaml</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: compliance-web-policy
+  namespace: microservices
+spec:
+  podSelector:
+    matchLabels:
+      app: web-frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+          instance: api-gw-001
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+          instance: api-gw-002
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+          instance: api-gw-003
+    ports:
+    - protocol: TCP
+      port: 8080
+  # ... continues for 50+ individual pod instances
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend-service
+          instance: backend-001
+    ports:
+    - protocol: TCP
+      port: 9090
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend-service
+          instance: backend-002
+    ports:
+    - protocol: TCP
+      port: 9090
+  # ... continues for 50+ individual pod instances</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The NetworkPolicy uses <strong>per-instance selectors</strong> (<code>instance: api-gw-001</code>,
+<code>instance: api-gw-002</code>, etc.) instead of a single broad label selector (<code>app: api-gateway</code>).
+Each individual <code>from</code> or <code>to</code> rule generates a separate OVN ACL. With 50+ instances per
+policy and 200+ policies, this creates tens of thousands of ACLs.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Never write NetworkPolicies that select individual pod instances. Use broad label selectors that match groups of pods. A single rule <code>from: [{podSelector: {matchLabels: {app: api-gateway}}}]</code> replaces 50 individual instance rules and generates ONE ACL instead of 50.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_8_check_flow_revalidation_rate"><a class="anchor" href="#_step_8_check_flow_revalidation_rate"></a>Step 8: Check Flow Revalidation Rate</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> OVS periodically revalidates datapath flows against the OpenFlow table to ensure
+they are still correct. With 87,000+ OpenFlow flows, revalidation becomes very expensive.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl coverage/show | grep -E "revalidate|upcall|flow_create|flow_del"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Event                                    last 5s     last 10s    total
+-----------------------------------------------------------------------
+rev_revalidate                           8234        15678       4567890
+rev_flow_table_bypass                    12          23          1234
+upcall_flow_limit_hit                    567         1023        234567
+upcall_ukeys_skipped                    234         456         98765
+flow_create                              3456        6789        1234567
+flow_del                                 3234        6432        1198765</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>rev_revalidate</code>: <strong>8,234 revalidations in the last 5 seconds</strong> - this is extremely high.
+Revalidation compares each datapath flow against the OpenFlow table, and with 87,000
+OpenFlow entries, each comparison is expensive.</p>
+</li>
+<li>
+<p><code>upcall_flow_limit_hit</code>: <strong>567 in the last 5 seconds</strong> - the datapath has hit its flow
+limit, meaning new flows cannot be installed and packets must take the slow path.</p>
+</li>
+<li>
+<p><code>flow_create</code> and <code>flow_del</code> rates are nearly equal (~3,400/5s each) - the datapath is
+in a constant churn of creating and deleting flows, providing no stable fast-path cache.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Revalidation is the process where OVS checks that each cached datapath flow is still consistent with the OpenFlow table. When the OpenFlow table is large, each revalidation is costly. When flows are being added and deleted rapidly, the revalidator threads run constantly, consuming CPU and reducing the time available for actual packet processing.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_9_check_megaflow_vs_microflow_issues"><a class="anchor" href="#_step_9_check_megaflow_vs_microflow_issues"></a>Step 9: Check Megaflow vs Microflow Issues</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Understanding the megaflow mask distribution tells us how efficiently OVS can
+batch packets. Poor masking means every connection needs its own datapath entry.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl dpif-netdev/pmd-stats-show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>pmd thread numa_id 0 core_id 12:
+  packets received: 45678901
+  packet recirculations: 23456789
+  avg. datapath passes per packet: 2.51
+  emc hits: 1234567
+  megaflow hits: 34567890
+  avg. subtable lookups per megaflow hit: 12.47
+  miss with success upcall: 8901234
+  miss with failed upcall: 234567
+  avg. packets per output batch: 1.23</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Key metrics:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>avg. subtable lookups per megaflow hit: 12.47</strong> - each packet that hits the megaflow
+cache requires checking an average of 12.47 subtables. This should be under 5 for good
+performance.</p>
+</li>
+<li>
+<p><strong>miss with success upcall: 8,901,234</strong> - nearly 9 million packets had to go to userspace
+because they missed the datapath cache entirely.</p>
+</li>
+<li>
+<p><strong>miss with failed upcall: 234,567</strong> - over 234,000 packets were DROPPED because the
+upcall to userspace failed (backlog full).</p>
+</li>
+<li>
+<p><strong>avg. packets per output batch: 1.23</strong> - nearly every packet is processed individually
+rather than in batches, eliminating any batching efficiency.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl memory/show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>handlers:16 ofproto:20 ports:1 revalidators:8 rules:87234
+buckets[connection]:248901</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The <code>rules:87234</code> confirms the massive OpenFlow table. <code>buckets[connection]</code>
+at 248,901 matches the conntrack count we found earlier.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_10_profile_ovs_vswitchd_upcall_rate"><a class="anchor" href="#_step_10_profile_ovs_vswitchd_upcall_rate"></a>Step 10: Profile OVS-vswitchd Upcall Rate</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Upcalls are the mechanism by which packets reach userspace for processing. A high
+upcall rate directly correlates with slow-path processing and CPU consumption.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-appctl upcall/show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>system@ovs-system:
+  flows         : (current 124567) (avg 118234) (max 131072) (limit 131072)
+  offloaded flows : 0
+  dump duration : 45234ms
+  ufid enabled : true
+  handlers:
+    handler 0: (upcall_pid 14525)
+      0.234: flow=12345 packets=23456
+    handler 1: (upcall_pid 14526)
+      0.234: flow=11234 packets=22345
+    handler 2: (upcall_pid 14527)
+      0.234: flow=10123 packets=21234
+    handler 3: (upcall_pid 14528)
+      0.234: flow=9012 packets=20123</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The datapath is at its flow limit (<code>current 124567</code>, <code>limit 131072</code>). When
+the flow count reaches the limit, OVS must evict flows to make room for new ones, causing
+the create/delete churn we saw in coverage/show. The dump duration of <strong>45,234ms</strong> means
+it takes over 45 seconds to dump all flows - revalidation cannot keep up.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Performance degradation chain:
+
+  200+ NetworkPolicies
+      |
+      v
+  42,367 OVN ACLs
+      |
+      v
+  87,234 OpenFlow flows (ovn-controller compiles ACLs to OpenFlow)
+      |
+      v
+  Microflow explosion (OVS cannot create broad megaflows)
+      |
+      v
+  124,567 datapath flows (near limit of 131,072)
+      |
+      v
+  High upcall rate (packets miss datapath cache)
+      |
+      v
+  ovs-vswitchd CPU saturated (97% handling upcalls)
+      |
+      v
+  Packet processing delay -&gt; 0.7 Gbps throughput (was 9.2 Gbps)</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_root_cause"><a class="anchor" href="#_root_cause"></a>Root Cause</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The performance degradation was caused by a cascade of effects triggered by the deployment
+of 200+ overly granular NetworkPolicy objects:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>NetworkPolicies used per-pod selectors</strong> instead of label-based selectors, causing
+each policy to generate many individual ACL rules.</p>
+</li>
+<li>
+<p><strong>42,367 OVN ACLs</strong> were created, which ovn-controller compiled into <strong>87,234 OpenFlow
+flows</strong> in OVS on each node.</p>
+</li>
+<li>
+<p><strong>The large OpenFlow table prevented efficient megaflow creation.</strong> Because the OpenFlow
+rules matched on specific IP addresses, OVS could not create wildcarded datapath entries.
+Every unique connection required its own datapath flow (microflow explosion).</p>
+</li>
+<li>
+<p><strong>The datapath flow table reached its limit</strong> (124,567 / 131,072), causing constant
+flow eviction and recreation (churn).</p>
+</li>
+<li>
+<p><strong>High upcall rate</strong> - most packets took the slow path through userspace because they
+missed the datapath cache or their cached flow was evicted.</p>
+</li>
+<li>
+<p><strong>The conntrack table was nearly full</strong> (248,901 / 262,144), causing slow hash lookups
+and dropped new connections.</p>
+</li>
+<li>
+<p><strong>ovs-vswitchd consumed 97% CPU</strong> handling upcalls, leaving no headroom for actual
+packet forwarding.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The fast path vs slow path distinction is critical for understanding OVS performance:  <code><code>text FAST PATH (kernel): Packet arrives &#8594; Datapath flow lookup &#8594; Match found &#8594; Action executed Latency: ~1 microsecond Throughput: line rate (25 Gbps+)  SLOW PATH (userspace): Packet arrives &#8594; Datapath flow lookup &#8594; No match (MISS) &#8594; Upcall to ovs-vswitchd &#8594; OpenFlow table lookup &#8594; Install datapath flow &#8594; Return packet to kernel &#8594; Execute action Latency: ~100-1000 microseconds Throughput: &lt; 1 Gbps (CPU limited) </code></code>  When the majority of packets take the slow path, performance drops from line-rate to sub-gigabit levels regardless of the physical network speed.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_resolution"><a class="anchor" href="#_resolution"></a>Resolution</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_immediate_mitigation_increase_conntrack_table_size"><a class="anchor" href="#_immediate_mitigation_increase_conntrack_table_size"></a>Immediate Mitigation: Increase Conntrack Table Size</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> This prevents connection drops while we fix the root cause.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  sysctl -w net.netfilter.nf_conntrack_max=1048576</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>net.netfilter.nf_conntrack_max = 1048576</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Make it persistent across reboots via a MachineConfig:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-conntrack-tuning
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,bmV0Lm5ldGZpbHRlci5uZl9jb25udHJhY2tfbWF4ID0gMTA0ODU3Ng==
+        mode: 0644
+        path: /etc/sysctl.d/99-conntrack.conf</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc apply -f machineconfig-conntrack.yaml</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Increasing conntrack_max increases memory usage. Each conntrack entry consumes approximately 288 bytes. Increasing from 262,144 to 1,048,576 adds roughly 226 MB of kernel memory usage per node. Verify nodes have sufficient memory.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_optimize_networkpolicies_root_cause_fix"><a class="anchor" href="#_optimize_networkpolicies_root_cause_fix"></a>Optimize NetworkPolicies (Root Cause Fix)</h3>
+<div class="paragraph">
+<p>Replace per-instance selectors with broad label selectors.</p>
+</div>
+<div class="paragraph">
+<p><strong>Before (bad - generates 50+ ACLs per direction):</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+          instance: api-gw-001
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+          instance: api-gw-002
+    ports:
+    - protocol: TCP
+      port: 8080
+  # ... 50 more rules</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>After (good - generates 1 ACL per direction):</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8080</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Apply the optimized policies:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc apply -f optimized-networkpolicies/</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Verify ACL count reduction:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovn-nbctl --no-leader-only --columns=_uuid list acl | grep _uuid | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1847</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Result:</strong> ACL count dropped from 42,367 to <strong>1,847</strong> - a 96% reduction.</p>
+</div>
+<div class="paragraph">
+<p>Verify flow count reduction:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec -n openshift-ovn-kubernetes ovnkube-node-x7k9m -c ovnkube-controller -- \
+  ovs-ofctl dump-flows br-int | wc -l</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>4521</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Result:</strong> OpenFlow flow count dropped from 87,234 to <strong>4,521</strong> - back to healthy levels.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_ovs_tuning"><a class="anchor" href="#_ovs_tuning"></a>OVS Tuning</h3>
+<div class="paragraph">
+<p>If further optimization is needed, tune OVS handler and revalidator threads:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Increase handler threads (processes upcalls):
+oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=4
+
+# Increase revalidator threads (validates cached flows):
+oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=4</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The default handler and revalidator thread counts are calculated based on the number of CPU cores. Increasing them helps with high upcall rates but takes CPU away from other processing. In most cases, fixing the root cause (reducing ACLs) is more effective than tuning threads.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Adjust the datapath flow limit if needed:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-3.ocp.example.com -- chroot /host \
+  ovs-vsctl set Open_vSwitch . other_config:flow-limit=200000</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_long_term_consolidate_and_review_networkpolicies"><a class="anchor" href="#_long_term_consolidate_and_review_networkpolicies"></a>Long-term: Consolidate and Review NetworkPolicies</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Audit existing policies:</strong> Identify and merge overlapping or redundant policies.</p>
+</li>
+<li>
+<p><strong>Use namespaceSelector where possible:</strong> Instead of selecting individual pods across
+namespaces, select entire namespaces:</p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-yaml hljs" data-lang="yaml">ingress:
+- from:
+  - namespaceSelector:
+      matchLabels:
+        purpose: frontend</code></pre>
+</div>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Leverage OVN port groups:</strong> OVN-Kubernetes automatically uses port groups for
+NetworkPolicy implementation. Ensure your policies work with port groups by using
+label selectors instead of IP-based rules.</p>
+</li>
+<li>
+<p><strong>Establish a review process:</strong> Require review of NetworkPolicies for performance
+impact before deployment, just as you would for application resource requests.</p>
+</li>
+</ol>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_verify_recovery"><a class="anchor" href="#_verify_recovery"></a>Verify Recovery</h3>
+<div class="paragraph">
+<p>After applying optimized policies, verify performance is restored:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc exec iperf-client -- iperf3 -c 10.128.2.147 -p 5201 -t 30 -P 4</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ ID] Interval           Transfer     Bitrate         Retransmits
+[SUM]   0.00-30.00  sec  32.1 GBytes  9.19 Gbits/sec  42          sender
+[SUM]   0.00-30.00  sec  32.0 GBytes  9.17 Gbits/sec                  receiver
+
+iperf Done.</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Result:</strong> Throughput restored to <strong>9.19 Gbps</strong> with only <strong>42 retransmissions</strong> (down
+from 18,325). Performance is back to the pre-policy baseline.</p>
+</div>
+<div class="paragraph">
+<p>Check OVS CPU usage:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@bastion ~]$ oc debug node/worker-3.ocp.example.com -- chroot /host \
+  top -bn1 -p 14523 | tail -1</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>  14523 root      10  -5 4823456 1.2g  18764 S   4.7   0.9   12850:45 ovs-vswitchd</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Result:</strong> ovs-vswitchd CPU dropped from 97.3% to <strong>4.7%</strong>.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_prevention"><a class="anchor" href="#_prevention"></a>Prevention</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_1_monitor_flow_count_and_conntrack_table_size"><a class="anchor" href="#_1_monitor_flow_count_and_conntrack_table_size"></a>1. Monitor Flow Count and Conntrack Table Size</h3>
+<div class="paragraph">
+<p>Set up Prometheus monitoring and alerts:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Alert if OpenFlow flow count exceeds 10,000:
+- alert: OVSHighFlowCount
+  expr: ovs_flow_count &gt; 10000
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "OVS flow count is high on {{ $labels.instance }}"
+    description: "Flow count is {{ $value }}, which may indicate NetworkPolicy explosion."
+
+# Alert if conntrack table is over 80% full:
+- alert: ConntrackTableNearFull
+  expr: node_nf_conntrack_entries / node_nf_conntrack_entries_limit &gt; 0.8
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Conntrack table nearly full on {{ $labels.instance }}"</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_2_establish_networkpolicy_best_practices"><a class="anchor" href="#_2_establish_networkpolicy_best_practices"></a>2. Establish NetworkPolicy Best Practices</h3>
+<div class="paragraph">
+<p>Document and enforce these guidelines:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NetworkPolicy Best Practices:
+1. Use label selectors, NEVER per-pod/per-instance selectors
+2. Use namespaceSelector for cross-namespace policies
+3. Combine ingress rules with the same ports into a single rule
+4. Prefer fewer, broader policies over many narrow ones
+5. Test policy impact in staging before production deployment
+6. Monitor OVS flow count after applying new policies
+7. Review policies quarterly for consolidation opportunities</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_3_load_test_after_policy_changes"><a class="anchor" href="#_3_load_test_after_policy_changes"></a>3. Load Test After Policy Changes</h3>
+<div class="paragraph">
+<p>Before deploying NetworkPolicies to production:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Run iperf3 baseline test:
+iperf3 -c &lt;target-pod-ip&gt; -t 30 -P 4
+
+# Apply policies in staging:
+oc apply -f network-policies/
+
+# Re-run iperf3 test:
+iperf3 -c &lt;target-pod-ip&gt; -t 30 -P 4
+
+# Check flow count:
+ovs-ofctl dump-flows br-int | wc -l
+
+# Check CPU usage:
+top -bn1 | grep ovs-vswitchd</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_4_set_alerts_for_ovs_cpu_usage"><a class="anchor" href="#_4_set_alerts_for_ovs_cpu_usage"></a>4. Set Alerts for OVS CPU Usage</h3>
+<div class="listingblock">
+<div class="content">
+<pre>- alert: OVSHighCPU
+  expr: rate(process_cpu_seconds_total{job="ovs-vswitchd"}[5m]) &gt; 0.5
+  for: 10m
+  labels:
+    severity: warning</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_commands_reference"><a class="anchor" href="#_key_commands_reference"></a>Key Commands Reference</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Command</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>iperf3 -c &lt;ip&gt; -p 5201 -t 30 -P 4</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network throughput test</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>top -bn1 -o %CPU</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check CPU usage by process</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>pidstat -t -p &lt;pid&gt; 1 3</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Per-thread CPU usage</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">`ovs-ofctl dump-flows br-int \</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">wc -l`</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count OpenFlow flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">`ovs-appctl dpctl/dump-flows -m \</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">wc -l`</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Count datapath flows</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl dpctl/dump-mega-stats</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Megaflow mask statistics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl dpctl/ct-stats-show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack table statistics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cat /proc/sys/net/netfilter/nf_conntrack_max</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack table limit</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cat /proc/sys/net/netfilter/nf_conntrack_count</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Current conntrack entries</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>conntrack -S</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack per-CPU statistics and drops</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl acl-list &lt;switch&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List OVN ACLs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl coverage/show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS event counters (revalidation, upcalls)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl upcall/show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcall statistics and flow limits</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl memory/show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS memory usage</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl dpif-netdev/pmd-stats-show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">PMD thread statistics</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc get networkpolicy -A</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List all NetworkPolicies</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sysctl -w net.netfilter.nf_conntrack_max=&lt;value&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Increase conntrack limit</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=&lt;n&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set handler threads</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=&lt;n&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set revalidator threads</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_takeaways"><a class="anchor" href="#_key_takeaways"></a>Key Takeaways</h2>
+<div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p><strong>NetworkPolicy granularity directly impacts OVS performance.</strong> Per-pod selectors create
+per-pod ACLs, which create per-pod OpenFlow flows, which prevent efficient megaflow
+caching. Use broad label selectors wherever possible.</p>
+</li>
+<li>
+<p><strong>Monitor OVS flow count and conntrack table size</strong> as key performance indicators. A
+sudden increase in either after a policy change is a red flag.</p>
+</li>
+<li>
+<p><strong>The fast path / slow path distinction explains most OVS performance issues.</strong> When
+most packets take the slow path through userspace, throughput drops by 10-100x regardless
+of physical network speed.</p>
+</li>
+<li>
+<p><strong>Conntrack table exhaustion causes silent connection drops.</strong> Always size the conntrack
+table appropriately and monitor its utilization.</p>
+</li>
+<li>
+<p><strong>Always load-test NetworkPolicy changes</strong> in a staging environment before deploying to
+production. A simple iperf3 test before and after can reveal performance regressions
+before they affect production workloads.</p>
+</li>
+</ul>
+</div>
+<hr>
+<div class="paragraph">
+<p><strong>Previous scenario:</strong> <a href="ts-02-overlay-issues.html" class="xref page">Scenario 02 - Intermittent Packet Loss on Overlay Network</a>
+<strong>Back to:</strong> <a href="12-troubleshooting.html" class="xref page">Module 12 - Troubleshooting OVS and OVN</a>
+<strong>Next scenario:</strong> <a href="ts-04-ovn-controller.html" class="xref page">Scenario 04 - Pods Lose Network After Node Maintenance</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="ts-02-overlay-issues.html" class="query-params-link">Overlay Issues</a></span>
+  <span class="next"><a href="ts-04-ovn-controller.html" class="query-params-link">OVN Controller</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

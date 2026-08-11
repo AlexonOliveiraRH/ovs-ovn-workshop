@@ -1,0 +1,2001 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 10: Traffic Flows Deep Dive :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="09-ovn-in-openshift.html">
+    <link rel="next" href="11-management-tooling.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="10-traffic-flows.html">Traffic Flows</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 10: Traffic Flows Deep Dive</h1>
+<div class="sect1">
+<h2 id="_overview"><a class="anchor" href="#_overview"></a>Overview</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Every previous module in this workshop has built toward this moment. You understand OVS bridges, OpenFlow tables, OVN&#8217;s architecture, logical constructs, and the troubleshooting tools. Now we put it all together by tracing packets end to end through OVS and OVN in realistic scenarios - the exact kind of tracing you will need to perform during a production incident.</p>
+</div>
+<div class="paragraph">
+<p>This module is deliberately detailed. When a customer reports that VM A cannot reach VM B, or that a floating IP is not working, or that a Kubernetes Service is not load balancing correctly, you need to be able to follow a packet from the moment it leaves the source interface to the moment it arrives at the destination. Every hop, every table, every encapsulation, every NAT translation. That is what this module teaches.</p>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_understanding_flow_tables"><a class="anchor" href="#_understanding_flow_tables"></a>Understanding Flow Tables</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Before tracing packets, you need to be completely comfortable with how flow tables work. This section recaps key concepts from Modules 2 and 3 and extends them to show how OVN uses flow tables.</p>
+</div>
+<div class="sect2">
+<h3 id="_openflow_flow_tables_in_ovs"><a class="anchor" href="#_openflow_flow_tables_in_ovs"></a>OpenFlow Flow Tables in OVS</h3>
+<div class="paragraph">
+<p>OVS organizes its forwarding logic into a pipeline of numbered tables (table 0, table 1, table 2, and so on). When a packet enters the switch, it always starts in <strong>table 0</strong>. Each table contains flow entries, and each flow entry has three essential parts:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Match fields</strong> - conditions the packet must satisfy (source MAC, destination IP, input port, VLAN tag, etc.)</p>
+</li>
+<li>
+<p><strong>Priority</strong> - a number from 0 to 65535 that determines which flow wins when multiple flows match the same packet. Higher priority wins.</p>
+</li>
+<li>
+<p><strong>Actions</strong> - what to do with the packet if it matches (output to a port, modify a header, drop it, resubmit to another table, etc.)</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>When a packet enters a table, OVS evaluates it against all flow entries in that table simultaneously. The highest-priority matching entry wins, and its actions are executed. If no entry matches, the packet is dropped (unless a table-miss flow with priority 0 specifies a different behavior).</p>
+</div>
+<div class="paragraph">
+<p>The <code>resubmit(,N)</code> action is what chains tables together. When a flow in table 0 executes <code>resubmit(,1)</code>, the packet is evaluated against table 1&#8217;s flow entries without leaving the switch. This allows complex logic to be broken into stages.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The flow table pipeline is the heart of OVS packet processing. Every packet traverses this pipeline. Understanding which table does what, and how packets move between tables, is the single most important skill for troubleshooting.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_ovn_uses_flow_tables"><a class="anchor" href="#_how_ovn_uses_flow_tables"></a>How OVN Uses Flow Tables</h3>
+<div class="paragraph">
+<p>When OVN manages an OVS instance, <code>ovn-controller</code> programs the flow tables on <code>br-int</code> (the integration bridge). OVN uses a specific table numbering scheme to implement its logical pipeline. The exact table numbers can vary between OVN versions, but the general structure is consistent.</p>
+</div>
+<div class="paragraph">
+<p>OVN&#8217;s physical flow tables on <code>br-int</code> implement two pipelines:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Ingress pipeline</strong> - processes packets entering the logical network from a local port or arriving from a tunnel.</p>
+</li>
+<li>
+<p><strong>Egress pipeline</strong> - processes packets leaving the logical network toward a local port or a tunnel.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The tables serve as stages in these pipelines. Each stage performs a specific function (port security, ACL evaluation, routing, etc.), and the packet moves through stages via <code>resubmit</code> actions.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The exact OVS table numbers that correspond to each OVN logical table depend on your OVN version. You can determine the mapping by examining the flows with <code>ovs-ofctl dump-flows br-int</code> and correlating the table numbers with the logical flow stages shown by <code>ovn-sbctl lflow-list</code>. The <code>ovn-detrace</code> tool automates this correlation.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_reading_flow_entries"><a class="anchor" href="#_reading_flow_entries"></a>Reading Flow Entries</h3>
+<div class="paragraph">
+<p>When you run <code>ovs-ofctl dump-flows br-int</code>, you see output like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre> cookie=0x4a5c0b13, duration=3842.651s, table=0, n_packets=15234, n_bytes=1827410,
+ priority=100,in_port=3 actions=load:0x2-&gt;NXM_NX_REG13[],load:0x1-&gt;NXM_NX_REG11[],
+ load:0x3-&gt;NXM_NX_REG12[],load:0x2-&gt;OXM_OF_METADATA[],
+ load:0x1-&gt;NXM_NX_REG14[],resubmit(,8)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Let us break down every field:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Field</th>
+<th class="tableblock halign-left valign-top">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>cookie=0x4a5c0b13</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A 64-bit identifier that OVN uses to track which logical flow this physical flow came from. Used by <code>ovn-detrace</code> to map back to OVN logical flows.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>duration=3842.651s</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How long this flow has been installed in the table.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>table=0</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Which OVS table this flow belongs to.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>n_packets=15234</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of packets that have matched this flow since it was installed.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>n_bytes=1827410</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Total bytes processed by this flow.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>priority=100</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Priority of this flow within the table. Higher number wins when multiple flows match.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port=3</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Match condition: this flow matches packets arriving on OVS port 3.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>actions=&#8230;&#8203;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">What to do when the packet matches.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The actions in this example perform the following:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>load:0x2&#8594;NXM_NX_REG13[]</code> - Store a value in register 13 (OVN uses registers to carry metadata through the pipeline, such as the logical input port number).</p>
+</li>
+<li>
+<p><code>load:0x1&#8594;NXM_NX_REG11[]</code> - Store a value in register 11 (typically the logical datapath group).</p>
+</li>
+<li>
+<p><code>load:0x3&#8594;NXM_NX_REG12[]</code> - Store a value in register 12.</p>
+</li>
+<li>
+<p><code>load:0x2&#8594;OXM_OF_METADATA[]</code> - Store the logical datapath identifier in the OpenFlow metadata field.</p>
+</li>
+<li>
+<p><code>load:0x1&#8594;NXM_NX_REG14[]</code> - Store the logical input port in register 14.</p>
+</li>
+<li>
+<p><code>resubmit(,8)</code> - Continue processing in table 8 (the start of the OVN ingress pipeline).</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN uses OpenFlow registers (NXM_NX_REG0 through NXM_NX_REG15) and the metadata field to carry logical context through the physical pipeline. When you see <code>load</code> actions writing to registers, OVN is tagging the packet with information like "this came from logical port X on logical switch Y." Later tables read these registers to make forwarding decisions without re-examining the physical packet headers.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_cookie_values_and_ovn_correlation"><a class="anchor" href="#_cookie_values_and_ovn_correlation"></a>Cookie Values and OVN Correlation</h3>
+<div class="paragraph">
+<p>The <code>cookie</code> field is particularly important in OVN-managed environments. OVN assigns each logical flow a unique identifier, and when <code>ovn-controller</code> translates that logical flow into one or more OVS physical flows, it stamps them with a cookie derived from the logical flow&#8217;s UUID.</p>
+</div>
+<div class="paragraph">
+<p>This means you can take any flow from <code>ovs-ofctl dump-flows br-int</code>, extract its cookie, and use <code>ovn-detrace</code> to find the corresponding logical flow in the Southbound database. This is invaluable for debugging because it lets you answer the question: "Why does this OVS flow exist?"</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump flows with cookies
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15
+
+# Use ovn-detrace to map a cookie back to a logical flow
+# (requires SB DB connection)
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The output of <code>ovn-detrace</code> annotates each OVS flow with the logical flow it came from, showing the datapath, pipeline direction, table, priority, match, and action from the OVN logical layer.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_standalone_flow_walkthrough"><a class="anchor" href="#_ovs_standalone_flow_walkthrough"></a>OVS Standalone Flow Walkthrough</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Before diving into OVN&#8217;s complex multi-table pipeline, let us trace a packet through a simple standalone OVS bridge. This establishes the mechanics of packet tracing that we will use throughout the rest of the module.</p>
+</div>
+<div class="sect2">
+<h3 id="_setting_up_the_example"><a class="anchor" href="#_setting_up_the_example"></a>Setting Up the Example</h3>
+<div class="paragraph">
+<p>Consider a basic OVS bridge with three ports:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a bridge
+sudo ovs-vsctl add-br br-test
+
+# Add three internal ports (simulating connected endpoints)
+sudo ip netns add ns1
+sudo ip netns add ns2
+sudo ip netns add ns3
+
+sudo ovs-vsctl add-port br-test veth1 -- set interface veth1 type=internal
+sudo ovs-vsctl add-port br-test veth2 -- set interface veth2 type=internal
+sudo ovs-vsctl add-port br-test veth3 -- set interface veth3 type=internal
+
+sudo ip link set veth1 netns ns1
+sudo ip link set veth2 netns ns2
+sudo ip link set veth3 netns ns3
+
+sudo ip netns exec ns1 ip addr add 10.0.0.1/24 dev veth1
+sudo ip netns exec ns1 ip link set veth1 up
+sudo ip netns exec ns2 ip addr add 10.0.0.2/24 dev veth2
+sudo ip netns exec ns2 ip link set veth2 up
+sudo ip netns exec ns3 ip addr add 10.0.0.3/24 dev veth3
+sudo ip netns exec ns3 ip link set veth3 up</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>With no custom flows installed, OVS uses its default behavior: the <code>NORMAL</code> action, which makes it act like a traditional learning switch (learn source MACs, flood unknown destinations, forward known destinations).</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_tracing_a_packet_with_ofprototrace"><a class="anchor" href="#_tracing_a_packet_with_ofprototrace"></a>Tracing a Packet with ofproto/trace</h3>
+<div class="paragraph">
+<p>The <code>ovs-appctl ofproto/trace</code> command simulates a packet through the OVS pipeline without actually sending it on the wire. This is your most important debugging tool for OVS-level problems.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace a packet from port 1 (veth1) to port 2 (veth2)
+sudo ovs-appctl ofproto/trace br-test \
+  in_port=1,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,dl_type=0x0800,\
+  nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The output walks you through each table:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Flow: tcp,in_port=1,vlan_tci=0x0000,dl_src=00:00:00:00:00:01,
+      dl_dst=00:00:00:00:00:02,nw_src=10.0.0.1,nw_dst=10.0.0.2,
+      nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=12345,tp_dst=80,tcp_flags=0
+
+bridge("br-test")
+-----------------
+ 0. priority 0
+    NORMAL
+     -&gt; learned that 00:00:00:00:00:01 is on port veth1 in VLAN 0
+     -&gt; forwarding to learned port
+
+Final flow: unchanged
+Megaflow: recirc_id=0,eth,in_port=1,dl_src=00:00:00:00:00:01,
+          dl_dst=00:00:00:00:00:02
+Datapath actions: 2</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Reading this output:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Flow</strong> - the complete simulated packet.</p>
+</li>
+<li>
+<p><strong>bridge("br-test")</strong> - which bridge processes the packet.</p>
+</li>
+<li>
+<p><strong>0. priority 0</strong> - table 0, matched the default flow.</p>
+</li>
+<li>
+<p><strong>NORMAL</strong> - standard L2 switching logic.</p>
+</li>
+<li>
+<p><strong>learned that&#8230;&#8203;</strong> - OVS associated the source MAC with the input port.</p>
+</li>
+<li>
+<p><strong>Final flow: unchanged</strong> - no header modifications.</p>
+</li>
+<li>
+<p><strong>Megaflow</strong> - the wildcard cached flow for the kernel datapath.</p>
+</li>
+<li>
+<p><strong>Datapath actions: 2</strong> - output on kernel datapath port 2.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_adding_custom_flows_and_tracing_again"><a class="anchor" href="#_adding_custom_flows_and_tracing_again"></a>Adding Custom Flows and Tracing Again</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Remove the default NORMAL action
+sudo ovs-ofctl del-flows br-test
+
+# Table 0: classify by input port
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=1,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=2,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=100,in_port=3,actions=resubmit(,1)"
+sudo ovs-ofctl add-flow br-test "table=0,priority=0,actions=drop"
+
+# Table 1: filter - only allow IP and ARP traffic
+sudo ovs-ofctl add-flow br-test "table=1,priority=100,ip,actions=resubmit(,2)"
+sudo ovs-ofctl add-flow br-test "table=1,priority=100,arp,actions=resubmit(,2)"
+sudo ovs-ofctl add-flow br-test "table=1,priority=0,actions=drop"
+
+# Table 2: forwarding by destination MAC
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:01,actions=output:1"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:02,actions=output:2"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=100,dl_dst=00:00:00:00:00:03,actions=output:3"
+sudo ovs-ofctl add-flow br-test \
+  "table=2,priority=50,dl_dst=ff:ff:ff:ff:ff:ff,actions=output:1,output:2,output:3"
+sudo ovs-ofctl add-flow br-test "table=2,priority=0,actions=drop"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Trace with the custom pipeline:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl ofproto/trace br-test \
+  in_port=1,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,dl_type=0x0800,\
+  nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,tp_src=12345,tp_dst=80</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>bridge("br-test")
+-----------------
+ 0. in_port=1, priority 100
+    resubmit(,1)
+ 1. ip, priority 100
+    resubmit(,2)
+ 2. dl_dst=00:00:00:00:00:02, priority 100
+    output:2
+
+Final flow: unchanged
+Datapath actions: 2</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Each table in action: Table 0 matched the input port, Table 1 matched IP, Table 2 matched the destination MAC and output on port 2.</p>
+</div>
+<div class="paragraph">
+<p>A non-IP packet would be dropped at Table 1:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>bridge("br-test")
+-----------------
+ 0. in_port=1, priority 100
+    resubmit(,1)
+ 1. priority 0
+    drop
+
+Datapath actions: drop</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p><code>ovs-appctl ofproto/trace</code> is a dry-run tool. It does not inject packets into the network. It evaluates the packet against the current flow tables and tells you what would happen. This makes it completely safe to use in production.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_logical_flow_pipeline_detailed"><a class="anchor" href="#_ovn_logical_flow_pipeline_detailed"></a>OVN Logical Flow Pipeline (Detailed)</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>When OVN manages the network, the packet processing pipeline is far more complex than a standalone OVS setup. OVN implements its forwarding logic as <strong>logical flows</strong> in the Southbound database. These logical flows are organized into numbered tables within two pipelines: ingress and egress.</p>
+</div>
+<div class="paragraph">
+<p><code>ovn-controller</code> on each chassis reads these logical flows and translates them into OVS OpenFlow rules on <code>br-int</code>. The logical table numbers do not map one-to-one to OVS table numbers - <code>ovn-controller</code> uses its own mapping scheme.</p>
+</div>
+<div class="sect2">
+<h3 id="_ingress_pipeline"><a class="anchor" href="#_ingress_pipeline"></a>Ingress Pipeline</h3>
+<div class="paragraph">
+<p>The ingress pipeline processes packets entering the logical network.</p>
+</div>
+<div class="paragraph">
+<p><strong>Table 0 - Admission / Port Security (Ingress)</strong></p>
+</div>
+<div class="paragraph">
+<p>The first table a packet encounters. Validates source MAC/IP against the port&#8217;s allowed addresses. Drops spoofed packets.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=0 (ls_in_check_port_sec), priority=100,
+  match=(inport == "vm1" &amp;&amp; eth.src == {00:00:00:00:00:01}),
+  action=(next;)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Tables 1-4 - Pre-ACL / Pre-Stateful</strong></p>
+</div>
+<div class="paragraph">
+<p>Prepare the packet for ACL evaluation. Key operation: <strong>conntrack zone assignment</strong>.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Table 1 (<code>ls_in_apply_port_sec</code>): Additional port security checks.</p>
+</li>
+<li>
+<p>Table 2 (<code>ls_in_lookup_fdb</code>): FDB lookups for MAC learning on localnet ports.</p>
+</li>
+<li>
+<p>Table 3 (<code>ls_in_put_fdb</code>): FDB population.</p>
+</li>
+<li>
+<p>Table 4 (<code>ls_in_pre_acl</code>): Sends packets through conntrack to populate state before ACL evaluation.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=4 (ls_in_pre_acl), priority=110,
+  match=(ip),
+  action=(ct(table=5, zone=NXM_NX_REG13[0..15]);)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Tables 5-8 - ACL (Security Groups)</strong></p>
+</div>
+<div class="paragraph">
+<p>Evaluate Access Control Lists implementing OpenStack security groups or Kubernetes NetworkPolicies.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Table 5 (<code>ls_in_pre_stateful</code>): Allows established/related connections to bypass ACL evaluation.</p>
+</li>
+<li>
+<p>Table 6 (<code>ls_in_acl_hint</code>): Optimization hints.</p>
+</li>
+<li>
+<p>Table 7 (<code>ls_in_acl_eval</code>): Main ACL evaluation.</p>
+</li>
+<li>
+<p>Table 8 (<code>ls_in_acl_action</code>): Commits new connections to conntrack for stateful tracking.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Allow incoming TCP port 80
+table=7 (ls_in_acl_eval), priority=2002,
+  match=(inport == @pg_group1 &amp;&amp; ip4 &amp;&amp; tcp &amp;&amp; tcp.dst == 80),
+  action=(reg8[16] = 1; next;)
+
+# Default deny
+table=7 (ls_in_acl_eval), priority=1,
+  match=(ip),
+  action=(reg8[16] = 0; next;)</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN implements stateful firewalling using the Linux kernel&#8217;s conntrack facility via OVS&#8217;s <code>ct()</code> action. When a security group rule allows TCP port 80 inbound, OVN does not need a separate rule for return traffic. The <code>ct_commit</code> on the initial packet creates a conntrack entry, and subsequent packets match as <code>ct.est</code> (established) and bypass ACL evaluation.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Tables 9-12 - QoS, Load Balancing</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Tables 9-10: DSCP marking and rate limiting.</p>
+</li>
+<li>
+<p>Table 11: Load balancer affinity checks.</p>
+</li>
+<li>
+<p>Table 12 (<code>ls_in_lb</code>): Load balancer DNAT for traffic to virtual IPs.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Tables 13-19 - L2 Lookup / ARP Responder</strong></p>
+</div>
+<div class="paragraph">
+<p>Handle Layer 2 forwarding decisions.</p>
+</div>
+<div class="paragraph">
+<p>ARP responder - OVN replies to ARP requests on behalf of known ports:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=17 (ls_in_arp_rsp), priority=50,
+  match=(arp.tpa == 10.0.0.1 &amp;&amp; arp.op == 1),
+  action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:01;
+          arp.op = 2; arp.tha = arp.sha; arp.sha = 00:00:00:00:00:01;
+          arp.tpa = arp.spa; arp.spa = 10.0.0.1;
+          outport = inport; flags.loopback = 1; output;)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>L2 destination lookup:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=19 (ls_in_l2_lkup), priority=50,
+  match=(eth.dst == 00:00:00:00:00:02),
+  action=(outport = "vm2"; output;)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Logical Router Pipeline (Tables within lr datapath)</strong></p>
+</div>
+<div class="paragraph">
+<p>When a packet&#8217;s destination is on a different subnet, it enters the logical router pipeline:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>IP routing table lookup (longest-prefix match).</p>
+</li>
+<li>
+<p>TTL decrement (drop if TTL reaches 0).</p>
+</li>
+<li>
+<p>Source/destination MAC rewrite.</p>
+</li>
+<li>
+<p>ARP/ND resolution for next hop.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=1 (lr_in_ip_routing), priority=49,
+  match=(ip4.dst == 192.168.1.0/24),
+  action=(ip.ttl--; reg0 = 192.168.1.0; reg1 = 192.168.1.1;
+          eth.src = 00:00:00:00:aa:01; outport = "router-port-subnet2";
+          flags.loopback = 1; next;)</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_egress_pipeline"><a class="anchor" href="#_egress_pipeline"></a>Egress Pipeline</h3>
+<div class="paragraph">
+<p>After the ingress pipeline determines the output port, the packet enters the egress pipeline.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tables 0-4 - Pre-ACL / Pre-Stateful (Egress)</strong> - Conntrack zone assignment for egress.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tables 5-8 - ACL (Egress Security Groups)</strong> - Evaluate egress ACL rules.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tables 9-12 - Port Security (Egress)</strong> - Validate destination MAC/IP matches the port configuration.</p>
+</div>
+<div class="paragraph">
+<p><strong>Table 13 - Delivery</strong> - Output the packet to the local OVS port or Geneve tunnel.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=13 (ls_out_delivery), priority=100,
+  match=(outport == "vm2"),
+  action=(output;)</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_viewing_logical_flows"><a class="anchor" href="#_viewing_logical_flows"></a>Viewing Logical Flows</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all logical flows
+sudo ovn-sbctl lflow-list
+
+# Filter by logical switch
+sudo ovn-sbctl lflow-list &lt;switch-name&gt;
+
+# Filter by table name
+sudo ovn-sbctl lflow-list &lt;switch-name&gt; | grep "ls_in_acl"</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Logical flows use OVN&#8217;s own match/action language (<code>ip4.src</code>, <code>tcp.dst</code>, <code>inport</code>, <code>outport</code>), which is different from OpenFlow syntax. <code>ovn-controller</code> translates these into OpenFlow when programming OVS.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_traffic_flow_scenarios_complete_end_to_end"><a class="anchor" href="#_traffic_flow_scenarios_complete_end_to_end"></a>Traffic Flow Scenarios (Complete End-to-End)</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>For each scenario below, we show the logical path, physical path, tracing commands, packet captures, and packet modifications.</p>
+</div>
+<div class="sect2">
+<h3 id="_scenario_1_vmpod_to_vmpod_same_node_same_subnet"><a class="anchor" href="#_scenario_1_vmpod_to_vmpod_same_node_same_subnet"></a>Scenario 1: VM/Pod to VM/Pod (Same Node, Same Subnet)</h3>
+<div class="paragraph">
+<p>The simplest case. Two VMs on the same hypervisor, same L2 subnet. No tunneling, no routing.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM1: MAC <code>00:00:00:00:00:01</code>, IP <code>10.0.0.1/24</code>, logical switch <code>ls1</code>, chassis <code>node-1</code></p>
+</li>
+<li>
+<p>VM2: MAC <code>00:00:00:00:00:02</code>, IP <code>10.0.0.2/24</code>, logical switch <code>ls1</code>, chassis <code>node-1</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Logical Path:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>VM1 -&gt; ls1 ingress (port security, ACL, L2 lookup) -&gt; outport="vm2"
+    -&gt; ls1 egress (ACL, port security, delivery) -&gt; VM2</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Physical Path:</strong> Packet stays entirely within <code>br-int</code> on the local node.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Logical trace
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.1 &amp;&amp; ip4.dst == 10.0.0.2 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 80'
+
+# Physical trace (find OVS port number first with ovs-ofctl show br-int)
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:02,\
+   dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.2,nw_proto=6,\
+   tp_src=12345,tp_dst=80"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong> None. The packet is forwarded unmodified.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_scenario_2_vmpod_to_vmpod_different_nodes_same_subnet"><a class="anchor" href="#_scenario_2_vmpod_to_vmpod_different_nodes_same_subnet"></a>Scenario 2: VM/Pod to VM/Pod (Different Nodes, Same Subnet)</h3>
+<div class="paragraph">
+<p>Two VMs on different hypervisors, same L2 subnet. Requires Geneve tunnel encapsulation.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM1: <code>10.0.0.1/24</code>, chassis <code>node-1</code> (IP <code>172.16.0.1</code>)</p>
+</li>
+<li>
+<p>VM3: <code>10.0.0.3/24</code>, chassis <code>node-2</code> (IP <code>172.16.0.2</code>)</p>
+</li>
+<li>
+<p>Both on logical switch <code>ls1</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Physical Path:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Node-1                                Node-2
+VM1 -&gt; br-int ingress pipeline        br-int egress pipeline -&gt; VM3
+    -&gt; L2 lookup (remote chassis)          ^
+    -&gt; Geneve encapsulation          Geneve decapsulation
+    -&gt; tunnel port -&gt; eth0 --------&gt; eth0 -&gt; tunnel port
+         (UDP 6081)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Geneve Encapsulation Details:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VNI: Identifies the logical datapath</p>
+</li>
+<li>
+<p>Geneve options: OVN logical metadata (output port, flags)</p>
+</li>
+<li>
+<p>Outer IP: <code>172.16.0.1</code> &#8594; <code>172.16.0.2</code></p>
+</li>
+<li>
+<p>Outer UDP: random src port &#8594; 6081</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Logical trace
+sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:03 &amp;&amp; ip4.src == 10.0.0.1 &amp;&amp; ip4.dst == 10.0.0.3 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 22'
+
+# Physical trace (shows tunnel output)
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:03,\
+   dl_type=0x0800,nw_src=10.0.0.1,nw_dst=10.0.0.3,nw_proto=6,\
+   tp_src=12345,tp_dst=22"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Packet Capture:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On node-1: capture Geneve-encapsulated traffic on the physical NIC
+sudo tcpdump -i eth0 -nn port 6081
+
+# On node-2: capture on VM3's OVS port (inner packet only)
+sudo ovs-tcpdump -i vm3-port -nn</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When capturing on physical interfaces, you see outer Geneve headers. When capturing on <code>br-int</code> ports or VM interfaces, you see the inner packet. Know which layer you are looking at.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong> The inner packet is unmodified. OVN adds outer tunnel headers.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_scenario_3_vmpod_to_vmpod_different_subnets_distributed_routing"><a class="anchor" href="#_scenario_3_vmpod_to_vmpod_different_subnets_distributed_routing"></a>Scenario 3: VM/Pod to VM/Pod (Different Subnets - Distributed Routing)</h3>
+<div class="paragraph">
+<p>Two VMs on different subnets. OVN&#8217;s distributed logical router handles routing locally.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM1: <code>10.0.0.1/24</code> on <code>ls-subnet1</code>, chassis <code>node-1</code></p>
+</li>
+<li>
+<p>VM4: <code>192.168.1.4/24</code> on <code>ls-subnet2</code>, chassis <code>node-2</code></p>
+</li>
+<li>
+<p>Router <code>lr1</code>: port <code>lr1-subnet1</code> (<code>10.0.0.254/24</code>), port <code>lr1-subnet2</code> (<code>192.168.1.254/24</code>)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Logical Path:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>VM1 -&gt; ls-subnet1 ingress -&gt; lr1 routing -&gt; ls-subnet2 ingress -&gt; VM4</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Distributed routing means the routing decision happens locally on node-1, not on a central network node. This is a major advantage of OVN over the legacy ML2/OVS architecture where east-west inter-subnet traffic had to traverse a dedicated network node.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --detailed ls-subnet1 \
+  'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:aa:aa:01 &amp;&amp; ip4.src == 10.0.0.1 &amp;&amp; ip4.dst == 192.168.1.4 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 443'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key operations in the trace output:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>lr_in_ip_routing</code>: Route lookup, TTL decrement, MAC rewrite</p>
+</li>
+<li>
+<p><code>lr_in_arp_resolve</code>: Resolve destination MAC from IP</p>
+</li>
+<li>
+<p>Output to <code>ls-subnet2</code>, then tunnel to <code>node-2</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.667%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Step</th>
+<th class="tableblock halign-left valign-top">Src MAC</th>
+<th class="tableblock halign-left valign-top">Dst MAC</th>
+<th class="tableblock halign-left valign-top">Src IP</th>
+<th class="tableblock halign-left valign-top">Dst IP</th>
+<th class="tableblock halign-left valign-top">TTL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM1 sends</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>00:00:00:00:00:01</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>00:00:00:aa:aa:01</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>192.168.1.4</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">64</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After lr1 routing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>00:00:00:aa:aa:02</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>00:00:00:00:00:04</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>192.168.1.4</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">63</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>IP addresses unchanged (routing, not NAT). MACs rewritten by router. TTL decremented by 1.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_scenario_4_vmpod_to_external_north_south_with_snat"><a class="anchor" href="#_scenario_4_vmpod_to_external_north_south_with_snat"></a>Scenario 4: VM/Pod to External (North-South with SNAT)</h3>
+<div class="paragraph">
+<p>A VM sends traffic to an external host. Requires Source NAT.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM1: <code>10.0.0.1/24</code> on <code>ls1</code>, chassis <code>node-1</code></p>
+</li>
+<li>
+<p>Router <code>lr1</code>: internal port <code>10.0.0.254/24</code>, external port <code>203.0.113.1/24</code></p>
+</li>
+<li>
+<p>SNAT rule: <code>10.0.0.0/24</code> &#8594; <code>203.0.113.1</code></p>
+</li>
+<li>
+<p>Gateway chassis: <code>node-gw</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Physical Path (Centralized Gateway):</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Node-1 (compute)                  Node-GW (gateway)
+VM1 -&gt; br-int ingress             br-int: lr1 routing
+    -&gt; lr1 routing                     -&gt; SNAT (10.0.0.1 -&gt; 203.0.113.1)
+    -&gt; redirect via Geneve             -&gt; br-ex -&gt; physical NIC -&gt; Internet
+       to node-gw</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>With Distributed Gateway Port:</strong> SNAT can happen locally on the compute node, avoiding the tunnel to the gateway chassis.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:aa:aa:01 &amp;&amp; ip4.src == 10.0.0.1 &amp;&amp; ip4.dst == 8.8.8.8 &amp;&amp; ip.ttl == 64 &amp;&amp; udp.dst == 53'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Step</th>
+<th class="tableblock halign-left valign-top">Src IP</th>
+<th class="tableblock halign-left valign-top">Dst IP</th>
+<th class="tableblock halign-left valign-top">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM1 sends</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>8.8.8.8</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Private IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After SNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>203.0.113.1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>8.8.8.8</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Public IP</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Return Traffic:</strong> Conntrack performs reverse SNAT, changing destination from <code>203.0.113.1</code> back to <code>10.0.0.1</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>Packet Capture:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On compute node: VM1's port (pre-NAT)
+sudo ovs-tcpdump -i vm1-port -nn
+# src IP: 10.0.0.1
+
+# On gateway node: br-ex (post-SNAT)
+sudo tcpdump -i br-ex -nn host 8.8.8.8
+# src IP: 203.0.113.1</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_scenario_5_external_to_vmpod_north_south_with_dnat_floating_ip"><a class="anchor" href="#_scenario_5_external_to_vmpod_north_south_with_dnat_floating_ip"></a>Scenario 5: External to VM/Pod (North-South with DNAT / Floating IP)</h3>
+<div class="paragraph">
+<p>An external client accesses a VM via its floating IP. Requires Destination NAT.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM1: private IP <code>10.0.0.1/24</code>, floating IP <code>203.0.113.50</code>, chassis <code>node-1</code></p>
+</li>
+<li>
+<p>Gateway chassis: <code>node-gw</code></p>
+</li>
+<li>
+<p>External client: <code>198.51.100.10</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Logical Path:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>External -&gt; br-ex on node-gw -&gt; lr1 -&gt; DNAT (203.0.113.50 -&gt; 10.0.0.1)
+         -&gt; routing -&gt; ls1 -&gt; VM1 (possibly via tunnel)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --detailed lr1 \
+  'inport == "lr1-external" &amp;&amp; eth.src == 00:00:00:cc:cc:01 &amp;&amp; eth.dst == 00:00:00:bb:bb:01 &amp;&amp; ip4.src == 198.51.100.10 &amp;&amp; ip4.dst == 203.0.113.50 &amp;&amp; ip.ttl == 62 &amp;&amp; tcp.dst == 443'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Step</th>
+<th class="tableblock halign-left valign-top">Src IP</th>
+<th class="tableblock halign-left valign-top">Dst IP</th>
+<th class="tableblock halign-left valign-top">Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Arrives on br-ex</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>198.51.100.10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>203.0.113.50</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Floating IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After DNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>198.51.100.10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.1</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Private IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM1 receives</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>198.51.100.10</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.1</code></p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Return traffic:</strong> Conntrack performs reverse DNAT, restoring source IP to <code>203.0.113.50</code>.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_scenario_6_service_load_balancing_ovn_lb"><a class="anchor" href="#_scenario_6_service_load_balancing_ovn_lb"></a>Scenario 6: Service Load Balancing (OVN LB)</h3>
+<div class="paragraph">
+<p>A client accesses a VIP that is load-balanced across multiple backends.</p>
+</div>
+<div class="paragraph">
+<p><strong>Setup:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VIP: <code>10.0.0.100:80</code></p>
+</li>
+<li>
+<p>Backends: <code>10.0.0.1:8080</code>, <code>10.0.0.2:8080</code>, <code>10.0.0.3:8080</code></p>
+</li>
+<li>
+<p>Client: <code>10.0.0.50</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Configuration:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lb-add web-lb 10.0.0.100:80 \
+  10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080
+sudo ovn-nbctl ls-lb-add ls1 web-lb</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>How It Works:</strong></p>
+</div>
+<div class="paragraph">
+<p>The load balancer is implemented using conntrack and <code>ct_lb_mark</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>table=12 (ls_in_lb), priority=120,
+  match=(ct.new &amp;&amp; ip4.dst == 10.0.0.100 &amp;&amp; tcp.dst == 80),
+  action=(ct_lb_mark(backends=10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080);)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The <code>ct_lb_mark</code> action selects a backend, performs DNAT, and creates a conntrack entry. All subsequent packets in the connection use the same backend.</p>
+</div>
+<div class="paragraph">
+<p><strong>Tracing:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --ct new --detailed ls1 \
+  'inport == "vm-client" &amp;&amp; eth.src == 00:00:00:00:00:50 &amp;&amp; eth.dst == 00:00:00:00:01:00 &amp;&amp; ip4.src == 10.0.0.50 &amp;&amp; ip4.dst == 10.0.0.100 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 80'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Packet Modifications:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Step</th>
+<th class="tableblock halign-left valign-top">Src IP:Port</th>
+<th class="tableblock halign-left valign-top">Dst IP:Port</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Client sends</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.50:54321</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.100:80</code> (VIP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After LB DNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.50:54321</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.2:8080</code> (backend)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Backend reply</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.2:8080</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.50:54321</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After reverse DNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.100:80</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>10.0.0.50:54321</code> (VIP restored)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Verifying:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lb-list
+sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.0.100"</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>OVN load balancers operate at Layer 4 (TCP/UDP). For Layer 7 (HTTP) features, you need an application-level load balancer running as a workload on top of OVN.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_packet_capture_techniques"><a class="anchor" href="#_packet_capture_techniques"></a>Packet Capture Techniques</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_where_to_capture"><a class="anchor" href="#_where_to_capture"></a>Where to Capture</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Capture Point</th>
+<th class="tableblock halign-left valign-top">What You See</th>
+<th class="tableblock halign-left valign-top">When to Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM/Pod interface</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Packet as the endpoint sends/receives it</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Verify endpoint behavior</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">br-int port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Decapsulated packet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Debug ACL drops, port security</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tunnel port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Decapsulated inner packet (receiving side)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Verify tunnel arrival</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Physical NIC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full encapsulated packet with outer headers</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Debug tunnel/MTU/physical issues</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_capturing_on_ovs_ports"><a class="anchor" href="#_capturing_on_ovs_ports"></a>Capturing on OVS Ports</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-tcpdump -i &lt;port-name&gt; -nn
+sudo ovs-tcpdump -i &lt;port-name&gt; -nn host 10.0.0.1
+sudo ovs-tcpdump -i &lt;port-name&gt; -nn -w /tmp/capture.pcap</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_filtering_geneve_traffic"><a class="anchor" href="#_filtering_geneve_traffic"></a>Filtering Geneve Traffic</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo tcpdump -i eth0 -nn port 6081
+sudo tcpdump -i eth0 -nn port 6081 and host 172.16.0.2
+sudo tshark -i eth0 -f "port 6081" -O geneve</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_geneve_packet_structure"><a class="anchor" href="#_geneve_packet_structure"></a>Geneve Packet Structure</h3>
+<div class="listingblock">
+<div class="content">
+<pre>+-------------------+
+| Outer Ethernet    |  (physical src/dst MACs)
++-------------------+
+| Outer IP          |  (hypervisor src/dst IPs)
++-------------------+
+| Outer UDP         |  (src: random, dst: 6081)
++-------------------+
+| Geneve Header     |  (VNI, OVN metadata options)
++-------------------+
+| Inner Ethernet    |  (VM/pod src/dst MACs)
++-------------------+
+| Inner IP/Payload  |
++-------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_port_mirroring"><a class="anchor" href="#_ovs_port_mirroring"></a>OVS Port Mirroring</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a mirror
+sudo ovs-vsctl \
+  -- --id=@vm1 get port vm1 \
+  -- --id=@mon get port monitor \
+  -- --id=@m create mirror name=debug \
+     select-src-port=@vm1 select-dst-port=@vm1 \
+     output-port=@mon \
+  -- set bridge br-int mirrors=@m
+
+# Capture on the mirror port
+sudo tcpdump -i monitor -nn -w /tmp/vm1-traffic.pcap
+
+# Clean up
+sudo ovs-vsctl -- clear bridge br-int mirrors \
+  -- --if-exists destroy mirror debug</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Port mirroring duplicates traffic and consumes additional bandwidth and CPU. Always clean up mirrors after debugging.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_ofprototrace_tool_ovs"><a class="anchor" href="#_the_ofprototrace_tool_ovs"></a>The ofproto/trace Tool (OVS)</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_syntax"><a class="anchor" href="#_syntax"></a>Syntax</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl ofproto/trace &lt;bridge&gt; &lt;flow-specification&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_common_fields"><a class="anchor" href="#_common_fields"></a>Common Fields</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Field</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Input port number or name</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port=5</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src</code> / <code>dl_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source/destination MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src=00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_type</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ethertype</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>0x0800</code> (IPv4), <code>0x0806</code> (ARP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src</code> / <code>nw_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source/destination IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src=10.0.0.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_proto</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP protocol</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>6</code> (TCP), <code>17</code> (UDP), <code>1</code> (ICMP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_src</code> / <code>tp_dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L4 port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_dst=80</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_reading_the_output"><a class="anchor" href="#_reading_the_output"></a>Reading the Output</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Table gaps</strong>: Packet was not resubmitted to that table.</p>
+</li>
+<li>
+<p><strong>drop</strong>: Packet dropped - check which table did it.</p>
+</li>
+<li>
+<p><strong>output:N</strong>: Final output port (cross-reference with <code>ovs-ofctl show</code>).</p>
+</li>
+<li>
+<p><strong>Megaflow</strong>: Kernel datapath cache entry wildcard.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_common_traces"><a class="anchor" href="#_common_traces"></a>Common Traces</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># ICMP ping
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,icmp,nw_src=10.0.0.1,nw_dst=10.0.0.2,\
+   dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff"
+
+# ARP request
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,arp,dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
+   arp_spa=10.0.0.1,arp_tpa=10.0.0.2,arp_op=1"
+
+# DHCP request
+sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,udp,nw_src=0.0.0.0,nw_dst=255.255.255.255,\
+   dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
+   tp_src=68,tp_dst=67"</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_ovn_trace_tool_ovn"><a class="anchor" href="#_the_ovn_trace_tool_ovn"></a>The ovn-trace Tool (OVN)</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_syntax_2"><a class="anchor" href="#_syntax_2"></a>Syntax</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace [options] &lt;datapath&gt; &lt;flow&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_output_modes"><a class="anchor" href="#_output_modes"></a>Output Modes</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Mode</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--detailed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every logical flow matched (default)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--summary</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Key decisions only</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--minimal</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Just the final result</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_connection_tracking"><a class="anchor" href="#_connection_tracking"></a>Connection Tracking</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --ct new ls1 '&lt;flow&gt;'    # new connection
+sudo ovn-trace --ct est ls1 '&lt;flow&gt;'    # established connection</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_common_fields_2"><a class="anchor" href="#_common_fields_2"></a>Common Fields</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Field</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>inport</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>inport == "vm1"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>eth.src</code> / <code>eth.dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>eth.src == 00:00:00:00:00:01</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip4.src</code> / <code>ip4.dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip4.src == 10.0.0.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp.dst</code> / <code>udp.dst</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp.dst == 80</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip.ttl</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip.ttl == 64</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_limitations"><a class="anchor" href="#_limitations"></a>Limitations</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Does not send actual packets (simulation only).</p>
+</li>
+<li>
+<p>Does not show physical OVS flows.</p>
+</li>
+<li>
+<p>Limited conntrack simulation.</p>
+</li>
+<li>
+<p>Requires SB DB access.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Use <code>ovn-trace</code> to understand logical intent and <code>ovs-appctl ofproto/trace</code> to understand physical execution. Compare both when debugging. If they diverge, the problem is in `ovn-controller&#8217;s flow translation.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_ovn_detrace_tool"><a class="anchor" href="#_the_ovn_detrace_tool"></a>The ovn-detrace Tool</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_what_it_does"><a class="anchor" href="#_what_it_does"></a>What It Does</h3>
+<div class="paragraph">
+<p>Maps OVS OpenFlow cookie values back to OVN logical flows. Annotates OVS flow output with the corresponding logical flow information.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_usage"><a class="anchor" href="#_usage"></a>Usage</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># With flow dump
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+# With ofproto/trace output
+sudo ovs-appctl ofproto/trace br-int "&lt;flow&gt;" 2&gt;&amp;1 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+# Remote SB DB
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=tcp:192.168.1.100:6642</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_when_to_use"><a class="anchor" href="#_when_to_use"></a>When to Use</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Understanding the purpose of an OVS flow.</p>
+</li>
+<li>
+<p>Correlating <code>ofproto/trace</code> output with OVN logical stages.</p>
+</li>
+<li>
+<p>Finding discrepancies between expected and actual flows.</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_putting_it_all_together_a_debugging_workflow"><a class="anchor" href="#_putting_it_all_together_a_debugging_workflow"></a>Putting It All Together: A Debugging Workflow</h2>
+<div class="sectionbody">
+<div class="listingblock">
+<div class="content">
+<pre>[Problem reported]
+       |
+       v
+[ovn-nbctl show / ovn-sbctl show]  --&gt; Identify logical topology
+       |
+       v
+[ovn-trace --detailed]              --&gt; Verify logical path
+       |                                 (if broken: fix OVN config)
+       v
+[ovs-appctl ofproto/trace]          --&gt; Verify physical path
+       |                                 (if divergent: check ovn-controller)
+       v
+[tcpdump / ovs-tcpdump]             --&gt; Confirm on-wire behavior
+       |                                 (if divergent: check datapath)
+       v
+[ovn-detrace]                        --&gt; Correlate physical to logical
+       |
+       v
+[Root cause identified]</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The three-layer approach - logical trace, physical trace, packet capture - systematically narrows down where the problem lies. If the logical trace is wrong, fix the OVN configuration. If the logical trace is right but the physical trace is wrong, investigate <code>ovn-controller</code>. If both traces are right but packets are not flowing, look at the physical network (MTU, firewall rules blocking Geneve port 6081, etc.).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercises"><a class="anchor" href="#_exercises"></a>Exercises</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_exercise_10_1_trace_same_node_traffic"><a class="anchor" href="#_exercise_10_1_trace_same_node_traffic"></a>Exercise 10.1: Trace Same-Node Traffic</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Trace a packet between two ports on the same logical switch and same chassis.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Identify two local ports on a logical switch using <code>ovn-sbctl show</code>.</p>
+</li>
+<li>
+<p>Run <code>ovn-trace --detailed</code> for a TCP packet between them.</p>
+</li>
+<li>
+<p>Run <code>ovs-appctl ofproto/trace</code> for the same packet.</p>
+</li>
+<li>
+<p>Compare the outputs and identify which port security checks, ACL flows, and output port were used.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_10_2_trace_cross_node_traffic"><a class="anchor" href="#_exercise_10_2_trace_cross_node_traffic"></a>Exercise 10.2: Trace Cross-Node Traffic</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Trace a packet between two ports on different chassis.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Identify two ports on different chassis but the same logical switch.</p>
+</li>
+<li>
+<p>Run <code>ovn-trace</code> and note the tunnel indication in the output.</p>
+</li>
+<li>
+<p>Use <code>tcpdump -i &lt;physical-nic&gt; port 6081</code> on the source node while generating traffic.</p>
+</li>
+<li>
+<p>Decode the Geneve headers and verify the VNI matches the logical datapath.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_10_3_trace_routed_traffic"><a class="anchor" href="#_exercise_10_3_trace_routed_traffic"></a>Exercise 10.3: Trace Routed Traffic</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Trace a packet that crosses subnet boundaries through a logical router.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Set up two logical switches connected by a logical router.</p>
+</li>
+<li>
+<p>Run <code>ovn-trace --detailed</code> for traffic between the two subnets.</p>
+</li>
+<li>
+<p>Identify the routing decision, TTL decrement, and MAC address rewrites.</p>
+</li>
+<li>
+<p>Verify with a real ping and capture at both endpoints to confirm TTL changes.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_10_4_trace_nat_traffic"><a class="anchor" href="#_exercise_10_4_trace_nat_traffic"></a>Exercise 10.4: Trace NAT Traffic</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Trace north-south traffic with SNAT and DNAT.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Configure a floating IP (DNAT) for a VM or use an existing one.</p>
+</li>
+<li>
+<p>Trace inbound traffic from an external IP to the floating IP.</p>
+</li>
+<li>
+<p>Trace outbound traffic from the VM to an external IP.</p>
+</li>
+<li>
+<p>For each direction, identify where the NAT translation occurs and how conntrack is used.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_10_5_debug_with_ovn_detrace"><a class="anchor" href="#_exercise_10_5_debug_with_ovn_detrace"></a>Exercise 10.5: Debug with ovn-detrace</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Use <code>ovn-detrace</code> to map OVS flows to OVN logical flows.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Dump the OVS flows on <code>br-int</code> and pipe them through <code>ovn-detrace</code>.</p>
+</li>
+<li>
+<p>Find the flows that implement the ingress ACL for a specific port.</p>
+</li>
+<li>
+<p>Find the flows that implement the L2 lookup for a specific MAC address.</p>
+</li>
+<li>
+<p>Explain how the cookie values connect the OVS and OVN layers.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_10_6_load_balancer_tracing"><a class="anchor" href="#_exercise_10_6_load_balancer_tracing"></a>Exercise 10.6: Load Balancer Tracing</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Create an OVN load balancer and trace traffic through it.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Create a load balancer with <code>ovn-nbctl lb-add</code>.</p>
+</li>
+<li>
+<p>Associate it with a logical switch.</p>
+</li>
+<li>
+<p>Trace a packet destined to the VIP.</p>
+</li>
+<li>
+<p>Verify the DNAT action and backend selection in the trace output.</p>
+</li>
+<li>
+<p>Check conntrack entries to confirm the load balancer state.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="09-ovn-in-openshift.html" class="query-params-link">OVN in OpenShift</a></span>
+  <span class="next"><a href="11-management-tooling.html" class="query-params-link">Management Tooling</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Scenario 06: Floating IP Not Accessible from External Network :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="ts-05-dhcp-failure.html">
+    <link rel="next" href="slides.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Troubleshooting Scenarios</li>
+    <li><a href="ts-06-floating-ip.html">Floating IP</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Scenario 06: Floating IP Not Accessible from External Network</h1>
+<div class="sect1">
+<h2 id="_the_problem"><a class="anchor" href="#_the_problem"></a>The Problem</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Customer report:</strong> "Assigned a floating IP to a VM in RHOSP but cannot reach it from the
+external network. VM can reach external network fine (outbound SNAT works). This started
+after a controller node failover."</p>
+</div>
+<div class="paragraph">
+<p>The customer has a VM running a web application with floating IP 10.20.30.100 assigned.
+The VM was accessible from the external network until controller-0 (the active gateway
+chassis) was rebooted for maintenance. After controller-0 came back up, outbound traffic
+from the VM to the internet works (SNAT), but inbound traffic to the floating IP from
+external clients does not reach the VM. External clients get "connection timed out" when
+trying to reach 10.20.30.100.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+<div class="title">RHOSP 17.1: Containerized OVN Commands</div>
+<div class="paragraph">
+<p>In RHOSP 17.1, OVN databases run inside Pacemaker-managed containers. All <code>ovn-nbctl</code> and <code>ovn-sbctl</code> commands shown in this scenario must be executed via <code>podman exec</code> on the controller node. For example:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovn-nbctl show</code> becomes <code>sudo podman exec -it ovn_cluster_north_db_server ovn-nbctl --no-leader-only show</code></p>
+</li>
+<li>
+<p><code>ovn-sbctl show</code> becomes <code>sudo podman exec -it ovn_cluster_south_db_server ovn-sbctl --no-leader-only show</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>For brevity, this scenario shows the bare commands. Refer to <a href="12-troubleshooting.html#_rhosp_red_hat_openstack_platform" class="xref page">Module 12: RHOSP Product-Specific Troubleshooting</a> for the full containerized command syntax.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_environment"><a class="anchor" href="#_environment"></a>Environment</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Platform</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RHOSP 17.1 with ML2/OVN</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3 (controller-0, controller-1, controller-2)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Compute nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10 (compute-0 through compute-9)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">External network</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ext-net, 10.20.30.0/24 (provider flat on br-ex)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tenant network</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">tenant-net, 192.168.100.0/24 (Geneve overlay)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Router</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">tenant-router (UUID: r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">web-server, internal IP 192.168.100.50</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Floating IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10.20.30.100 (UUID: fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Gateway chassis (before)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">controller-0 (was active, priority 1)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Gateway chassis (after)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">controller-1 (now active, priority 2)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upstream router</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10.20.30.1 (customer&#8217;s physical router)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Timeline:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>09:00 - Floating IP 10.20.30.100 working fine, accessible from external
+09:30 - controller-0 rebooted for scheduled maintenance
+09:31 - OVN HA failover triggers, gateway moves to controller-1
+09:32 - Outbound SNAT from VMs continues to work
+09:33 - External clients report floating IP 10.20.30.100 unreachable
+09:45 - Support ticket opened</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_how_floating_ips_work_in_ovn"><a class="anchor" href="#_how_floating_ips_work_in_ovn"></a>How Floating IPs Work in OVN</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Understanding the floating IP architecture is essential for troubleshooting this issue.</p>
+</div>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p><strong>Key Concept: Distributed vs. Centralized NAT in OVN</strong>  OVN implements two types of NAT for routers:  - <strong>SNAT (Source NAT / outbound):</strong> Distributed across all compute nodes. Each compute node performs SNAT locally for VMs it hosts. Traffic exits through the local Geneve tunnel to the gateway chassis. Return traffic for established SNAT connections follows conntrack entries and can arrive at any gateway.  - <strong>DNAT (Destination NAT / floating IP inbound):</strong> Centralized on the gateway chassis. Inbound traffic to a floating IP must arrive at the gateway chassis, which performs DNAT (translating 10.20.30.100 to 192.168.100.50) and forwards the packet to the correct compute node via the Geneve overlay.  This asymmetry is why outbound SNAT can work while inbound DNAT fails - they use different paths.</p>
+</div>
+</blockquote>
+</div>
+<div class="sect2">
+<h3 id="_the_floating_ip_packet_path"><a class="anchor" href="#_the_floating_ip_packet_path"></a>The Floating IP Packet Path</h3>
+<div class="listingblock">
+<div class="content">
+<pre>INBOUND (external -&gt; VM):
+
+External client -&gt; Upstream router -&gt; ARP for 10.20.30.100 -&gt;
+  Gateway chassis (controller-X) receives on br-ex -&gt;
+    DNAT: 10.20.30.100 -&gt; 192.168.100.50 -&gt;
+      Geneve tunnel to compute node hosting the VM -&gt;
+        VM receives packet with src=external_client, dst=192.168.100.50
+
+OUTBOUND (VM -&gt; external):
+
+VM sends packet -&gt; Compute node local OVS -&gt;
+  Geneve tunnel to gateway chassis -&gt;
+    SNAT: 192.168.100.50 -&gt; 10.20.30.100 -&gt;
+      br-ex on gateway chassis -&gt;
+        Physical network -&gt; Upstream router -&gt; Internet</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_gateway_chassis_ha"><a class="anchor" href="#_gateway_chassis_ha"></a>Gateway Chassis HA</h3>
+<div class="listingblock">
+<div class="content">
+<pre>OVN supports multiple gateway chassis for high availability:
+
+  controller-0: priority 1 (highest - preferred active)
+  controller-1: priority 2 (standby)
+  controller-2: priority 3 (standby)
+
+When the active gateway fails:
+  1. BFD detects the failure
+  2. OVN selects the next highest-priority chassis (controller-1)
+  3. The chassisredirect port binding moves to controller-1
+  4. controller-1 sends gratuitous ARP (GARP) for all floating IPs
+  5. Upstream router updates its ARP cache
+  6. Traffic flows to the new active gateway
+
+If step 4 or 5 fails, the upstream router still sends traffic to the
+old gateway's MAC address, and inbound traffic is black-holed.</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_step_by_step_investigation"><a class="anchor" href="#_step_by_step_investigation"></a>Step-by-Step Investigation</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_step_1_verify_floating_ip_association"><a class="anchor" href="#_step_1_verify_floating_ip_association"></a>Step 1: Verify Floating IP Association</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Start by confirming that the floating IP is properly associated at the Neutron
+level. A disassociated floating IP would explain the symptom.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">(overcloud) [stack@undercloud ~]$ openstack server show web-server</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+-----------------------------+----------------------------------------------------------+
+| Field                       | Value                                                    |
++-----------------------------+----------------------------------------------------------+
+| OS-EXT-SRV-ATTR:host        | compute-3.lab.example.com                                |
+| OS-EXT-STS:power_state      | Running                                                  |
+| OS-EXT-STS:vm_state         | active                                                   |
+| addresses                   | tenant-net=192.168.100.50, 10.20.30.100                  |
+| created                     | 2025-03-01T10:00:00Z                                     |
+| flavor                      | m1.large (4 vCPU, 8GB RAM)                               |
+| id                          | vm-a1b2c3d4-e5f6-7890-abcd-ef1234567890                  |
+| name                        | web-server                                               |
+| status                      | ACTIVE                                                   |
++-----------------------------+----------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">(overcloud) [stack@undercloud ~]$ openstack floating ip show fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------+--------------------------------------+
+| Field               | Value                                |
++---------------------+--------------------------------------+
+| created_at          | 2025-03-01T10:30:00Z                 |
+| description         | Web server floating IP               |
+| dns_domain          | None                                 |
+| dns_name            | None                                 |
+| fixed_ip_address    | 192.168.100.50                       |
+| floating_ip_address | 10.20.30.100                         |
+| floating_network_id | ext-a1b2c3d4-e5f6-7890-abcd-ef1234  |
+| id                  | fip-a1b2c3d4-e5f6-7890-abcd-ef1234567890 |
+| port_id             | port-b2c3d4e5-f6a7-8901-bcde-f12345678901 |
+| project_id          | 8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d     |
+| revision_number     | 3                                    |
+| router_id           | r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6 |
+| status              | ACTIVE                               |
+| updated_at          | 2025-03-01T10:30:05Z                 |
++---------------------+--------------------------------------+</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">(overcloud) [stack@undercloud ~]$ openstack router show tenant-router</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+-------------------------+------------------------------------------------------+
+| Field                   | Value                                                |
++-------------------------+------------------------------------------------------+
+| admin_state_up          | UP                                                   |
+| external_gateway_info   | {"network_id": "ext-a1b2c3d4-e5f6-7890-abcd-ef1234", "external_fixed_ips": [{"subnet_id": "ext-sub-uuid", "ip_address": "10.20.30.5"}], "enable_snat": true} |
+| id                      | r1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6                |
+| interfaces_info         | [{"subnet_id": "sub-uuid", "ip_address": "192.168.100.1", "port_id": "rtr-port-uuid"}] |
+| name                    | tenant-router                                        |
+| routes                  |                                                      |
+| status                  | ACTIVE                                               |
++-------------------------+------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Everything looks correct at the Neutron level:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Floating IP 10.20.30.100 is ACTIVE and associated with port on 192.168.100.50</p>
+</li>
+<li>
+<p>Router has an external gateway on 10.20.30.5</p>
+</li>
+<li>
+<p>SNAT is enabled</p>
+</li>
+<li>
+<p>VM is ACTIVE on compute-3</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The association is intact. The problem is not at the Neutron API level.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_2_check_ovn_nat_rules"><a class="anchor" href="#_step_2_check_ovn_nat_rules"></a>Step 2: Check OVN NAT Rules</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> We need to verify that the NAT rules exist in the OVN Northbound DB and are
+correctly configured.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ovn-nbctl lr-nat-list tenant-router</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat_and_snat    10.20.30.100       192.168.100.50
+snat             10.20.30.5         192.168.100.0/24</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Both NAT rules are present:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>dnat_and_snat</code> for the floating IP: external 10.20.30.100 maps to internal
+192.168.100.50 (this handles both inbound DNAT and outbound SNAT for the specific VM)</p>
+</li>
+<li>
+<p><code>snat</code> for the subnet: all traffic from 192.168.100.0/24 is SNATed to 10.20.30.5
+(the router&#8217;s external IP)</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>dnat_and_snat</code> type means this NAT rule handles both directions: - <strong>Inbound (DNAT):</strong> Packets destined for 10.20.30.100 are translated to 192.168.100.50 - <strong>Outbound (SNAT):</strong> Packets from 192.168.100.50 are translated to 10.20.30.100 (overriding the subnet-wide SNAT to 10.20.30.5)</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_3_check_which_chassis_is_the_gateway"><a class="anchor" href="#_step_3_check_which_chassis_is_the_gateway"></a>Step 3: Check Which Chassis Is the Gateway</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Floating IP DNAT is centralized on the gateway chassis. We need to know which
+chassis is currently active and whether it changed during the maintenance.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ovn-nbctl lrp-get-gateway-chassis lrp-ext-tenant-router</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>lrp-ext-tenant-router_controller-0    3
+lrp-ext-tenant-router_controller-1    2
+lrp-ext-tenant-router_controller-2    1</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Three gateway chassis are configured with priorities:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>controller-0: priority 3 (highest - preferred active)</p>
+</li>
+<li>
+<p>controller-1: priority 2</p>
+</li>
+<li>
+<p>controller-2: priority 1 (lowest)</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In OVN, higher priority number = more preferred. controller-0 is the preferred gateway.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_4_check_gateway_ha_status_the_critical_check"><a class="anchor" href="#_step_4_check_gateway_ha_status_the_critical_check"></a>Step 4: Check Gateway HA Status (THE CRITICAL CHECK)</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> After controller-0 was rebooted, the gateway should have failed over to
+controller-1. We need to verify the current state of the chassisredirect port binding,
+which represents the active gateway.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ovn-sbctl find port_binding type=chassisredirect</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : cr-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+chassis             : chassis-ctrl1-uuid-b2c3d4e5-f6a7-8901-bcde-f12345678901
+datapath            : dp-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+encap               : []
+external_ids        : {}
+gateway_chassis     : []
+ha_chassis_group    : []
+logical_port        : cr-lrp-ext-tenant-router
+mac                 : ["router"]
+nat_addresses       : ["fa:16:3e:rr:tt:01 10.20.30.100 10.20.30.5 is_chassis_resident(\"cr-lrp-ext-tenant-router\")"]
+options             : {}
+parent_port         : []
+tag                 : []
+tunnel_key          : 1
+type                : chassisredirect
+up                  : true
+virtual_parent      : []</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The chassisredirect port (<code>cr-lrp-ext-tenant-router</code>) is now bound to
+<strong>controller-1&#8217;s chassis</strong> (<code>chassis-ctrl1-uuid-&#8230;&#8203;</code>). This confirms the failover
+occurred - the gateway moved from controller-0 to controller-1.</p>
+</div>
+<div class="paragraph">
+<p>The <code>nat_addresses</code> field shows the addresses that should be advertised via gratuitous
+ARP: <code>fa:16:3e:rr:tt:01 10.20.30.100 10.20.30.5</code>. This is the MAC address that the
+external network should associate with the floating IP.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>chassisredirect</code> port binding is the mechanism OVN uses to implement gateway HA. It represents the "active gateway" for a logical router&#8217;s external connection. When the active gateway fails, OVN reassigns this binding to the next-priority chassis. The new chassis must then advertise the floating IPs via gratuitous ARP so that the upstream network sends traffic to the new gateway.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_5_check_br_ex_configuration_on_the_new_active_gateway"><a class="anchor" href="#_step_5_check_br_ex_configuration_on_the_new_active_gateway"></a>Step 5: Check br-ex Configuration on the New Active Gateway</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> The new active gateway (controller-1) must have br-ex properly configured with
+the physical interface connected to the external network.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>f6a7b8c9-d0e1-f2a3-b4c5-d6e7f8a9b0c1
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port patch-br-int-to-br-ex_controller-1
+            Interface patch-br-int-to-br-ex_controller-1
+                type: patch
+                options: {peer=patch-br-ex-to-br-int_controller-1}
+        Port ovn-compute-0
+            Interface ovn-compute-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.21"}
+        Port ovn-compute-3
+            Interface ovn-compute-3
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="10.0.0.24"}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port ens2f0
+            Interface ens2f0
+        Port patch-br-ex-to-br-int_controller-1
+            Interface patch-br-ex-to-br-int_controller-1
+                type: patch
+                options: {peer=patch-br-int-to-br-ex_controller-1}
+    ovs_version: "3.3.0"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ip addr show br-ex</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>12: br-ex: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff
+    inet 10.20.30.6/24 brd 10.20.30.255 scope global br-ex
+       valid_lft forever preferred_lft forever</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> br-ex on controller-1 is properly configured:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Physical interface <code>ens2f0</code> is connected to br-ex</p>
+</li>
+<li>
+<p>Patch port to br-int exists</p>
+</li>
+<li>
+<p>br-ex has IP 10.20.30.6/24 (controller-1&#8217;s external IP)</p>
+</li>
+<li>
+<p>The bridge is UP</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The infrastructure on the new gateway looks correct.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_6_check_arp_on_the_external_network_key_finding"><a class="anchor" href="#_step_6_check_arp_on_the_external_network_key_finding"></a>Step 6: Check ARP on the External Network (KEY FINDING)</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> For external traffic to reach the floating IP, the upstream router must have the
+correct ARP entry mapping 10.20.30.100 to the MAC address of the ACTIVE gateway chassis.
+If the ARP cache still points to the old gateway (controller-0), traffic will be sent to
+the wrong destination.</p>
+</div>
+<div class="paragraph">
+<p>From a machine on the external network (or the upstream router):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[admin@upstream-router ~]# arp -n | grep 10.20.30.100</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10.20.30.100             ether   52:54:00:ex:c0:01   C                     eth1</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The ARP entry for 10.20.30.100 points to MAC <code>52:54:00:ex:c0:01</code>. Let&#8217;s
+identify which controller this belongs to:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ip link show br-ex | grep ether</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>    link/ether 52:54:00:ex:c0:01 brd ff:ff:ff:ff:ff:ff</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ip link show br-ex | grep ether</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>    link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The ARP entry points to <code>52:54:00:ex:c0:01</code>, which is <strong>controller-0&#8217;s</strong>
+br-ex MAC address. But the active gateway is now <strong>controller-1</strong> (MAC
+<code>52:54:00:ex:c1:01</code>). The upstream router is sending traffic for the floating IP to
+the WRONG controller.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Current (broken) state:
+
+External client -&gt; upstream router -&gt; ARP: 10.20.30.100 = 52:54:00:ex:c0:01
+  -&gt; Sends to controller-0 (OLD gateway, not active)
+    -&gt; controller-0 does NOT process the floating IP (not the active gateway)
+      -&gt; TRAFFIC BLACK-HOLED
+
+Should be:
+
+External client -&gt; upstream router -&gt; ARP: 10.20.30.100 = 52:54:00:ex:c1:01
+  -&gt; Sends to controller-1 (NEW active gateway)
+    -&gt; controller-1 performs DNAT and forwards to VM
+      -&gt; VM receives the traffic</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This is the root cause. The upstream router&#8217;s ARP cache was not updated after the
+failover.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_7_tcpdump_on_br_ex_on_both_controllers"><a class="anchor" href="#_step_7_tcpdump_on_br_ex_on_both_controllers"></a>Step 7: tcpdump on br-ex on Both Controllers</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> To confirm our theory, we can capture traffic on both controllers' br-ex
+interfaces to see where the external traffic is actually going.</p>
+</div>
+<div class="paragraph">
+<p>On controller-0 (old gateway):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 10</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>tcpdump: listening on br-ex, link-type EN10MB (Ethernet)
+09:45:01.234567 ARP, Request who-has 10.20.30.100 tell 10.20.30.1, length 46
+09:45:02.345678 IP 203.0.113.50.54321 &gt; 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0
+09:45:05.456789 IP 203.0.113.50.54321 &gt; 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0
+09:45:11.567890 IP 203.0.113.50.54321 &gt; 10.20.30.100.80: Flags [S], seq 1234567890, win 65535, length 0</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Traffic for the floating IP IS arriving at controller-0 (ARP requests and
+TCP SYN packets from external clients). But controller-0 is no longer the active gateway,
+so it does not process these packets. The TCP SYN retransmissions (at 3s, 6s intervals)
+confirm the connection is timing out.</p>
+</div>
+<div class="paragraph">
+<p>On controller-1 (new active gateway):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>tcpdump: listening on br-ex, link-type EN10MB (Ethernet)
+^C
+0 packets captured
+0 packets received by filter
+0 packets dropped by kernel</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> <strong>No traffic</strong> for the floating IP reaches controller-1. This confirms the
+upstream router is sending everything to controller-0&#8217;s MAC. The new gateway never sees
+the inbound traffic.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_8_check_gratuitous_arp_from_ovn"><a class="anchor" href="#_step_8_check_gratuitous_arp_from_ovn"></a>Step 8: Check Gratuitous ARP from OVN</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> After a gateway failover, OVN should send gratuitous ARP (GARP) from the new
+active gateway to announce the new MAC address for all floating IPs. If GARP was not sent
+or was not received by the upstream router, the old ARP entry persists.</p>
+</div>
+<div class="paragraph">
+<p>Check ovn-controller logs on controller-1 for GARP activity:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# journalctl -u ovn-controller --since "09:30" --until "09:35" | grep -i "garp\|gratuitous\|arp\|nat_address"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.100 on port lrp-ext-tenant-router
+Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.5 on port lrp-ext-tenant-router</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> ovn-controller on controller-1 DID send gratuitous ARP for 10.20.30.100 at
+09:31:12, right after the failover. So the GARP was sent - but the upstream router did
+not update its ARP cache.</p>
+</div>
+<div class="paragraph">
+<p>Verify with tcpdump (if we had captured at the time):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Reconstructing what happened (this would have shown at 09:31):
+# tcpdump -i br-ex -n arp | grep 10.20.30.100
+#
+# Expected output:
+# 09:31:12.123456 ARP, Reply 10.20.30.100 is-at 52:54:00:ex:c1:01 (gratuitous), length 28</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Gratuitous ARP (GARP) is an ARP Reply packet sent without a corresponding ARP Request. It announces "I am now at this MAC address" to all devices on the L2 network. However, not all network devices honor GARP:  - Some switches/routers have GARP filtering enabled for security - Some routers have static ARP entries that GARP cannot override - GARP may be lost if the network is congested at the moment of failover - Some enterprise routers have long ARP cache timeouts and ignore GARP  When GARP fails to update the upstream router, inbound traffic continues to flow to the old gateway&#8217;s MAC address, causing a black hole.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Check the OVN mac_binding table for current state:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ovn-sbctl list mac_binding | grep -A5 "10.20.30"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : mb-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+datapath            : dp-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+ip                  : "10.20.30.1"
+logical_port        : "lrp-ext-tenant-router"
+mac                 : "52:54:00:up:rr:01"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> OVN&#8217;s mac_binding table has the upstream router&#8217;s MAC (10.20.30.1 &#8594;
+52:54:00:up:rr:01). OVN knows how to reach the upstream router. The problem is the
+reverse - the upstream router does not know the new MAC for the floating IP.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_9_check_the_external_network_provider_configuration"><a class="anchor" href="#_step_9_check_the_external_network_provider_configuration"></a>Step 9: Check the External Network Provider Configuration</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Verify that the external network mapping is consistent across all controllers.
+If bridge mappings are wrong on the new gateway, it cannot process external traffic even
+if it receives it.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ovs-vsctl get open_vswitch . external_ids:ovn-bridge-mappings</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"datacentre:br-ex"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">(overcloud) [stack@undercloud ~]$ openstack network show ext-net -c provider:physical_network -c provider:network_type</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------------+------------+
+| Field                     | Value      |
++---------------------------+------------+
+| provider:network_type     | flat       |
+| provider:physical_network | datacentre |
++---------------------------+------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> The bridge mapping is correct - <code>datacentre</code> maps to <code>br-ex</code>, and the
+external network uses <code>datacentre</code> as its physical network. This is consistent across
+all controllers.</p>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_step_10_check_physical_network_path"><a class="anchor" href="#_step_10_check_physical_network_path"></a>Step 10: Check Physical Network Path</h3>
+<div class="paragraph">
+<p><strong>Why:</strong> Verify that there are no L2 issues (VLAN misconfiguration, spanning tree, etc.)
+that could prevent traffic from reaching controller-1 even if ARP was correct.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# ping -c 3 10.20.30.1</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.20.30.1 (10.20.30.1) 56(84) bytes of data.
+64 bytes from 10.20.30.1: icmp_seq=1 ttl=255 time=0.412 ms
+64 bytes from 10.20.30.1: icmp_seq=2 ttl=255 time=0.387 ms
+64 bytes from 10.20.30.1: icmp_seq=3 ttl=255 time=0.401 ms
+
+--- 10.20.30.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# arping -c 3 -I br-ex 10.20.30.1</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ARPING 10.20.30.1 from 10.20.30.6 br-ex
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.234ms
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.198ms
+Unicast reply from 10.20.30.1 [52:54:00:UP:RR:01]  0.212ms
+Sent 3 probes (1 broadcast(s))
+Received 3 response(s)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> controller-1 can reach the upstream router at L2 and L3. The physical network
+path is working. The only issue is the stale ARP entry on the upstream router.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_root_cause"><a class="anchor" href="#_root_cause"></a>Root Cause</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The root cause is a <strong>stale ARP entry on the upstream router</strong> after an OVN gateway
+failover:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>controller-0 was the active gateway</strong> for tenant-router with the highest priority (3).
+The floating IP 10.20.30.100 was advertised from controller-0&#8217;s br-ex with MAC
+<code>52:54:00:ex:c0:01</code>.</p>
+</li>
+<li>
+<p><strong>controller-0 was rebooted</strong> for maintenance. OVN HA failover triggered, moving the
+active gateway to <strong>controller-1</strong> (priority 2).</p>
+</li>
+<li>
+<p><strong>OVN sent gratuitous ARP</strong> from controller-1, announcing that 10.20.30.100 is now at
+MAC <code>52:54:00:ex:c1:01</code>.</p>
+</li>
+<li>
+<p><strong>The upstream router did not update its ARP cache.</strong> The GARP was either:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Received but ignored (some routers have GARP filtering or static ARP entries)</p>
+</li>
+<li>
+<p>Lost due to network timing during the failover transition</p>
+</li>
+<li>
+<p>The ARP entry had not yet expired and the router&#8217;s ARP implementation does not
+honor GARP for existing entries</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Result:</strong> The upstream router continued sending traffic for 10.20.30.100 to
+controller-0&#8217;s MAC (<code>52:54:00:ex:c0:01</code>). Controller-0 was either down or no longer
+the active gateway, so traffic was black-holed.</p>
+</li>
+<li>
+<p><strong>Outbound SNAT continued to work</strong> because SNAT is processed at the gateway and return
+traffic for established connections follows conntrack entries. The established TCP/UDP
+connections could still return via the old conntrack entries, and new outbound connections
+from the VM used controller-1 (the new active gateway) for SNAT, which worked because
+controller-1 could reach the upstream router directly.</p>
+</li>
+</ol>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_resolution"><a class="anchor" href="#_resolution"></a>Resolution</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_immediate_fix_trigger_arp_refresh"><a class="anchor" href="#_immediate_fix_trigger_arp_refresh"></a>Immediate Fix: Trigger ARP Refresh</h3>
+<div class="paragraph">
+<p><strong>Option 1: Re-add the NAT rule to trigger new GARP</strong></p>
+</div>
+<div class="paragraph">
+<p>This is the least invasive approach - removing and re-adding the NAT rule causes OVN to
+re-send gratuitous ARP:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ovn-nbctl lr-nat-del tenant-router dnat_and_snat 10.20.30.100
+[root@controller-0 ~]# ovn-nbctl lr-nat-add tenant-router dnat_and_snat 10.20.30.100 192.168.100.50</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Verify the NAT rule is back:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ovn-nbctl lr-nat-list tenant-router</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TYPE             EXTERNAL_IP        LOGICAL_IP            EXTERNAL_MAC         LOGICAL_PORT
+dnat_and_snat    10.20.30.100       192.168.100.50
+snat             10.20.30.5         192.168.100.0/24</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check ovn-controller logs for GARP on controller-1:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# journalctl -u ovn-controller --since "1 minute ago" | grep -i garp</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Apr 15 10:15:01 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.100 on port lrp-ext-tenant-router</pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Removing and re-adding the NAT rule causes a brief disruption to any active connections using the floating IP. The disruption should be very short (sub-second) but should be communicated to the customer.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Option 2: Clear ARP on the upstream router</strong></p>
+</div>
+<div class="paragraph">
+<p>If you have access to the upstream router, clear the ARP entry directly:</p>
+</div>
+<div class="paragraph">
+<p>For Cisco IOS:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>router# clear arp-cache 10.20.30.100</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For Linux-based router:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[admin@upstream-router ~]# ip neigh del 10.20.30.100 dev eth1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The upstream router will then send a new ARP request, which controller-1 will answer
+with its own MAC.</p>
+</div>
+<div class="paragraph">
+<p><strong>Option 3: Send manual gratuitous ARP from controller-1</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# arping -c 5 -A -I br-ex 10.20.30.100</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ARPING 10.20.30.100 from 10.20.30.100 br-ex
+Sent 5 probes (5 broadcast(s))
+Received 0 response(s)</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The <code>arping -A</code> command sends unsolicited ARP Reply packets (gratuitous ARP). This is equivalent to what OVN does automatically after failover. If OVN&#8217;s GARP did not work, manually sending GARP may not work either if the upstream router filters GARP. In that case, clearing the ARP cache on the upstream router (Option 2) is the only reliable approach.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_verify_recovery"><a class="anchor" href="#_verify_recovery"></a>Verify Recovery</h3>
+<div class="paragraph">
+<p>After applying any of the above fixes, verify from an external client:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[admin@upstream-router ~]# arp -n | grep 10.20.30.100</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10.20.30.100             ether   52:54:00:ex:c1:01   C                     eth1</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> ARP now points to controller-1&#8217;s MAC (<code>52:54:00:ex:c1:01</code>).</p>
+</div>
+<div class="paragraph">
+<p>Verify traffic reaches controller-1:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-1 ~]# tcpdump -i br-ex -n host 10.20.30.100 -c 5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10:16:01.234567 IP 203.0.113.50.54321 &gt; 10.20.30.100.80: Flags [S], seq 9876543210, win 65535, length 0
+10:16:01.235678 IP 10.20.30.100.80 &gt; 203.0.113.50.54321: Flags [S.], seq 1234567890, ack 9876543211, win 65535, length 0
+10:16:01.236789 IP 203.0.113.50.54321 &gt; 10.20.30.100.80: Flags [.], ack 1, win 65535, length 0</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> Traffic is now flowing correctly through controller-1 - we see the TCP
+three-way handshake (SYN, SYN-ACK, ACK).</p>
+</div>
+<div class="paragraph">
+<p>Test from an external client:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[user@external-client ~]$ curl -s -o /dev/null -w "%{http_code}" http://10.20.30.100/</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>200</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Floating IP is accessible again.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_verify_bfd_status"><a class="anchor" href="#_verify_bfd_status"></a>Verify BFD Status</h3>
+<div class="paragraph">
+<p>Check that BFD is properly monitoring the gateway chassis health:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">[root@controller-0 ~]# ovn-sbctl list BFD</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : bfd-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+chassis_name        : controller-0
+dst_ip              : "10.0.0.11"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up
+
+_uuid               : bfd-b2c3d4e5-f6a7-8901-bcde-f12345678901
+chassis_name        : controller-0
+dst_ip              : "10.0.0.12"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up
+
+_uuid               : bfd-c3d4e5f6-a7b8-9012-cdef-123456789012
+chassis_name        : controller-1
+dst_ip              : "10.0.0.10"
+logical_port        : "lrp-ext-tenant-router"
+min_rx              : 1000
+min_tx              : 1000
+mult                : 3
+options             : {}
+status              : up</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Finding:</strong> BFD is configured between all gateway chassis with:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>min_rx=1000</code>, <code>min_tx=1000</code>: 1-second BFD intervals</p>
+</li>
+<li>
+<p><code>mult=3</code>: failure detected after 3 missed intervals (3 seconds)</p>
+</li>
+<li>
+<p><code>status=up</code>: all BFD sessions are currently healthy</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The BFD intervals may be too slow for production use. See the Prevention section for
+recommended values.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_prevention"><a class="anchor" href="#_prevention"></a>Prevention</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_1_configure_proper_bfd_intervals_for_fast_failover_detection"><a class="anchor" href="#_1_configure_proper_bfd_intervals_for_fast_failover_detection"></a>1. Configure Proper BFD Intervals for Fast Failover Detection</h3>
+<div class="paragraph">
+<p>Reduce BFD intervals for faster failover detection:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Set BFD interval to 300ms with multiplier 3 (failure detected in ~1 second):
+ovn-nbctl set nb_global . options:bfd-min-rx=300
+ovn-nbctl set nb_global . options:bfd-min-tx=300
+ovn-nbctl set nb_global . options:bfd-mult=3</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Aggressive BFD intervals (below 300ms) can cause false positives in congested networks. Test in your environment before deploying. The recommended minimum for production is 300ms with multiplier 3 (approximately 1-second detection time).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_2_monitor_gateway_chassis_ha_status"><a class="anchor" href="#_2_monitor_gateway_chassis_ha_status"></a>2. Monitor Gateway Chassis HA Status</h3>
+<div class="paragraph">
+<p>Set up monitoring for gateway failovers:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check current active gateway:
+ovn-sbctl find port_binding type=chassisredirect | grep chassis
+
+# Monitor gateway changes:
+watch -n 5 'ovn-sbctl find port_binding type=chassisredirect | grep -E "chassis|logical_port"'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Prometheus alert for gateway failover:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>- alert: OVNGatewayFailover
+  expr: changes(ovn_gateway_chassis_active[5m]) &gt; 0
+  labels:
+    severity: warning
+  annotations:
+    summary: "OVN gateway failover detected"
+    description: "Gateway chassis changed on {{ $labels.router }}. Verify floating IP accessibility."</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_3_verify_garp_is_working_after_every_failover"><a class="anchor" href="#_3_verify_garp_is_working_after_every_failover"></a>3. Verify GARP Is Working After Every Failover</h3>
+<div class="paragraph">
+<p>Create a verification script to run after any planned failover:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">#!/bin/bash
+# verify-floating-ip-arp.sh
+# Run after any gateway failover to verify ARP is correct
+
+FLOATING_IPS=$(ovn-nbctl lr-nat-list tenant-router | grep dnat_and_snat | awk '{print $2}')
+ACTIVE_GW=$(ovn-sbctl find port_binding type=chassisredirect | grep chassis | awk '{print $3}')
+ACTIVE_GW_MAC=$(ovn-sbctl get chassis $ACTIVE_GW encaps | head -1)
+
+echo "Active gateway chassis: $ACTIVE_GW"
+echo "Checking floating IPs..."
+
+for FIP in $FLOATING_IPS; do
+    echo -n "  $FIP: "
+    # Send GARP just in case
+    arping -c 3 -A -I br-ex $FIP &gt; /dev/null 2&gt;&amp;1
+    echo "GARP sent"
+done</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_4_configure_upstream_routers_to_accept_garp"><a class="anchor" href="#_4_configure_upstream_routers_to_accept_garp"></a>4. Configure Upstream Routers to Accept GARP</h3>
+<div class="paragraph">
+<p>Work with the network team to ensure upstream routers honor gratuitous ARP:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Upstream router configuration recommendations:
+- Enable GARP processing (many routers have this disabled by default)
+- Reduce ARP cache timeout to 300 seconds (default is often 14400 seconds / 4 hours)
+- Do not use static ARP entries for floating IPs
+- Consider enabling ARP proxy if GARP is not supported</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_5_reduce_arp_timeout_on_upstream_routers"><a class="anchor" href="#_5_reduce_arp_timeout_on_upstream_routers"></a>5. Reduce ARP Timeout on Upstream Routers</h3>
+<div class="paragraph">
+<p>A shorter ARP cache timeout means stale entries are cleared faster, reducing the duration
+of floating IP outages after failover:</p>
+</div>
+<div class="paragraph">
+<p>For Cisco IOS:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>interface GigabitEthernet0/1
+  arp timeout 300</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For Linux:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">echo 300 &gt; /proc/sys/net/ipv4/neigh/eth1/gc_stale_time</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_6_document_the_failover_procedure"><a class="anchor" href="#_6_document_the_failover_procedure"></a>6. Document the Failover Procedure</h3>
+<div class="listingblock">
+<div class="content">
+<pre>Planned Gateway Maintenance Procedure:
+1. Identify the current active gateway:
+   ovn-sbctl find port_binding type=chassisredirect | grep chassis
+2. If the active gateway is the node being maintained, trigger a graceful failover:
+   ovn-nbctl lrp-set-gateway-chassis lrp-ext-tenant-router controller-1 3
+   (temporarily give the backup higher priority)
+3. Wait for failover to complete
+4. Verify GARP was received by upstream router:
+   arp -n | grep &lt;floating-ip&gt; (on upstream router)
+5. If ARP is stale, manually clear it
+6. Verify floating IP accessibility from external
+7. Proceed with maintenance
+8. After maintenance, restore priorities:
+   ovn-nbctl lrp-set-gateway-chassis lrp-ext-tenant-router controller-0 3</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_gateway_ha_architecture_reference"><a class="anchor" href="#_ovn_gateway_ha_architecture_reference"></a>OVN Gateway HA Architecture Reference</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_how_gateway_chassis_priorities_work"><a class="anchor" href="#_how_gateway_chassis_priorities_work"></a>How Gateway Chassis Priorities Work</h3>
+<div class="listingblock">
+<div class="content">
+<pre>Each logical router port (lrp) that connects to an external network has a list
+of gateway chassis with priorities:
+
+  lrp-ext-tenant-router:
+    controller-0: priority 3 (highest - preferred)
+    controller-1: priority 2
+    controller-2: priority 1 (lowest)
+
+OVN selects the highest-priority chassis that is "alive" (BFD reports UP)
+as the active gateway.
+
+When the active chassis fails:
+  1. BFD on other chassis detects the failure (within mult * max(min_rx, min_tx))
+  2. ovn-controller on the remaining chassis re-evaluates the priority list
+  3. The highest-priority remaining chassis becomes active
+  4. The chassisredirect port binding is updated in the SB DB
+  5. The new active chassis installs gateway flows and sends GARP</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_bfd_based_health_monitoring"><a class="anchor" href="#_bfd_based_health_monitoring"></a>BFD-Based Health Monitoring</h3>
+<div class="listingblock">
+<div class="content">
+<pre>BFD (Bidirectional Forwarding Detection) runs between all gateway chassis pairs:
+
+  controller-0 &lt;--BFD--&gt; controller-1
+  controller-0 &lt;--BFD--&gt; controller-2
+  controller-1 &lt;--BFD--&gt; controller-2
+
+BFD parameters:
+  min_tx:  Minimum interval between transmitted BFD packets
+  min_rx:  Minimum interval between received BFD packets
+  mult:    Number of missed packets before declaring failure
+
+Detection time = mult * max(min_rx, min_tx)
+
+Example: min_tx=300ms, min_rx=300ms, mult=3
+  Detection time = 3 * 300ms = 900ms (~1 second)</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_chassisredirect_port_bindings"><a class="anchor" href="#_chassisredirect_port_bindings"></a>Chassisredirect Port Bindings</h3>
+<div class="listingblock">
+<div class="content">
+<pre>The chassisredirect (cr-) port is a special port type in the SB DB:
+- Type: chassisredirect
+- Purpose: Represents the active gateway for a logical router
+- Binding: Points to the active gateway chassis
+- nat_addresses: Lists all floating IPs and SNAT IPs to be advertised via GARP
+
+When the binding changes (failover), the new chassis:
+1. Installs OpenFlow rules for gateway processing
+2. Sends GARP for all addresses in nat_addresses
+3. Begins processing DNAT for inbound floating IP traffic</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_garp_mechanism"><a class="anchor" href="#_garp_mechanism"></a>GARP Mechanism</h3>
+<div class="listingblock">
+<div class="content">
+<pre>After failover, the new active gateway sends:
+1. Gratuitous ARP Reply for each floating IP
+2. Gratuitous ARP Reply for the router's external IP (SNAT address)
+
+Each GARP packet:
+- Is an ARP Reply (opcode 2)
+- sender IP = sender protocol address = floating IP
+- sender MAC = new gateway's br-ex MAC
+- target IP = floating IP (same as sender)
+- Broadcast to ff:ff:ff:ff:ff:ff
+
+All devices on the L2 segment that receive this should update their ARP cache.</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_commands_reference"><a class="anchor" href="#_key_commands_reference"></a>Key Commands Reference</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Command</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>openstack floating ip show &lt;uuid&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check floating IP status and association</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl lr-nat-list &lt;router&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List NAT rules on a logical router</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl lrp-get-gateway-chassis &lt;lrp&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show gateway chassis priorities</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sbctl find port_binding type=chassisredirect</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Find active gateway binding</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sbctl list BFD</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check BFD session status</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sbctl list mac_binding</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show OVN MAC binding table</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcpdump -i br-ex -n host &lt;fip&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Capture floating IP traffic on br-ex</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arp -n \
+|grep &lt;fip&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check ARP entry for floating IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arping -c 5 -A -I br-ex &lt;fip&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send manual gratuitous ARP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl lr-nat-del &lt;router&gt; dnat_and_snat &lt;fip&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Remove NAT rule</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl lr-nat-add &lt;router&gt; dnat_and_snat &lt;ext&gt; &lt;int&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add NAT rule</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vsctl get open_vswitch . external_ids:ovn-bridge-mappings</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check bridge mappings</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl lrp-set-gateway-chassis &lt;lrp&gt; &lt;chassis&gt; &lt;priority&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set gateway chassis priority</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_takeaways"><a class="anchor" href="#_key_takeaways"></a>Key Takeaways</h2>
+<div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Floating IP accessibility depends on correct ARP on the external network.</strong> After a
+gateway failover, the upstream router must learn the new MAC address for the floating IP.
+If GARP fails, the floating IP becomes unreachable from the external network.</p>
+</li>
+<li>
+<p><strong>Outbound SNAT working while inbound DNAT fails is the hallmark of a gateway
+failover ARP issue.</strong> SNAT and DNAT use different paths - SNAT is partially distributed
+while DNAT is centralized on the gateway chassis.</p>
+</li>
+<li>
+<p><strong>Not all network devices honor gratuitous ARP.</strong> Always verify that the upstream router
+accepts GARP. If it does not, plan for manual ARP cache clearing during failovers.</p>
+</li>
+<li>
+<p><strong>BFD is essential for fast failover detection.</strong> Without BFD, OVN relies on the inactivity
+probe timeout (default 5 seconds), which means a longer disruption window. Configure BFD
+with aggressive intervals (300ms x 3 = ~1 second detection).</p>
+</li>
+<li>
+<p><strong>Always verify floating IP accessibility after any gateway maintenance.</strong> Do not assume
+GARP worked - check the upstream router&#8217;s ARP table and test from an external client.</p>
+</li>
+</ul>
+</div>
+<hr>
+<div class="paragraph">
+<p><strong>Previous scenario:</strong> <a href="ts-05-dhcp-failure.html" class="xref page">Scenario 05 - VMs Not Getting DHCP Addresses</a>
+<strong>Back to:</strong> <a href="12-troubleshooting.html" class="xref page">Module 12 - Troubleshooting OVS and OVN</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="ts-05-dhcp-failure.html" class="query-params-link">DHCP Failure</a></span>
+  <span class="next"><a href="slides.html" class="query-params-link">Interactive Slide Deck</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

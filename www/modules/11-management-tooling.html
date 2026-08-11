@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 11: Management and Tooling Reference :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="10-traffic-flows.html">
+    <link rel="next" href="12-troubleshooting.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="11-management-tooling.html">Management Tooling</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 11: Management and Tooling Reference</h1>
+<div class="sect1">
+<h2 id="_overview"><a class="anchor" href="#_overview"></a>Overview</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This module is a comprehensive reference for every command-line tool you will use when managing, inspecting, and troubleshooting OVS and OVN. Earlier modules introduced these tools in context; this module consolidates them into a single reference with complete syntax, practical examples, and tips for daily operations.</p>
+</div>
+<div class="paragraph">
+<p>Keep this module open when working on a live system. When a customer opens a case and you need to quickly check bridge configuration, dump flows, trace a packet, or inspect the OVN database, you will find the exact command here.</p>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovs_management_tools"><a class="anchor" href="#_ovs_management_tools"></a>OVS Management Tools</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovs_vsctl_switchbridge_management"><a class="anchor" href="#_ovs_vsctl_switchbridge_management"></a>ovs-vsctl - Switch/Bridge Management</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Configure the OVS database (ovsdb). This is the primary tool for creating and managing bridges, ports, and interfaces. It communicates with the <code>ovsdb-server</code> daemon.</p>
+</div>
+<div class="paragraph">
+<p><strong>How it works:</strong> <code>ovs-vsctl</code> reads from and writes to the Open_vSwitch database schema. Every bridge, port, interface, and configuration parameter is stored in this database. Changes made with <code>ovs-vsctl</code> take effect immediately - <code>ovs-vswitchd</code> monitors the database and applies changes as they are committed.</p>
+</div>
+<div class="sect3">
+<h4 id="_common_commands"><a class="anchor" href="#_common_commands"></a>Common Commands</h4>
+<div class="paragraph">
+<p><strong>show - Display current configuration:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    Bridge br-int
+        fail_mode: secure
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "tap12345678-90"
+            Interface "tap12345678-90"
+        Port "ovn-node2-0"
+            Interface "ovn-node2-0"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.16.0.2"}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port "eth1"
+            Interface "eth1"
+    ovs_version: "3.1.0"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>add-br / del-br - Bridge management:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a bridge
+sudo ovs-vsctl add-br br-test
+
+# Create a bridge with a specific datapath type (e.g., netdev for DPDK)
+sudo ovs-vsctl add-br br-dpdk -- set bridge br-dpdk datapath_type=netdev
+
+# Delete a bridge (also removes all ports on it)
+sudo ovs-vsctl del-br br-test
+
+# List all bridges
+sudo ovs-vsctl list-br</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>add-port / del-port - Port management:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Add a port to a bridge
+sudo ovs-vsctl add-port br-int eth2
+
+# Add a port with a specific type
+sudo ovs-vsctl add-port br-int vxlan0 -- set interface vxlan0 \
+  type=vxlan options:remote_ip=172.16.0.2
+
+# Add a port with a VLAN tag
+sudo ovs-vsctl add-port br-int vlan100 tag=100 -- set interface vlan100 type=internal
+
+# Add a bond (two interfaces bonded together)
+sudo ovs-vsctl add-bond br-int bond0 eth1 eth2
+
+# Delete a port
+sudo ovs-vsctl del-port br-int eth2
+
+# List ports on a bridge
+sudo ovs-vsctl list-ports br-int</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>set / get / list / find - Database operations:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all records in a table
+sudo ovs-vsctl list bridge
+sudo ovs-vsctl list port
+sudo ovs-vsctl list interface
+
+# List a specific record
+sudo ovs-vsctl list interface eth1
+
+# Get a specific field
+sudo ovs-vsctl get interface eth1 ofport
+sudo ovs-vsctl get bridge br-int datapath_id
+sudo ovs-vsctl get interface eth1 statistics
+
+# Set a field
+sudo ovs-vsctl set bridge br-int other_config:flow-eviction-threshold=2500
+sudo ovs-vsctl set interface eth1 ingress_policing_rate=1000
+sudo ovs-vsctl set interface eth1 ingress_policing_burst=100
+
+# Find records matching a condition
+sudo ovs-vsctl find interface type=geneve
+sudo ovs-vsctl find port tag=100
+sudo ovs-vsctl find interface ofport=-1    # find ports that failed to configure</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>External IDs:</strong></p>
+</div>
+<div class="paragraph">
+<p>External IDs are key-value metadata that OVN and other controllers attach to OVS objects. They are critical for identifying which OVN logical port corresponds to which OVS port.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View external IDs on a port
+sudo ovs-vsctl get interface tap12345678-90 external_ids
+
+# Example output:
+# {iface-id="port-uuid-1234", iface-status=active}
+
+# Set an external ID
+sudo ovs-vsctl set interface tap12345678-90 \
+  external_ids:iface-id="port-uuid-1234"
+
+# Find a port by its OVN iface-id
+sudo ovs-vsctl find interface external_ids:iface-id="port-uuid-1234"</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>iface-id</code> external ID is how <code>ovn-controller</code> binds an OVS port to an OVN logical port. When you create a VM or pod, the orchestrator (Nova, kubelet) creates the OVS port and sets <code>iface-id</code> to the OVN logical port UUID. <code>ovn-controller</code> sees this and claims the port binding in the Southbound database. If <code>iface-id</code> is missing or wrong, the port will not be bound and the VM/pod will have no network connectivity.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_useful_one_liners"><a class="anchor" href="#_useful_one_liners"></a>Useful One-Liners</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all ports with their OVN iface-ids
+sudo ovs-vsctl --columns=name,external_ids list interface | \
+  grep -A1 "iface-id"
+
+# Show all tunnel ports
+sudo ovs-vsctl find interface type=geneve
+sudo ovs-vsctl find interface type=vxlan
+
+# Show bridge fail mode
+sudo ovs-vsctl get bridge br-int fail_mode
+
+# Count total ports on br-int
+sudo ovs-vsctl list-ports br-int | wc -l
+
+# Show OVS version
+sudo ovs-vsctl --version
+
+# Check if a specific port exists
+sudo ovs-vsctl port-to-br tap12345678-90</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_ofctl_openflow_management"><a class="anchor" href="#_ovs_ofctl_openflow_management"></a>ovs-ofctl - OpenFlow Management</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Interact directly with the OpenFlow tables on an OVS bridge. This is the tool for inspecting, adding, modifying, and deleting flow entries.</p>
+</div>
+<div class="sect3">
+<h4 id="_common_commands_2"><a class="anchor" href="#_common_commands_2"></a>Common Commands</h4>
+<div class="paragraph">
+<p><strong>dump-flows - Show all flow entries:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump all flows on br-int
+sudo ovs-ofctl dump-flows br-int
+
+# Specify OpenFlow protocol version (OVN uses OpenFlow 1.5)
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15
+
+# Sort by table number for readability
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table
+
+# Filter flows by table
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 table=0
+
+# Filter flows matching specific criteria
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "ip,nw_dst=10.0.0.1"
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "in_port=5"
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 "cookie=0x4a5c0b13/-1"</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When working with OVN-managed bridges, always use <code>-O OpenFlow15</code> (or <code>-O OpenFlow13</code> at minimum). OVN programs flows using features from OpenFlow 1.3+. Without specifying the protocol version, <code>ovs-ofctl</code> defaults to OpenFlow 1.0, which cannot display many OVN flows correctly.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>add-flow / del-flows / mod-flows - Flow manipulation:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Add a flow (for standalone OVS, not OVN-managed bridges)
+sudo ovs-ofctl add-flow br-test \
+  "table=0,priority=100,in_port=1,ip,actions=output:2"
+
+# Delete all flows in a table
+sudo ovs-ofctl del-flows br-test "table=0"
+
+# Delete flows matching specific criteria
+sudo ovs-ofctl del-flows br-test "in_port=1"
+
+# Modify existing flows
+sudo ovs-ofctl mod-flows br-test \
+  "table=0,priority=100,in_port=1,ip,actions=output:3"</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Never add, delete, or modify flows on a bridge managed by OVN (<code>br-int</code>). The <code>ovn-controller</code> daemon will overwrite your changes during its next reconciliation cycle.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>dump-ports - Port statistics:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-ofctl dump-ports br-int
+sudo ovs-ofctl dump-ports br-int tap12345678-90</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>OFPST_PORT reply (xid=0x4): 15 ports
+  port  5: rx pkts=15234, bytes=1827410, drop=0, errs=0, frame=0, over=0, crc=0
+           tx pkts=12456, bytes=1123456, drop=0, errs=0, coll=0</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Non-zero <code>drop</code> counters indicate packets being dropped at the port level.</p>
+</div>
+<div class="paragraph">
+<p><strong>dump-ports-desc - Port descriptions:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-ofctl dump-ports-desc br-int -O OpenFlow15</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>snoop - Watch OpenFlow messages:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-ofctl snoop br-int</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_flow_syntax_reference"><a class="anchor" href="#_flow_syntax_reference"></a>Flow Syntax Reference</h4>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Match Field</th>
+<th class="tableblock halign-left valign-top">Description</th>
+<th class="tableblock halign-left valign-top">Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port=N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Input port number</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>in_port=5</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src=MAC</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_src=00:11:22:33:44:55</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_dst=MAC</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Destination MAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_dst=ff:ff:ff:ff:ff:ff</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_type=N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ethertype</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>dl_type=0x0800</code> (IPv4)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IPv4 shorthand</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ip</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ARP shorthand</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>arp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src=IP[/MASK]</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source IPv4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_src=10.0.0.0/24</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_dst=IP[/MASK]</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Destination IPv4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_dst=10.0.0.1</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_proto=N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP protocol</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>nw_proto=6</code> (TCP)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp</code> / <code>udp</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Protocol shorthand</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcp</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_src=N</code> / <code>tp_dst=N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L4 port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tp_dst=443</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct_state=FLAGS</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack state</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct_state=+est+trk</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>metadata=N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenFlow metadata</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>metadata=0x2</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Common actions:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Action</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>output:N</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Output to port N</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>drop</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Drop the packet</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>NORMAL</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Normal L2 switching</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>resubmit(,N)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Continue in table N</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_dl_src:MAC</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify source MAC</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>mod_nw_src:IP</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Modify source IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>load:VAL&#8594;REG</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Load value into register</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ct(args)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Connection tracking</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flood</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Output to all ports except input</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_tips_for_filtering_flow_output"><a class="anchor" href="#_tips_for_filtering_flow_output"></a>Tips for Filtering Flow Output</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Count flows per table
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  grep -oP 'table=\d+' | sort | uniq -c | sort -rn
+
+# Find flows with zero packet counts
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "n_packets=0"
+
+# Find flows matching a specific IP
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "10\.0\.0\.1"</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_dpctl_datapath_management"><a class="anchor" href="#_ovs_dpctl_datapath_management"></a>ovs-dpctl - Datapath Management</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Interact with the OVS kernel datapath - the fast-path component that caches forwarding decisions.</p>
+</div>
+<div class="sect3">
+<h4 id="_understanding_the_datapath"><a class="anchor" href="#_understanding_the_datapath"></a>Understanding the Datapath</h4>
+<div class="paragraph">
+<p>OVS has two flow processing levels:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>OpenFlow tables</strong> (in <code>ovs-vswitchd</code>) - the full pipeline.</p>
+</li>
+<li>
+<p><strong>Datapath flow cache</strong> (in kernel) - simplified exact-match flows for fast forwarding.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>Cache hits are forwarded entirely in the kernel (fast path). Cache misses go to <code>ovs-vswitchd</code> (slow path).</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show cached datapath flows
+sudo ovs-dpctl dump-flows
+sudo ovs-appctl dpctl/dump-flows
+
+# Show datapath ports and statistics
+sudo ovs-dpctl show</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Datapath flows are not the same as OpenFlow flows. OpenFlow flows define policy (with wildcards). Datapath flows are cached exact-match results of evaluating specific packets. There can be many datapath flows for a single OpenFlow flow.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_appctl_runtime_commands"><a class="anchor" href="#_ovs_appctl_runtime_commands"></a>ovs-appctl - Runtime Commands</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Send runtime commands to running OVS daemons.</p>
+</div>
+<div class="paragraph">
+<p><strong>ofproto/trace - Packet simulation</strong> (see Module 10 for details):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl ofproto/trace br-int \
+  "in_port=5,tcp,dl_src=fa:16:3e:aa:bb:cc,dl_dst=fa:16:3e:dd:ee:ff,\
+   nw_src=10.0.0.1,nw_dst=10.0.0.2,tp_dst=80"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>fdb/show - MAC learning table:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl fdb/show br-int</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>bond/show - Bond status:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl bond/show bond0</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>coverage/show - Performance counters:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl coverage/show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key counters:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Counter</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>handler</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcalls from kernel to userspace</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>flow_mod</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenFlow flow modifications</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>upcall_flow_limit_hit</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcalls dropped due to flow limit</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>vlog/set - Adjust log levels:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl vlog/set ofproto:dbg
+sudo ovs-appctl vlog/set ofproto:warn    # restore
+sudo ovs-appctl vlog/list                # show current levels</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Debug logging generates enormous output and can fill disk quickly. Always restore to <code>warn</code> or <code>info</code> after debugging.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>memory/show - Memory usage:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl memory/show</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_ovsdb_client_database_client"><a class="anchor" href="#_ovsdb_client_database_client"></a>ovsdb-client - Database Client</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Direct database queries, monitoring, and dumps.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovsdb-client dump                                    # full database
+sudo ovsdb-client dump Open_vSwitch Bridge                # specific table
+sudo ovsdb-client monitor Open_vSwitch Interface name,ofport  # real-time changes
+sudo ovsdb-client list-dbs                                # list databases
+sudo ovsdb-client get-schema Open_vSwitch                 # schema</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_management_tools"><a class="anchor" href="#_ovn_management_tools"></a>OVN Management Tools</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovn_nbctl_northbound_database_management"><a class="anchor" href="#_ovn_nbctl_northbound_database_management"></a>ovn-nbctl - Northbound Database Management</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Configure OVN logical networks. The NB DB is the "intent" database describing the desired network topology.</p>
+</div>
+<div class="sect3">
+<h4 id="_logical_switch_operations"><a class="anchor" href="#_logical_switch_operations"></a>Logical Switch Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl ls-add ls1                    # create
+sudo ovn-nbctl ls-del ls1                    # delete
+sudo ovn-nbctl ls-list                       # list all
+
+# Logical switch port operations
+sudo ovn-nbctl lsp-add ls1 vm1-port
+sudo ovn-nbctl lsp-set-addresses vm1-port "00:00:00:00:00:01 10.0.0.1"
+sudo ovn-nbctl lsp-set-port-security vm1-port "00:00:00:00:00:01 10.0.0.1"
+sudo ovn-nbctl lsp-list ls1
+sudo ovn-nbctl lsp-del vm1-port</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_logical_router_operations"><a class="anchor" href="#_logical_router_operations"></a>Logical Router Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lr-add lr1                    # create
+sudo ovn-nbctl lr-del lr1                    # delete
+sudo ovn-nbctl lr-list                       # list all
+
+# Router port operations
+sudo ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:aa:aa:01 10.0.0.254/24
+sudo ovn-nbctl lrp-list lr1
+sudo ovn-nbctl lrp-del lr1-ls1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Connect a logical switch to a router:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lsp-add ls1 ls1-lr1
+sudo ovn-nbctl lsp-set-type ls1-lr1 router
+sudo ovn-nbctl lsp-set-addresses ls1-lr1 router
+sudo ovn-nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Static routes:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lr-route-add lr1 0.0.0.0/0 203.0.113.254
+sudo ovn-nbctl lr-route-list lr1
+sudo ovn-nbctl lr-route-del lr1 0.0.0.0/0</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>NAT rules:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lr-nat-add lr1 snat 203.0.113.1 10.0.0.0/24
+sudo ovn-nbctl lr-nat-add lr1 dnat_and_snat 203.0.113.50 10.0.0.1
+sudo ovn-nbctl lr-nat-list lr1
+sudo ovn-nbctl lr-nat-del lr1 dnat_and_snat 203.0.113.50</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_acl_operations"><a class="anchor" href="#_acl_operations"></a>ACL Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Allow incoming TCP port 80
+sudo ovn-nbctl acl-add ls1 to-lport 1000 \
+  'outport == "vm1-port" &amp;&amp; tcp.dst == 80' allow-related
+
+# Deny all other incoming traffic
+sudo ovn-nbctl acl-add ls1 to-lport 900 \
+  'outport == "vm1-port"' drop
+
+# Allow all outgoing traffic
+sudo ovn-nbctl acl-add ls1 from-lport 1000 \
+  'inport == "vm1-port"' allow-related
+
+sudo ovn-nbctl acl-list ls1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Port Groups:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl pg-add web-servers vm1-port vm2-port vm3-port
+sudo ovn-nbctl acl-add web-servers to-lport 1000 'tcp.dst == 80' allow-related
+sudo ovn-nbctl pg-del web-servers</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In OpenStack, each security group becomes an OVN port group. ACLs applied to a port group cover all member ports efficiently.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_load_balancer_operations"><a class="anchor" href="#_load_balancer_operations"></a>Load Balancer Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lb-add my-lb 10.0.0.100:80 \
+  10.0.0.1:8080,10.0.0.2:8080,10.0.0.3:8080
+sudo ovn-nbctl ls-lb-add ls1 my-lb
+sudo ovn-nbctl lr-lb-add lr1 my-lb
+sudo ovn-nbctl lb-list
+sudo ovn-nbctl lb-del my-lb</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_dhcp_operations"><a class="anchor" href="#_dhcp_operations"></a>DHCP Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl dhcp-options-create 10.0.0.0/24
+DHCP_UUID=$(sudo ovn-nbctl --bare --columns=_uuid find dhcp_options cidr="10.0.0.0/24")
+sudo ovn-nbctl dhcp-options-set-options $DHCP_UUID \
+  lease_time=3600 router=10.0.0.254 server_id=10.0.0.254 \
+  server_mac=00:00:00:aa:aa:01 dns_server="{8.8.8.8, 8.8.4.4}"
+sudo ovn-nbctl lsp-set-dhcpv4-options vm1-port $DHCP_UUID</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_generic_database_operations"><a class="anchor" href="#_generic_database_operations"></a>Generic Database Operations</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl list logical_switch
+sudo ovn-nbctl find logical_switch_port type=router
+sudo ovn-nbctl get logical_switch ls1 _uuid
+sudo ovn-nbctl set logical_switch_port vm1-port enabled=false</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_sbctl_southbound_database_management"><a class="anchor" href="#_ovn_sbctl_southbound_database_management"></a>ovn-sbctl - Southbound Database Management</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Inspect the compiled state in the SB DB - logical flows, port bindings, chassis registrations. You typically do not write to the SB DB directly.</p>
+</div>
+<div class="paragraph">
+<p><strong>show - Display chassis and port bindings:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis "node-1"
+    hostname: node-1.example.com
+    Encap geneve
+        ip: "172.16.0.1"
+        options: {csum="true"}
+    Port_Binding "vm1-port"
+    Port_Binding "vm2-port"
+Chassis "node-2"
+    hostname: node-2.example.com
+    Encap geneve
+        ip: "172.16.0.2"
+    Port_Binding "vm3-port"</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>If a port does not appear under any chassis in <code>ovn-sbctl show</code>, it is unbound. An unbound port means <code>ovn-controller</code> on no node has claimed it - typically the OVS port with the matching <code>iface-id</code> does not exist or <code>ovn-controller</code> is not running.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>lflow-list - List logical flows:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl lflow-list
+sudo ovn-sbctl lflow-list ls1
+sudo ovn-sbctl lflow-list ls1 | grep "ls_in_acl"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Each logical flow shows: Datapath, Pipeline (ingress/egress), Table, Priority, Match, Action, UUID.</p>
+</div>
+<div class="paragraph">
+<p><strong>Other queries:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl chassis-list
+sudo ovn-sbctl find port_binding logical_port="vm1-port"
+sudo ovn-sbctl get port_binding vm1-port chassis
+sudo ovn-sbctl list mac_binding</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_ovn_trace_logical_packet_tracer"><a class="anchor" href="#_ovn_trace_logical_packet_tracer"></a>ovn-trace - Logical Packet Tracer</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Simulate packet processing through OVN&#8217;s logical pipeline (see Module 10 for full details).</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace [OPTIONS] DATAPATH MICROFLOW</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Option</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--detailed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show every logical flow matched (default)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--summary</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Key decisions only</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--minimal</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Just the final result</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>--ct new/est/rel/inv</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Simulate connection tracking state</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Examples:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --detailed ls1 \
+  'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.1 &amp;&amp; ip4.dst == 10.0.0.2 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 80'
+
+sudo ovn-trace --ct new --detailed ls1 \
+  'inport == "vm-client" &amp;&amp; eth.src == 00:00:00:00:00:50 &amp;&amp; eth.dst == 00:00:00:00:01:00 &amp;&amp; ip4.src == 10.0.0.50 &amp;&amp; ip4.dst == 10.0.0.100 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 80'</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_ovn_detrace_physical_to_logical_flow_mapper"><a class="anchor" href="#_ovn_detrace_physical_to_logical_flow_mapper"></a>ovn-detrace - Physical to Logical Flow Mapper</h3>
+<div class="paragraph">
+<p><strong>Purpose:</strong> Map OVS OpenFlow cookie values back to OVN logical flows.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
+  ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock
+
+sudo ovs-appctl ofproto/trace br-int "&lt;flow&gt;" 2&gt;&amp;1 | \
+  ovn-detrace --ovnsb=tcp:192.168.1.100:6642</code></pre>
+</div>
+</div>
+<hr>
+</div>
+<div class="sect2">
+<h3 id="_ovn_controller_appctl_commands"><a class="anchor" href="#_ovn_controller_appctl_commands"></a>ovn-controller appctl Commands</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl -t ovn-controller connection-status   # SB DB connection
+sudo ovs-appctl -t ovn-controller ct-zone-list         # conntrack zones
+sudo ovs-appctl -t ovn-controller chassis/show         # chassis info
+sudo ovs-appctl -t ovn-controller recompute            # trigger flow recompute
+sudo ovs-appctl -t ovn-controller vlog/set dbg         # debug logging
+sudo ovs-appctl -t ovn-controller vlog/set info        # restore</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If <code>-t ovn-controller</code> does not work, try the full path: <code>-t /var/run/ovn/ovn-controller.&lt;pid&gt;.ctl</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_monitoring_tools"><a class="anchor" href="#_monitoring_tools"></a>Monitoring Tools</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_open_vswitch_logs"><a class="anchor" href="#_open_vswitch_logs"></a>Open vSwitch Logs</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Default Log Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vswitchd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/var/log/openvswitch/ovs-vswitchd.log</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovsdb-server</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/var/log/openvswitch/ovsdb-server.log</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-appctl vlog/list                        # show current levels
+sudo ovs-appctl vlog/set ofproto:file:dbg        # debug to file
+sudo ovs-appctl vlog/set file:warn               # restore</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_logs"><a class="anchor" href="#_ovn_logs"></a>OVN Logs</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Default Log Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-northd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/var/log/ovn/ovn-northd.log</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-controller</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/var/log/ovn/ovn-controller.log</code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Common log messages:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Message</th>
+<th class="tableblock halign-left valign-top">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>binding lport &lt;port&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller claiming a port (normal)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>releasing lport &lt;port&gt;</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller releasing a port (normal)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>connection attempt failed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cannot reach SB database</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>full recompute</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rebuilding all flows (can cause brief disruption)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_tcpdump_and_wireshark"><a class="anchor" href="#_tcpdump_and_wireshark"></a>tcpdump and Wireshark</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># OVS port capture
+sudo ovs-tcpdump -i &lt;port-name&gt; -nn
+
+# Geneve tunnel traffic
+sudo tcpdump -i eth0 -nn port 6081
+sudo tshark -i eth0 -f "port 6081" -V -O geneve
+
+# DHCP traffic
+sudo ovs-tcpdump -i &lt;port&gt; -nn "port 67 or port 68"
+
+# Between specific IPs
+sudo ovs-tcpdump -i &lt;port&gt; -nn "host 10.0.0.1 and host 10.0.0.2"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_performance_monitoring"><a class="anchor" href="#_performance_monitoring"></a>Performance Monitoring</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Performance counters
+sudo ovs-appctl coverage/show
+
+# Memory usage
+sudo ovs-appctl memory/show
+
+# Conntrack table
+sudo ovs-appctl dpctl/ct-stats-show
+sudo sysctl net.netfilter.nf_conntrack_max</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>A full conntrack table causes new connections to be dropped. Monitor conntrack count versus maximum in environments with many ACLs or load balancers.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>OVN database monitoring:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">ls -lh /etc/ovn/*.db
+sudo ovn-sbctl --columns=_uuid list logical_flow | grep -c "_uuid"</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_quick_reference_cheat_sheet"><a class="anchor" href="#_quick_reference_cheat_sheet"></a>Quick Reference Cheat Sheet</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovs_commands_by_task"><a class="anchor" href="#_ovs_commands_by_task"></a>OVS Commands by Task</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Task</th>
+<th class="tableblock halign-left valign-top">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show bridge config</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List bridges</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl list-br</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Create bridge</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl add-br &lt;name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delete bridge</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl del-br &lt;name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl add-port &lt;bridge&gt; &lt;port&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delete port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl del-port &lt;bridge&gt; &lt;port&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List ports</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl list-ports &lt;bridge&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port details</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl list interface &lt;port&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Find by iface-id</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-vsctl find interface external_ids:iface-id="&lt;id&gt;"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dump flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-ofctl dump-flows &lt;bridge&gt; -O OpenFlow15</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dump table flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-ofctl dump-flows &lt;bridge&gt; -O OpenFlow15 table=&lt;N&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port stats</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-ofctl dump-ports &lt;bridge&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Trace packet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl ofproto/trace &lt;bridge&gt; "&lt;flow&gt;"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MAC table</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl fdb/show &lt;bridge&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Datapath flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-dpctl dump-flows</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Datapath stats</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-dpctl show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Change log level</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl vlog/set &lt;module&gt;:&lt;level&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Memory usage</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl memory/show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Perf counters</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl coverage/show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dump database</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovsdb-client dump</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Monitor DB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovsdb-client monitor Open_vSwitch &lt;table&gt;</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_commands_by_task"><a class="anchor" href="#_ovn_commands_by_task"></a>OVN Commands by Task</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Task</th>
+<th class="tableblock halign-left valign-top">Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show NB topology</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Show SB chassis</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-sbctl show</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Create switch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl ls-add &lt;name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delete switch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl ls-del &lt;name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add switch port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lsp-add &lt;switch&gt; &lt;port&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set port address</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lsp-set-addresses &lt;port&gt; "&lt;MAC&gt; &lt;IP&gt;"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Set port security</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lsp-set-port-security &lt;port&gt; "&lt;MAC&gt; &lt;IP&gt;"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Create router</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lr-add &lt;name&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add router port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lrp-add &lt;router&gt; &lt;port&gt; &lt;MAC&gt; &lt;IP/prefix&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add static route</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lr-route-add &lt;router&gt; &lt;prefix&gt; &lt;nexthop&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add SNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lr-nat-add &lt;router&gt; snat &lt;ext-ip&gt; &lt;subnet&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add DNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lr-nat-add &lt;router&gt; dnat_and_snat &lt;ext-ip&gt; &lt;int-ip&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Add ACL</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl acl-add &lt;switch&gt; &lt;dir&gt; &lt;pri&gt; '&lt;match&gt;' &lt;action&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List ACLs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl acl-list &lt;switch&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Create LB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lb-add &lt;name&gt; &lt;VIP:port&gt; &lt;backends&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List LBs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-nbctl lb-list</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List lflows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-sbctl lflow-list [&lt;datapath&gt;]</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List chassis</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-sbctl chassis-list</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Find port binding</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-sbctl find port_binding logical_port="&lt;port&gt;"</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Logical trace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovn-trace --detailed &lt;dp&gt; '&lt;flow&gt;'</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Map flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-ofctl dump-flows br-int -O OpenFlow15 \
+|ovn-detrace --ovnsb=&lt;DB&gt;</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller status</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl -t ovn-controller connection-status</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CT zones</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>sudo ovs-appctl -t ovn-controller ct-zone-list</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_debugging_workflow_quick_reference"><a class="anchor" href="#_debugging_workflow_quick_reference"></a>Debugging Workflow Quick Reference</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Step</th>
+<th class="tableblock halign-left valign-top">What to Run</th>
+<th class="tableblock halign-left valign-top">What to Look For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1. Topology</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl show</code> + <code>ovn-sbctl show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ports, switches, routers, bindings</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2. Port binding</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sbctl find port_binding logical_port="&lt;port&gt;"</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Is port bound? Which chassis?</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3. Logical trace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-trace --detailed &lt;dp&gt; '&lt;flow&gt;'</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Correct pipeline behavior?</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4. Physical trace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl ofproto/trace br-int "&lt;flow&gt;"</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS flows match logical?</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">5. Packet capture</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>tcpdump</code> / <code>ovs-tcpdump</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Packets on the wire?</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">6. Flow correlation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-ofctl dump-flows \
+|ovn-detrace</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS-to-OVN mapping</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">7. Logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovn-controller</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Errors, warnings</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8. Conntrack</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl dpctl/ct-stats-show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Table full?</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">9. Counters</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl coverage/show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcall failures, flow churn</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercises"><a class="anchor" href="#_exercises"></a>Exercises</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_exercise_11_1_ovs_database_exploration"><a class="anchor" href="#_exercise_11_1_ovs_database_exploration"></a>Exercise 11.1: OVS Database Exploration</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Use <code>ovs-vsctl</code> to inspect the OVS configuration.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Run <code>sudo ovs-vsctl show</code> and identify all bridges and ports.</p>
+</li>
+<li>
+<p>Use <code>sudo ovs-vsctl list bridge</code> for full database records.</p>
+</li>
+<li>
+<p>Use <code>sudo ovs-vsctl find interface type=geneve</code> to list tunnels.</p>
+</li>
+<li>
+<p>For each tunnel, note the remote IP and correlate with <code>ovn-sbctl show</code>.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_11_2_flow_table_analysis"><a class="anchor" href="#_exercise_11_2_flow_table_analysis"></a>Exercise 11.2: Flow Table Analysis</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Analyze the flow tables on <code>br-int</code>.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Dump all flows with <code>sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table</code>.</p>
+</li>
+<li>
+<p>Count flows per table.</p>
+</li>
+<li>
+<p>Identify the highest-priority flow in table 0.</p>
+</li>
+<li>
+<p>Find flows with zero packet counts.</p>
+</li>
+<li>
+<p>Use <code>ovn-detrace</code> to annotate the flows.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_11_3_ovn_topology_mapping"><a class="anchor" href="#_exercise_11_3_ovn_topology_mapping"></a>Exercise 11.3: OVN Topology Mapping</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Map the complete logical and physical topology.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>List all logical switches, routers, and ports with <code>ovn-nbctl</code>.</p>
+</li>
+<li>
+<p>List chassis and port bindings with <code>ovn-sbctl</code>.</p>
+</li>
+<li>
+<p>Determine which chassis each port is bound to.</p>
+</li>
+<li>
+<p>Draw the logical and physical topology.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_11_4_acl_and_security_group_analysis"><a class="anchor" href="#_exercise_11_4_acl_and_security_group_analysis"></a>Exercise 11.4: ACL and Security Group Analysis</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Inspect ACLs and trace their effect.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>List ACLs with <code>ovn-nbctl acl-list</code>.</p>
+</li>
+<li>
+<p>Find corresponding logical flows with <code>ovn-sbctl lflow-list | grep acl</code>.</p>
+</li>
+<li>
+<p>Trace a packet that should be allowed.</p>
+</li>
+<li>
+<p>Trace a packet that should be denied.</p>
+</li>
+<li>
+<p>Identify the decisive table and flow.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercise_11_5_runtime_diagnostics"><a class="anchor" href="#_exercise_11_5_runtime_diagnostics"></a>Exercise 11.5: Runtime Diagnostics</h3>
+<div class="paragraph">
+<p><strong>Objective:</strong> Assess system health with runtime commands.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Check ovn-controller connection status.</p>
+</li>
+<li>
+<p>Run <code>ovs-appctl coverage/show</code> and identify top counters.</p>
+</li>
+<li>
+<p>Run <code>ovs-appctl memory/show</code> and note flow rule count.</p>
+</li>
+<li>
+<p>Check conntrack table usage.</p>
+</li>
+<li>
+<p>Check OVN database sizes.</p>
+</li>
+<li>
+<p>Review recent logs for warnings or errors.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="10-traffic-flows.html" class="query-params-link">Traffic Flows</a></span>
+  <span class="next"><a href="12-troubleshooting.html" class="query-params-link">Troubleshooting</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

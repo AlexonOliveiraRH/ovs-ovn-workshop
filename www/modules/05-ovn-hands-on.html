@@ -1,0 +1,2612 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 05 - OVN Hands-On Lab :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="04-ovn-architecture.html">
+    <link rel="next" href="06-ovs-vs-ovn.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="05-ovn-hands-on.html">OVN Hands-On Lab</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 05 - OVN Hands-On Lab</h1>
+<div class="sect1">
+<h2 id="_prerequisites"><a class="anchor" href="#_prerequisites"></a>Prerequisites</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_lab_environment"><a class="anchor" href="#_lab_environment"></a>Lab Environment</h3>
+<div class="paragraph">
+<p>This lab requires 2-3 virtual machines (or physical machines) running RHEL 9 or Fedora. One machine serves as the central OVN controller, and the others serve as compute nodes (chassis).</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 20%;">
+<col style="width: 20%;">
+<col style="width: 20%;">
+<col style="width: 20%;">
+<col style="width: 20%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Node</th>
+<th class="tableblock halign-left valign-top">Role</th>
+<th class="tableblock halign-left valign-top">Hostname</th>
+<th class="tableblock halign-left valign-top">Management IP</th>
+<th class="tableblock halign-left valign-top">Tunnel IP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node 1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Central + Compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">central</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.122.10</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.100.10</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node 2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">compute1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.122.11</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.100.11</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node 3 (optional)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">compute2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.122.12</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.100.12</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If you only have a single machine, you can still complete Exercises 1-4, 6-7, and 9-10 using a single node. Exercise 5 requires at least 2 nodes. Exercise 8 benefits from 2 nodes but can be adapted for a single node.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The "Tunnel IP" is the IP address used for Geneve tunnel encapsulation between nodes. In production, this would typically be on a dedicated tenant/tunnel network. For this lab, it can be the same as the management IP if you only have one network.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_required_packages"><a class="anchor" href="#_required_packages"></a>Required Packages</h3>
+<div class="paragraph">
+<p><strong>On the central node:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovn-central</code> - Provides ovn-northd and the NB/SB databases</p>
+</li>
+<li>
+<p><code>ovn-host</code> - Provides ovn-controller (since this node is also a compute)</p>
+</li>
+<li>
+<p><code>openvswitch</code> - Provides OVS</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>On compute nodes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovn-host</code> - Provides ovn-controller</p>
+</li>
+<li>
+<p><code>openvswitch</code> - Provides OVS</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_network_topology"><a class="anchor" href="#_network_topology"></a>Network Topology</h3>
+<div class="paragraph">
+<p>The lab builds up this topology across the exercises:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>                  Exercise 8: External connectivity
+                        (NAT/Gateway)
+                             |
+                    +--------+--------+
+                    |     router1      |
+                    | 10.0.0.1/24     10.0.1.1/24 |
+                    +--------+--------+
+                        |           |
+             +----------+     +----+-------+
+             |                             |
+    +--------+--------+          +--------+--------+
+    | Logical Switch   |          | Logical Switch   |
+    |    network1      |          |    network2      |
+    | 10.0.0.0/24      |          | 10.0.1.0/24      |
+    +--+----+----+-----+          +--+----+----+-----+
+       |    |    |                   |    |    |
+     vm1  vm2  vm3                 vm4  vm5  vm6
+   (Ex.3) (Ex.3) (Ex.5)         (Ex.6) (Ex.6) (Ex.9)
+
+    Exercise 4: DHCP on network1
+    Exercise 7: ACLs on network1
+    Exercise 9: Load balancer on network2</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_1_installing_and_starting_ovn"><a class="anchor" href="#_exercise_1_installing_and_starting_ovn"></a>Exercise 1: Installing and Starting OVN</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Install OVN packages, start services, and establish connectivity between the central node and compute nodes.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_1_1_install_packages_on_the_central_node"><a class="anchor" href="#_step_1_1_install_packages_on_the_central_node"></a>Step 1.1: Install packages on the central node</h3>
+<div class="paragraph">
+<p>Run these commands on the central node (<code>central</code>):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Install OVN central packages and OVS
+sudo dnf install -y ovn-central ovn-host openvswitch</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>...
+Installed:
+  openvswitch-3.x.x-x.el9.x86_64
+  ovn-central-2x.xx.x-x.el9.x86_64
+  ovn-host-2x.xx.x-x.el9.x86_64
+  ...
+Complete!</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_2_install_packages_on_compute_nodes"><a class="anchor" href="#_step_1_2_install_packages_on_compute_nodes"></a>Step 1.2: Install packages on compute nodes</h3>
+<div class="paragraph">
+<p>Run these commands on each compute node (<code>compute1</code>, <code>compute2</code>):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Install OVN host packages and OVS
+sudo dnf install -y ovn-host openvswitch</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_3_start_services_on_the_central_node"><a class="anchor" href="#_step_1_3_start_services_on_the_central_node"></a>Step 1.3: Start services on the central node</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start and enable OVS
+sudo systemctl enable --now openvswitch
+
+# Start and enable OVN central services
+# This starts ovsdb-server instances for NB and SB databases, plus ovn-northd
+sudo systemctl enable --now ovn-northd
+
+# Verify services are running
+sudo systemctl status openvswitch ovn-northd</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output (abbreviated):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>● openvswitch.service - Open vSwitch
+     Active: active (exited) ...
+● ovn-northd.service - Open Virtual Network central components
+     Active: active (running) ...</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>ovn-northd</code> systemd unit manages three processes: (1) ovsdb-server for the Northbound Database, (2) ovsdb-server for the Southbound Database, and (3) the ovn-northd daemon itself. You can verify them with <code>ps aux | grep -E 'ovsdb-server|ovn-northd'</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_4_verify_central_services"><a class="anchor" href="#_step_1_4_verify_central_services"></a>Step 1.4: Verify central services</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check that the NB and SB databases are listening
+sudo ovn-nbctl show
+sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># ovn-nbctl show - empty database, no logical networks yet
+(empty output)
+
+# ovn-sbctl show - empty, no chassis registered yet
+(empty output)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the database connection endpoints
+sudo ss -tlnp | grep -E '6641|6642'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>LISTEN  0  10  0.0.0.0:6641  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
+LISTEN  0  10  0.0.0.0:6642  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Port 6641 is the NB DB and port 6642 is the SB DB.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>By default, the databases may only listen on <code>localhost</code> (punix sockets). If your compute nodes are separate machines, you need to configure the databases to listen on TCP. See the next step.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_5_configure_databases_for_remote_access_multi_node_only"><a class="anchor" href="#_step_1_5_configure_databases_for_remote_access_multi_node_only"></a>Step 1.5: Configure databases for remote access (multi-node only)</h3>
+<div class="paragraph">
+<p>If your compute nodes are on separate machines, configure the SB DB to accept remote connections:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On the central node, set the SB DB to listen on TCP
+sudo ovn-sbctl set-connection ptcp:6642
+
+# Optionally, also expose the NB DB for remote management
+sudo ovn-nbctl set-connection ptcp:6641
+
+# Verify
+sudo ovn-sbctl get-connection
+sudo ovn-nbctl get-connection</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ptcp:6642
+ptcp:6641</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_6_start_ovn_on_the_central_node_as_a_compute_node_too"><a class="anchor" href="#_step_1_6_start_ovn_on_the_central_node_as_a_compute_node_too"></a>Step 1.6: Start OVN on the central node (as a compute node too)</h3>
+<div class="paragraph">
+<p>Since the central node also serves as a compute node in this lab, start ovn-controller:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start and enable ovn-controller
+sudo systemctl enable --now ovn-controller
+
+# Configure OVS to point to the local OVN southbound database
+sudo ovs-vsctl set open_vswitch . \
+    external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \
+    external_ids:ovn-encap-type=geneve \
+    external_ids:ovn-encap-ip=192.168.100.10 \
+    external_ids:system-id=central</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>These <code>external_ids</code> on the <code>Open_vSwitch</code> table tell ovn-controller: - <code>ovn-remote</code>: Where to find the SB DB (local Unix socket since this node is the central node) - <code>ovn-encap-type</code>: Use Geneve encapsulation for tunnels - <code>ovn-encap-ip</code>: This node&#8217;s tunnel endpoint IP - <code>system-id</code>: A unique identifier for this chassis</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_7_start_ovn_on_compute_nodes"><a class="anchor" href="#_step_1_7_start_ovn_on_compute_nodes"></a>Step 1.7: Start OVN on compute nodes</h3>
+<div class="paragraph">
+<p>Run on each compute node (<code>compute1</code>, <code>compute2</code>):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start and enable OVS
+sudo systemctl enable --now openvswitch
+
+# Start and enable ovn-controller
+sudo systemctl enable --now ovn-controller
+
+# Configure OVS to connect to the central SB DB
+# Replace 192.168.122.10 with your central node's IP
+sudo ovs-vsctl set open_vswitch . \
+    external_ids:ovn-remote=tcp:192.168.122.10:6642 \
+    external_ids:ovn-encap-type=geneve \
+    external_ids:ovn-encap-ip=192.168.100.11 \
+    external_ids:system-id=compute1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For <code>compute2</code>, use <code>ovn-encap-ip=192.168.100.12</code> and <code>system-id=compute2</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_1_8_verify_connectivity"><a class="anchor" href="#_step_1_8_verify_connectivity"></a>Step 1.8: Verify connectivity</h3>
+<div class="paragraph">
+<p>Back on the central node, verify that all chassis have registered:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+Chassis compute1
+    hostname: compute1
+    Encap geneve
+        ip: "192.168.100.11"
+        options: {csum="true"}
+Chassis compute2
+    hostname: compute2
+    Encap geneve
+        ip: "192.168.100.12"
+        options: {csum="true"}</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the OVS bridge was created
+sudo ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output (on each node):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Bridge br-int
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened"><a class="anchor" href="#_what_just_happened"></a>What just happened?</h3>
+<div class="paragraph">
+<p>You installed and configured a complete OVN deployment:
+. The central node runs the NB DB, SB DB, and ovn-northd
+. Each node runs ovn-controller, which registered itself as a chassis in the SB DB
+. ovn-controller created the integration bridge <code>br-int</code> on each node
+. The system is ready to create logical networks</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself"><a class="anchor" href="#_try_it_yourself"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Run <code>ovn-sbctl list Chassis</code> to see detailed chassis information</p>
+</li>
+<li>
+<p>Run <code>ovn-sbctl list Encap</code> to see encapsulation details</p>
+</li>
+<li>
+<p>Run <code>ovs-vsctl list Open_vSwitch</code> and look at the <code>external_ids</code> column</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_2_creating_your_first_logical_switch"><a class="anchor" href="#_exercise_2_creating_your_first_logical_switch"></a>Exercise 2: Creating Your First Logical Switch</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Create a logical switch, add ports, and understand what happens in the NB DB and SB DB when you do.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_2_1_create_a_logical_switch"><a class="anchor" href="#_step_2_1_create_a_logical_switch"></a>Step 2.1: Create a logical switch</h3>
+<div class="paragraph">
+<p>Run on the central node (where <code>ovn-nbctl</code> talks to the NB DB):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a logical switch called "network1"
+sudo ovn-nbctl ls-add network1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_2_2_verify_the_logical_switch_in_the_nb_db"><a class="anchor" href="#_step_2_2_verify_the_logical_switch_in_the_nb_db"></a>Step 2.2: Verify the logical switch in the NB DB</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all logical switches
+sudo ovn-nbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>switch 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx (network1)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Detailed view of the logical switch
+sudo ovn-nbctl list Logical_Switch</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+acls                : []
+dns_records         : []
+external_ids        : {}
+forwarding_groups   : []
+load_balancer       : []
+load_balancer_group : []
+name                : network1
+other_config        : {}
+ports               : []
+qos_rules           : []</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_2_3_create_logical_switch_ports"><a class="anchor" href="#_step_2_3_create_logical_switch_ports"></a>Step 2.3: Create logical switch ports</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create port "vm1" on network1
+sudo ovn-nbctl lsp-add network1 vm1
+
+# Set the port's MAC and IP address
+sudo ovn-nbctl lsp-set-addresses vm1 "00:00:00:00:00:01 10.0.0.11"
+
+# Enable port security (prevent MAC/IP spoofing)
+sudo ovn-nbctl lsp-set-port-security vm1 "00:00:00:00:00:01 10.0.0.11"
+
+# Create a second port "vm2"
+sudo ovn-nbctl lsp-add network1 vm2
+sudo ovn-nbctl lsp-set-addresses vm2 "00:00:00:00:00:02 10.0.0.12"
+sudo ovn-nbctl lsp-set-port-security vm2 "00:00:00:00:00:02 10.0.0.12"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_2_4_verify_ports_in_the_nb_db"><a class="anchor" href="#_step_2_4_verify_ports_in_the_nb_db"></a>Step 2.4: Verify ports in the NB DB</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>switch 3f2a1b9c-xxxx-xxxx-xxxx-xxxxxxxxxxxx (network1)
+    port vm2
+        addresses: ["00:00:00:00:00:02 10.0.0.12"]
+    port vm1
+        addresses: ["00:00:00:00:00:01 10.0.0.11"]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Detailed view of a port
+sudo ovn-nbctl list Logical_Switch_Port vm1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : a1b2c3d4-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+addresses           : ["00:00:00:00:00:01 10.0.0.11"]
+dhcpv4_options      : []
+dhcpv6_options      : []
+dynamic_addresses   : []
+enabled             : []
+external_ids        : {}
+ha_chassis_group    : []
+name                : vm1
+options             : {}
+parent_name         : []
+port_security       : ["00:00:00:00:00:01 10.0.0.11"]
+tag                 : []
+tag_request         : []
+type                : ""
+up                  : false</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Notice <code>up: false</code>. This means no actual workload has bound to this port yet. The port exists in the logical configuration, but nothing is physically connected to it. It will become <code>up: true</code> when ovn-controller on some chassis detects an OVS port with <code>iface-id=vm1</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_2_5_examine_the_sb_db"><a class="anchor" href="#_step_2_5_examine_the_sb_db"></a>Step 2.5: Examine the SB DB</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># See what ovn-northd generated in the SB DB
+sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># See the logical flows generated for network1
+sudo ovn-sbctl lflow-list network1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output (abbreviated - there will be many flows):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Datapath: "network1" (3f2a1b9c-...)  Pipeline: ingress
+  table=0 (ls_in_check_port_sec), priority=100, match=(vlan.present), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=50,  match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+  table=1 (ls_in_apply_port_sec), priority=50,  match=(reg0[15] == 1), action=(drop;)
+  table=1 (ls_in_apply_port_sec), priority=0,   match=(1), action=(next;)
+  ...
+  table=17(ls_in_l2_lkup),       priority=50,   match=(eth.dst == 00:00:00:00:00:01), action=(outport = "vm1"; output;)
+  table=17(ls_in_l2_lkup),       priority=50,   match=(eth.dst == 00:00:00:00:00:02), action=(outport = "vm2"; output;)
+  ...
+Datapath: "network1" (3f2a1b9c-...)  Pipeline: egress
+  table=0 (ls_out_pre_acl),      priority=0,    match=(1), action=(next;)
+  ...</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_2"><a class="anchor" href="#_what_just_happened_2"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created a logical switch (<code>network1</code>) in the NB DB</p>
+</li>
+<li>
+<p>You added two logical ports (<code>vm1</code>, <code>vm2</code>) with specific MAC and IP addresses</p>
+</li>
+<li>
+<p>ovn-northd detected the NB DB changes and compiled them into logical flows in the SB DB</p>
+</li>
+<li>
+<p>The logical flows implement: port security (verify source MAC/IP), ARP handling, L2 forwarding (MAC lookup), and the ingress/egress pipeline</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_2"><a class="anchor" href="#_try_it_yourself_2"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Run <code>sudo ovn-sbctl lflow-list network1 | grep -i arp</code> to see the ARP responder flows</p>
+</li>
+<li>
+<p>Run <code>sudo ovn-sbctl lflow-list network1 | grep port_sec</code> to see the port security flows</p>
+</li>
+<li>
+<p>Run <code>sudo ovn-sbctl list Datapath_Binding</code> to see the datapath binding for network1</p>
+</li>
+<li>
+<p>Try creating a third port and observe what new flows appear</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_3_connecting_workloads_to_ovn"><a class="anchor" href="#_exercise_3_connecting_workloads_to_ovn"></a>Exercise 3: Connecting Workloads to OVN</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Create network namespaces that simulate VMs, connect them to OVN logical ports, and test L2 connectivity.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_3_1_create_a_network_namespace_for_vm1"><a class="anchor" href="#_step_3_1_create_a_network_namespace_for_vm1"></a>Step 3.1: Create a network namespace for vm1</h3>
+<div class="paragraph">
+<p>Run on the central node (we will bind vm1 and vm2 to this node):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a network namespace to simulate a VM
+sudo ip netns add vm1
+
+# Create an OVS internal port for vm1
+sudo ovs-vsctl add-port br-int vm1 -- set interface vm1 \
+    type=internal \
+    external_ids:iface-id=vm1</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>external_ids:iface-id=vm1</code> is the critical link between the OVS port and the OVN logical port. When ovn-controller sees an OVS interface with <code>iface-id=vm1</code>, it binds logical port <code>vm1</code> to this chassis and begins installing the relevant OpenFlow flows.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_3_2_configure_the_vm1_namespace"><a class="anchor" href="#_step_3_2_configure_the_vm1_namespace"></a>Step 3.2: Configure the vm1 namespace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Move the interface into the namespace
+sudo ip link set vm1 netns vm1
+
+# Configure the MAC address to match what we set in OVN
+sudo ip netns exec vm1 ip link set vm1 address 00:00:00:00:00:01
+
+# Bring the interface up
+sudo ip netns exec vm1 ip link set vm1 up
+
+# Assign the IP address
+sudo ip netns exec vm1 ip addr add 10.0.0.11/24 dev vm1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_3_3_create_and_configure_the_vm2_namespace"><a class="anchor" href="#_step_3_3_create_and_configure_the_vm2_namespace"></a>Step 3.3: Create and configure the vm2 namespace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create namespace and OVS port for vm2
+sudo ip netns add vm2
+sudo ovs-vsctl add-port br-int vm2 -- set interface vm2 \
+    type=internal \
+    external_ids:iface-id=vm2
+
+# Configure the namespace
+sudo ip link set vm2 netns vm2
+sudo ip netns exec vm2 ip link set vm2 address 00:00:00:00:00:02
+sudo ip netns exec vm2 ip link set vm2 up
+sudo ip netns exec vm2 ip addr add 10.0.0.12/24 dev vm2</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_3_4_verify_port_binding"><a class="anchor" href="#_step_3_4_verify_port_binding"></a>Step 3.4: Verify port binding</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check that ovn-controller bound the ports
+sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+    Port_Binding vm1
+    Port_Binding vm2
+...</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check port status in NB DB
+sudo ovn-nbctl list Logical_Switch_Port vm1 | grep -E "name|up"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>name                : vm1
+up                  : true</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_3_5_test_l2_connectivity"><a class="anchor" href="#_step_3_5_test_l2_connectivity"></a>Step 3.5: Test L2 connectivity</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Ping from vm1 to vm2
+sudo ip netns exec vm1 ping -c 3 10.0.0.12</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.0.0.12 (10.0.0.12) 56(84) bytes of data.
+64 bytes from 10.0.0.12: icmp_seq=1 ttl=64 time=0.345 ms
+64 bytes from 10.0.0.12: icmp_seq=2 ttl=64 time=0.234 ms
+64 bytes from 10.0.0.12: icmp_seq=3 ttl=64 time=0.198 ms
+
+--- 10.0.0.12 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify ARP resolution
+sudo ip netns exec vm1 ip neigh show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10.0.0.12 dev vm1 lladdr 00:00:00:00:00:02 REACHABLE</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_3_6_observe_the_openflow_flows"><a class="anchor" href="#_step_3_6_observe_the_openflow_flows"></a>Step 3.6: Observe the OpenFlow flows</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># See the OpenFlow flows installed by ovn-controller
+sudo ovs-ofctl dump-flows br-int | head -30</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_3"><a class="anchor" href="#_what_just_happened_3"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created network namespaces to simulate VMs</p>
+</li>
+<li>
+<p>You created OVS ports with <code>iface-id</code> matching the OVN logical port names</p>
+</li>
+<li>
+<p>ovn-controller detected the ports, bound them in the SB DB, and installed OpenFlow flows</p>
+</li>
+<li>
+<p>The two "VMs" can now communicate at L2 through the OVN-managed network</p>
+</li>
+<li>
+<p>ARP resolution is handled by OVN - it responds to ARP requests using the addresses configured on the logical ports</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_3"><a class="anchor" href="#_try_it_yourself_3"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Run <code>sudo ovs-ofctl dump-flows br-int | wc -l</code> to count the number of OpenFlow flows</p>
+</li>
+<li>
+<p>Run <code>sudo ip netns exec vm1 arping -c 3 10.0.0.12</code> to see ARP in action</p>
+</li>
+<li>
+<p>Try setting an incorrect MAC on the vm1 namespace (different from what OVN expects) and see if traffic still works (it should be dropped by port security)</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_4_enabling_dhcp"><a class="anchor" href="#_exercise_4_enabling_dhcp"></a>Exercise 4: Enabling DHCP</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Configure OVN&#8217;s built-in DHCP responder and test DHCP address assignment.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_4_1_create_dhcp_options"><a class="anchor" href="#_step_4_1_create_dhcp_options"></a>Step 4.1: Create DHCP options</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create DHCP options for the 10.0.0.0/24 subnet
+DHCP_UUID=$(sudo ovn-nbctl create DHCP_Options cidr=10.0.0.0/24 \
+    options='"server_id"="10.0.0.1" "server_mac"="00:00:00:ff:00:01" "router"="10.0.0.1" "dns_server"="8.8.8.8" "lease_time"="3600"')
+
+echo "DHCP Options UUID: $DHCP_UUID"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>DHCP Options UUID: d4a8c3b2-xxxx-xxxx-xxxx-xxxxxxxxxxxx</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_4_2_verify_dhcp_options"><a class="anchor" href="#_step_4_2_verify_dhcp_options"></a>Step 4.2: Verify DHCP options</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List DHCP options
+sudo ovn-nbctl dhcp-options-list</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>d4a8c3b2-xxxx-xxxx-xxxx-xxxxxxxxxxxx  (10.0.0.0/24)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show option details
+sudo ovn-nbctl dhcp-options-get-options $DHCP_UUID</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>dns_server=8.8.8.8 lease_time=3600 router=10.0.0.1 server_id=10.0.0.1 server_mac=00:00:00:ff:00:01</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_4_3_associate_dhcp_options_with_logical_ports"><a class="anchor" href="#_step_4_3_associate_dhcp_options_with_logical_ports"></a>Step 4.3: Associate DHCP options with logical ports</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Associate DHCP options with vm1 and vm2 ports
+sudo ovn-nbctl lsp-set-dhcpv4-options vm1 $DHCP_UUID
+sudo ovn-nbctl lsp-set-dhcpv4-options vm2 $DHCP_UUID
+
+# Verify association
+sudo ovn-nbctl get Logical_Switch_Port vm1 dhcpv4_options</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_4_4_observe_dhcp_logical_flows"><a class="anchor" href="#_step_4_4_observe_dhcp_logical_flows"></a>Step 4.4: Observe DHCP logical flows</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Look at the DHCP-related logical flows
+sudo ovn-sbctl lflow-list network1 | grep -i dhcp</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN constructs the DHCP response directly in the flow actions. There is no external DHCP server - OVS itself generates the DHCP offer/ack as flow actions. The <code>put_dhcp_opts()</code> action creates the DHCP options payload, and the subsequent flow rewrites headers and sends the reply back to the requesting port.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_4_5_test_dhcp_from_a_namespace"><a class="anchor" href="#_step_4_5_test_dhcp_from_a_namespace"></a>Step 4.5: Test DHCP from a namespace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Remove the static IP from vm1 to test DHCP
+sudo ip netns exec vm1 ip addr flush dev vm1
+
+# Request a DHCP lease
+sudo ip netns exec vm1 dhclient -v vm1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Listening on LPF/vm1/00:00:00:00:00:01
+Sending on   LPF/vm1/00:00:00:00:00:01
+DHCPDISCOVER on vm1 to 255.255.255.255 port 67 interval 3
+DHCPOFFER of 10.0.0.11 from 10.0.0.1
+DHCPREQUEST for 10.0.0.11 on vm1 to 255.255.255.255 port 67
+DHCPACK of 10.0.0.11 from 10.0.0.1
+bound to 10.0.0.11 -- renewal in 1800 seconds.</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If <code>dhclient</code> is not available, install it with <code>sudo dnf install -y dhcp-client</code>. Alternatively, you can use <code>sudo ip netns exec vm1 nmap --script broadcast-dhcp-discover -e vm1</code> from the <code>nmap</code> package.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the IP was assigned
+sudo ip netns exec vm1 ip addr show vm1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_4_6_trace_the_dhcp_flow_with_ovn_trace"><a class="anchor" href="#_step_4_6_trace_the_dhcp_flow_with_ovn_trace"></a>Step 4.6: Trace the DHCP flow with ovn-trace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Simulate a DHCP discover packet from vm1
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == ff:ff:ff:ff:ff:ff &amp;&amp; ip4.src == 0.0.0.0 &amp;&amp; ip4.dst == 255.255.255.255 &amp;&amp; udp.src == 68 &amp;&amp; udp.dst == 67'</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_4"><a class="anchor" href="#_what_just_happened_4"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created DHCP options for the 10.0.0.0/24 subnet in the NB DB</p>
+</li>
+<li>
+<p>ovn-northd generated logical flows that intercept DHCP requests from the configured ports</p>
+</li>
+<li>
+<p>When vm1 sent a DHCP Discover, OVS matched it against the DHCP flows and generated a DHCP Offer/Ack locally - no external DHCP server was involved</p>
+</li>
+<li>
+<p>The <code>ovn-trace</code> tool confirmed the DHCP flow path through the logical pipeline</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_4"><a class="anchor" href="#_try_it_yourself_4"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Modify the DHCP options to change the DNS server and verify the change</p>
+</li>
+<li>
+<p>Create a new port with DHCP options and test that a new namespace gets an IP</p>
+</li>
+<li>
+<p>Use <code>ovn-trace</code> with the <code>--detailed</code> flag instead of <code>--summary</code> for more information</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_5_multi_node_logical_switch"><a class="anchor" href="#_exercise_5_multi_node_logical_switch"></a>Exercise 5: Multi-Node Logical Switch</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Demonstrate that an OVN logical switch spans multiple physical nodes, with automatic Geneve tunnel setup and cross-node L2 connectivity.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>This exercise requires at least 2 nodes (central + compute1). If you only have a single node, review the steps to understand the concepts, then skip to Exercise 6.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_step_5_1_create_a_port_on_the_remote_node"><a class="anchor" href="#_step_5_1_create_a_port_on_the_remote_node"></a>Step 5.1: Create a port on the remote node</h3>
+<div class="paragraph">
+<p>On the central node, create a new logical port:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a third port on network1
+sudo ovn-nbctl lsp-add network1 vm3
+sudo ovn-nbctl lsp-set-addresses vm3 "00:00:00:00:00:03 10.0.0.13"
+sudo ovn-nbctl lsp-set-port-security vm3 "00:00:00:00:00:03 10.0.0.13"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_2_bind_the_port_on_compute1"><a class="anchor" href="#_step_5_2_bind_the_port_on_compute1"></a>Step 5.2: Bind the port on compute1</h3>
+<div class="paragraph">
+<p>On <strong>compute1</strong>, create a namespace and bind the port:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create namespace and OVS port
+sudo ip netns add vm3
+sudo ovs-vsctl add-port br-int vm3 -- set interface vm3 \
+    type=internal \
+    external_ids:iface-id=vm3
+
+# Configure the namespace
+sudo ip link set vm3 netns vm3
+sudo ip netns exec vm3 ip link set vm3 address 00:00:00:00:00:03
+sudo ip netns exec vm3 ip link set vm3 up
+sudo ip netns exec vm3 ip addr add 10.0.0.13/24 dev vm3</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_3_verify_port_binding_across_nodes"><a class="anchor" href="#_step_5_3_verify_port_binding_across_nodes"></a>Step 5.3: Verify port binding across nodes</h3>
+<div class="paragraph">
+<p>On the central node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis central
+    hostname: central
+    Encap geneve
+        ip: "192.168.100.10"
+        options: {csum="true"}
+    Port_Binding vm1
+    Port_Binding vm2
+Chassis compute1
+    hostname: compute1
+    Encap geneve
+        ip: "192.168.100.11"
+        options: {csum="true"}
+    Port_Binding vm3</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_4_verify_automatic_geneve_tunnel_creation"><a class="anchor" href="#_step_5_4_verify_automatic_geneve_tunnel_creation"></a>Step 5.4: Verify automatic Geneve tunnel creation</h3>
+<div class="paragraph">
+<p>On the central node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Bridge br-int
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal
+    Port vm1
+        Interface vm1
+            type: internal
+    Port vm2
+        Interface vm2
+            type: internal
+    Port ovn-comput-0
+        Interface ovn-comput-0
+            type: geneve
+            options: {csum="true", key=flow, remote_ip="192.168.100.11"}</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>ovn-comput-0</code> port was automatically created by ovn-controller. It is a Geneve tunnel to compute1 (192.168.100.11). You did not create this tunnel - ovn-controller detected that it needs to reach a port on compute1 and set up the tunnel automatically.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_5_test_cross_node_l2_connectivity"><a class="anchor" href="#_step_5_5_test_cross_node_l2_connectivity"></a>Step 5.5: Test cross-node L2 connectivity</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From the central node
+sudo ip netns exec vm1 ping -c 3 10.0.0.13</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.0.0.13 (10.0.0.13) 56(84) bytes of data.
+64 bytes from 10.0.0.13: icmp_seq=1 ttl=64 time=1.234 ms
+64 bytes from 10.0.0.13: icmp_seq=2 ttl=64 time=0.567 ms
+64 bytes from 10.0.0.13: icmp_seq=3 ttl=64 time=0.489 ms
+
+--- 10.0.0.13 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_6_capture_geneve_encapsulated_traffic"><a class="anchor" href="#_step_5_6_capture_geneve_encapsulated_traffic"></a>Step 5.6: Capture Geneve encapsulated traffic</h3>
+<div class="paragraph">
+<p>While pinging, capture the Geneve tunnel traffic on the physical interface:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Capture Geneve traffic (UDP port 6081) on the physical interface
+# Replace eth0 with your actual physical interface name
+sudo tcpdump -i eth0 -nn udp port 6081 -c 5</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In another terminal:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ip netns exec vm1 ping -c 3 10.0.0.13</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected tcpdump output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>15:30:01.123456 IP 192.168.100.10.12345 &gt; 192.168.100.11.6081: Geneve, ...
+    IP 10.0.0.11 &gt; 10.0.0.13: ICMP echo request, ...
+15:30:01.124567 IP 192.168.100.11.12345 &gt; 192.168.100.10.6081: Geneve, ...
+    IP 10.0.0.13 &gt; 10.0.0.11: ICMP echo reply, ...</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>You can see two layers of IP headers: - <strong>Outer IP:</strong> 192.168.100.10 &#8594; 192.168.100.11 (the physical tunnel endpoints) - <strong>Inner IP:</strong> 10.0.0.11 &#8594; 10.0.0.13 (the actual VM traffic)</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_5_7_examine_geneve_headers"><a class="anchor" href="#_step_5_7_examine_geneve_headers"></a>Step 5.7: Examine Geneve headers</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Capture with verbose Geneve header decoding
+sudo tcpdump -i eth0 -nn -v udp port 6081 -c 2</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The Geneve TLV options carry the logical datapath tunnel key, logical inport, and logical outport metadata.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_5"><a class="anchor" href="#_what_just_happened_5"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created a port on a different physical node but on the same logical switch</p>
+</li>
+<li>
+<p>ovn-controller automatically created Geneve tunnels between the nodes</p>
+</li>
+<li>
+<p>L2 connectivity works seamlessly across nodes - vm1 and vm3 communicate as if on the same physical switch</p>
+</li>
+<li>
+<p>The Geneve encapsulation carries logical metadata that allows the receiving node to process the packet correctly</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_5"><a class="anchor" href="#_try_it_yourself_5"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Ping from vm3 to vm2 to verify all cross-node combinations work</p>
+</li>
+<li>
+<p>Run <code>sudo ovs-ofctl dump-flows br-int | grep geneve</code> on both nodes to see the tunnel-related flows</p>
+</li>
+<li>
+<p>Delete the vm3 port and observe that the tunnel is eventually removed</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_6_logical_routing"><a class="anchor" href="#_exercise_6_logical_routing"></a>Exercise 6: Logical Routing</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Create a logical router to connect two logical switches, enabling L3 (IP) routing between different subnets.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_6_1_create_a_second_logical_switch"><a class="anchor" href="#_step_6_1_create_a_second_logical_switch"></a>Step 6.1: Create a second logical switch</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a second logical switch for a different subnet
+sudo ovn-nbctl ls-add network2
+
+# Create ports on network2
+sudo ovn-nbctl lsp-add network2 vm4
+sudo ovn-nbctl lsp-set-addresses vm4 "00:00:00:00:00:04 10.0.1.11"
+sudo ovn-nbctl lsp-set-port-security vm4 "00:00:00:00:00:04 10.0.1.11"
+
+sudo ovn-nbctl lsp-add network2 vm5
+sudo ovn-nbctl lsp-set-addresses vm5 "00:00:00:00:00:05 10.0.1.12"
+sudo ovn-nbctl lsp-set-port-security vm5 "00:00:00:00:00:05 10.0.1.12"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_2_create_and_configure_the_workloads_for_network2"><a class="anchor" href="#_step_6_2_create_and_configure_the_workloads_for_network2"></a>Step 6.2: Create and configure the workloads for network2</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create namespace and OVS port for vm4
+sudo ip netns add vm4
+sudo ovs-vsctl add-port br-int vm4 -- set interface vm4 \
+    type=internal \
+    external_ids:iface-id=vm4
+sudo ip link set vm4 netns vm4
+sudo ip netns exec vm4 ip link set vm4 address 00:00:00:00:00:04
+sudo ip netns exec vm4 ip link set vm4 up
+sudo ip netns exec vm4 ip addr add 10.0.1.11/24 dev vm4
+
+# Create namespace and OVS port for vm5
+sudo ip netns add vm5
+sudo ovs-vsctl add-port br-int vm5 -- set interface vm5 \
+    type=internal \
+    external_ids:iface-id=vm5
+sudo ip link set vm5 netns vm5
+sudo ip netns exec vm5 ip link set vm5 address 00:00:00:00:00:05
+sudo ip netns exec vm5 ip link set vm5 up
+sudo ip netns exec vm5 ip addr add 10.0.1.12/24 dev vm5</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_3_verify_that_cross_subnet_communication_does_not_work_yet"><a class="anchor" href="#_step_6_3_verify_that_cross_subnet_communication_does_not_work_yet"></a>Step 6.3: Verify that cross-subnet communication does NOT work yet</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Try pinging from vm1 (10.0.0.11) to vm4 (10.0.1.11)
+sudo ip netns exec vm1 ping -c 2 -W 2 10.0.1.11</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.0.1.11 (10.0.1.11) 56(84) bytes of data.
+
+--- 10.0.1.11 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss, time 2003ms</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_4_create_a_logical_router"><a class="anchor" href="#_step_6_4_create_a_logical_router"></a>Step 6.4: Create a logical router</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a logical router
+sudo ovn-nbctl lr-add router1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_5_connect_the_router_to_network1"><a class="anchor" href="#_step_6_5_connect_the_router_to_network1"></a>Step 6.5: Connect the router to network1</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a router port for network1 (the gateway for 10.0.0.0/24)
+sudo ovn-nbctl lrp-add router1 rtr-to-network1 00:00:00:00:ff:01 10.0.0.1/24
+
+# Create the corresponding switch port on network1
+sudo ovn-nbctl lsp-add network1 network1-to-rtr
+sudo ovn-nbctl lsp-set-type network1-to-rtr router
+sudo ovn-nbctl lsp-set-addresses network1-to-rtr router
+sudo ovn-nbctl lsp-set-options network1-to-rtr router-port=rtr-to-network1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_6_connect_the_router_to_network2"><a class="anchor" href="#_step_6_6_connect_the_router_to_network2"></a>Step 6.6: Connect the router to network2</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a router port for network2 (the gateway for 10.0.1.0/24)
+sudo ovn-nbctl lrp-add router1 rtr-to-network2 00:00:00:00:ff:02 10.0.1.1/24
+
+# Create the corresponding switch port on network2
+sudo ovn-nbctl lsp-add network2 network2-to-rtr
+sudo ovn-nbctl lsp-set-type network2-to-rtr router
+sudo ovn-nbctl lsp-set-addresses network2-to-rtr router
+sudo ovn-nbctl lsp-set-options network2-to-rtr router-port=rtr-to-network2</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_7_verify_the_topology"><a class="anchor" href="#_step_6_7_verify_the_topology"></a>Step 6.7: Verify the topology</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl show</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_8_configure_default_gateways_in_the_namespaces"><a class="anchor" href="#_step_6_8_configure_default_gateways_in_the_namespaces"></a>Step 6.8: Configure default gateways in the namespaces</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Set the default gateway for vm1
+sudo ip netns exec vm1 ip route add default via 10.0.0.1
+
+# Set the default gateway for vm4
+sudo ip netns exec vm4 ip route add default via 10.0.1.1
+
+# Also set it for vm2 and vm5
+sudo ip netns exec vm2 ip route add default via 10.0.0.1
+sudo ip netns exec vm5 ip route add default via 10.0.1.1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_9_test_l3_connectivity"><a class="anchor" href="#_step_6_9_test_l3_connectivity"></a>Step 6.9: Test L3 connectivity</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Ping from vm1 (10.0.0.11) to vm4 (10.0.1.11) - cross-subnet!
+sudo ip netns exec vm1 ping -c 3 10.0.1.11</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.0.1.11 (10.0.1.11) 56(84) bytes of data.
+64 bytes from 10.0.1.11: icmp_seq=1 ttl=63 time=0.567 ms
+64 bytes from 10.0.1.11: icmp_seq=2 ttl=63 time=0.345 ms
+64 bytes from 10.0.1.11: icmp_seq=3 ttl=63 time=0.298 ms
+
+--- 10.0.1.11 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Notice <code>ttl=63</code> (instead of 64). The TTL was decremented by 1 because the packet passed through the logical router, just as it would with a physical router.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_6_10_trace_the_routing_path"><a class="anchor" href="#_step_6_10_trace_the_routing_path"></a>Step 6.10: Trace the routing path</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Use ovn-trace to see the full routing path
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:ff:01 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.1.11 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The trace shows the packet traveling through three datapaths:
+. <strong>network1 (ingress + egress):</strong> L2 lookup sends the packet to the router port
+. <strong>router1 (ingress + egress):</strong> IP routing selects the output port, TTL is decremented, MACs are rewritten
+. <strong>network2 (ingress + egress):</strong> L2 lookup delivers the packet to vm4</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_6"><a class="anchor" href="#_what_just_happened_6"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created a second logical switch (network2) on a different subnet</p>
+</li>
+<li>
+<p>You created a logical router (router1) and connected both switches to it</p>
+</li>
+<li>
+<p>ovn-northd generated logical flows for routing, ARP resolution, and MAC rewriting</p>
+</li>
+<li>
+<p>Cross-subnet traffic now works - the router provides L3 connectivity</p>
+</li>
+<li>
+<p>The routing is <strong>distributed</strong> - if vm1 and vm4 are on the same compute node, routing happens locally</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_6"><a class="anchor" href="#_try_it_yourself_6"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Add a static route: <code>sudo ovn-nbctl lr-route-add router1 172.16.0.0/16 10.0.0.254</code></p>
+</li>
+<li>
+<p>Run <code>sudo ovn-nbctl lr-route-list router1</code> to see routes</p>
+</li>
+<li>
+<p>Run <code>sudo ovn-sbctl lflow-list router1 | grep ip_routing</code> to see routing flows</p>
+</li>
+<li>
+<p>Try <code>ovn-trace</code> from vm4 to vm1 and compare the path</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_7_acls_security_groups"><a class="anchor" href="#_exercise_7_acls_security_groups"></a>Exercise 7: ACLs (Security Groups)</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Implement network security using OVN ACLs. Understand stateful vs. stateless rules and connection tracking.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_7_1_verify_baseline_connectivity"><a class="anchor" href="#_step_7_1_verify_baseline_connectivity"></a>Step 7.1: Verify baseline connectivity</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># ICMP should work
+sudo ip netns exec vm1 ping -c 2 10.0.0.12
+
+# Start a simple TCP listener on vm2 (port 8080)
+sudo ip netns exec vm2 python3 -m http.server 8080 &amp;
+VM2_PID=$!
+
+# TCP should work
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.0.12:8080/
+
+# Clean up the listener
+kill $VM2_PID 2&gt;/dev/null</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_2_view_default_acl_behavior"><a class="anchor" href="#_step_7_2_view_default_acl_behavior"></a>Step 7.2: View default ACL behavior</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl acl-list network1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>By default, OVN allows all traffic when no ACLs are configured. Once you add any ACL, the implicit default becomes <strong>deny</strong> for the direction where ACLs are applied.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Adding your first ACL changes the behavior. Traffic that was previously allowed will be denied unless explicitly permitted by an ACL rule.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_3_create_acls_to_allow_only_specific_traffic"><a class="anchor" href="#_step_7_3_create_acls_to_allow_only_specific_traffic"></a>Step 7.3: Create ACLs to allow only specific traffic</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Allow established and related connections (critical for stateful operation)
+sudo ovn-nbctl acl-add network1 to-lport 65535 \
+    'ct.est &amp;&amp; !ct.rel &amp;&amp; !ct.new &amp;&amp; !ct.inv &amp;&amp; ct_mark.blocked == 0' allow-related
+
+sudo ovn-nbctl acl-add network1 to-lport 65535 \
+    '!ct.est &amp;&amp; ct.rel &amp;&amp; !ct.new &amp;&amp; !ct.inv &amp;&amp; ct_mark.blocked == 0' allow-related
+
+# Allow inbound ICMP
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 &amp;&amp; icmp4' allow-related
+
+# Allow inbound SSH (TCP port 22)
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 &amp;&amp; tcp.dst == 22' allow-related
+
+# Allow all outbound traffic
+sudo ovn-nbctl acl-add network1 from-lport 1000 \
+    'ip4' allow-related
+
+# Drop all other inbound traffic
+sudo ovn-nbctl acl-add network1 to-lport 900 \
+    'ip4' drop</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_4_verify_acls"><a class="anchor" href="#_step_7_4_verify_acls"></a>Step 7.4: Verify ACLs</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl acl-list network1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_5_test_acl_enforcement"><a class="anchor" href="#_step_7_5_test_acl_enforcement"></a>Step 7.5: Test ACL enforcement</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># ICMP should still work (allowed by ACL)
+sudo ip netns exec vm1 ping -c 2 10.0.0.12</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start a TCP listener on port 8080 on vm2
+sudo ip netns exec vm2 python3 -m http.server 8080 &amp;
+VM2_PID=$!
+
+# TCP to port 8080 should be BLOCKED (not in allowed ports)
+sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
+echo "Exit code: $?"
+# Exit code 28 = connection timed out (ACL dropped the packet)
+
+kill $VM2_PID 2&gt;/dev/null</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_6_add_an_acl_to_allow_http"><a class="anchor" href="#_step_7_6_add_an_acl_to_allow_http"></a>Step 7.6: Add an ACL to allow HTTP</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Allow inbound HTTP on port 8080
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 &amp;&amp; tcp.dst == 8080' allow-related</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start the listener again and verify it works now
+sudo ip netns exec vm2 python3 -m http.server 8080 &amp;
+VM2_PID=$!
+sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
+kill $VM2_PID 2&gt;/dev/null</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_7_understand_connection_tracking_behavior"><a class="anchor" href="#_step_7_7_understand_connection_tracking_behavior"></a>Step 7.7: Understand connection tracking behavior</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Use ovn-trace to see how ACLs use connection tracking
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; tcp.dst == 8080 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The trace shows the connection tracking lifecycle:
+. <code>ct_next</code> performs a conntrack lookup
+. For new connections matching an allow rule, <code>ct_commit</code> commits the connection
+. Subsequent packets of the same connection match the established/related rules</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_7_8_stateful_vs_stateless_acls"><a class="anchor" href="#_step_7_8_stateful_vs_stateless_acls"></a>Step 7.8: Stateful vs. stateless ACLs</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a stateless ACL for comparison
+sudo ovn-nbctl acl-add network1 to-lport 1000 \
+    'ip4 &amp;&amp; udp.dst == 5000' allow-stateless</code></pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Action</th>
+<th class="tableblock halign-left valign-top">Connection Tracking</th>
+<th class="tableblock halign-left valign-top">Return Traffic</th>
+<th class="tableblock halign-left valign-top">Performance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>allow-related</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Yes (ct_commit)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatically allowed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Slight CT overhead, but convenient</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>allow-stateless</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Must have explicit rules</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Higher throughput, more rules needed</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_7"><a class="anchor" href="#_what_just_happened_7"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You added ACLs to control traffic on network1</p>
+</li>
+<li>
+<p>ICMP and SSH are allowed inbound, everything else is dropped</p>
+</li>
+<li>
+<p>You verified that blocked traffic was denied and that adding a new allow ACL permits traffic</p>
+</li>
+<li>
+<p>You examined how connection tracking enables stateful firewalling</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_7"><a class="anchor" href="#_try_it_yourself_7"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Remove the ICMP allow ACL and verify ping stops working</p>
+</li>
+<li>
+<p>Add an ACL that allows traffic only from a specific source IP</p>
+</li>
+<li>
+<p>Use <code>sudo ovn-sbctl lflow-list network1 | grep acl</code> to see the ACL logical flows</p>
+</li>
+<li>
+<p>Try the <code>reject</code> action instead of <code>drop</code> and observe the difference</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_8_nat_snat_and_dnat"><a class="anchor" href="#_exercise_8_nat_snat_and_dnat"></a>Exercise 8: NAT (SNAT and DNAT)</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Configure NAT on a logical router for external network access.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_8_1_create_an_external_logical_switch"><a class="anchor" href="#_step_8_1_create_an_external_logical_switch"></a>Step 8.1: Create an external logical switch</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl ls-add external
+
+sudo ovn-nbctl lsp-add external ext-gw
+sudo ovn-nbctl lsp-set-addresses ext-gw "00:00:00:00:ee:01 172.16.0.1"
+sudo ovn-nbctl lsp-set-port-security ext-gw "00:00:00:00:ee:01 172.16.0.1"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_2_connect_router1_to_the_external_network"><a class="anchor" href="#_step_8_2_connect_router1_to_the_external_network"></a>Step 8.2: Connect router1 to the external network</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lrp-add router1 rtr-to-external 00:00:00:00:ff:ee 172.16.0.100/24
+
+sudo ovn-nbctl lsp-add external external-to-rtr
+sudo ovn-nbctl lsp-set-type external-to-rtr router
+sudo ovn-nbctl lsp-set-addresses external-to-rtr router
+sudo ovn-nbctl lsp-set-options external-to-rtr router-port=rtr-to-external</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_3_create_the_external_gateway_namespace"><a class="anchor" href="#_step_8_3_create_the_external_gateway_namespace"></a>Step 8.3: Create the external gateway namespace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ip netns add ext-gw
+sudo ovs-vsctl add-port br-int ext-gw -- set interface ext-gw \
+    type=internal \
+    external_ids:iface-id=ext-gw
+sudo ip link set ext-gw netns ext-gw
+sudo ip netns exec ext-gw ip link set ext-gw address 00:00:00:00:ee:01
+sudo ip netns exec ext-gw ip link set ext-gw up
+sudo ip netns exec ext-gw ip addr add 172.16.0.1/24 dev ext-gw
+
+# Add a route back to the internal networks via the router
+sudo ip netns exec ext-gw ip route add 10.0.0.0/16 via 172.16.0.100</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_4_add_a_default_route_on_router1"><a class="anchor" href="#_step_8_4_add_a_default_route_on_router1"></a>Step 8.4: Add a default route on router1</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lr-route-add router1 0.0.0.0/0 172.16.0.1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_5_test_routing_without_nat"><a class="anchor" href="#_step_8_5_test_routing_without_nat"></a>Step 8.5: Test routing without NAT</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ip netns exec vm1 ping -c 2 172.16.0.1</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>This works because we added a static route on ext-gw back to 10.0.0.0/16. In the real world, external hosts would not have this route, so NAT is needed.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_6_configure_snat"><a class="anchor" href="#_step_8_6_configure_snat"></a>Step 8.6: Configure SNAT</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Add SNAT rules
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.0.0/24
+sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.1.0/24
+
+# Verify NAT rules
+sudo ovn-nbctl lr-nat-list router1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_7_verify_snat_behavior"><a class="anchor" href="#_step_8_7_verify_snat_behavior"></a>Step 8.7: Verify SNAT behavior</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Remove the static route on ext-gw to prove NAT works
+sudo ip netns exec ext-gw ip route del 10.0.0.0/16
+
+# Ping should still work - ext-gw sees traffic from 172.16.0.100
+sudo ip netns exec vm1 ping -c 2 172.16.0.1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To verify the source IP is translated:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Capture traffic on ext-gw
+sudo ip netns exec ext-gw tcpdump -i ext-gw -nn icmp -c 4 &amp;
+sudo ip netns exec vm1 ping -c 2 172.16.0.1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected tcpdump output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>IP 172.16.0.100 &gt; 172.16.0.1: ICMP echo request, ...
+IP 172.16.0.1 &gt; 172.16.0.100: ICMP echo reply, ...</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_8_configure_dnat_floating_ip"><a class="anchor" href="#_step_8_8_configure_dnat_floating_ip"></a>Step 8.8: Configure DNAT (floating IP)</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># DNAT+SNAT rule: external IP 172.16.0.101 maps to internal IP 10.0.0.11
+sudo ovn-nbctl lr-nat-add router1 dnat_and_snat 172.16.0.101 10.0.0.11
+
+# Verify
+sudo ovn-nbctl lr-nat-list router1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_9_test_dnat"><a class="anchor" href="#_step_8_9_test_dnat"></a>Step 8.9: Test DNAT</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From ext-gw, ping the floating IP
+sudo ip netns exec ext-gw ping -c 2 172.16.0.101</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 172.16.0.101 (172.16.0.101) 56(84) bytes of data.
+64 bytes from 172.16.0.101: icmp_seq=1 ttl=62 time=0.567 ms
+64 bytes from 172.16.0.101: icmp_seq=2 ttl=62 time=0.345 ms</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_8_10_verify_nat_with_tcpdump"><a class="anchor" href="#_step_8_10_verify_nat_with_tcpdump"></a>Step 8.10: Verify NAT with tcpdump</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Capture on vm1 to see the real IP
+sudo ip netns exec vm1 tcpdump -i vm1 -nn icmp -c 4 &amp;
+sudo ip netns exec ext-gw ping -c 2 172.16.0.101</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>vm1 sees traffic with its real IP (10.0.0.11), not the floating IP. NAT is transparent to the workload.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_8"><a class="anchor" href="#_what_just_happened_8"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>SNAT translates outbound source IPs from internal (10.x.x.x) to external (172.16.0.100)</p>
+</li>
+<li>
+<p>DNAT+SNAT (floating IP) translates inbound destination IPs from external (172.16.0.101) to internal (10.0.0.11)</p>
+</li>
+<li>
+<p>NAT is transparent to the workloads</p>
+</li>
+<li>
+<p>This is exactly how OpenStack floating IPs and Kubernetes EgressIPs work with OVN</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_8"><a class="anchor" href="#_try_it_yourself_8"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Add a DNAT rule for vm4 with a different floating IP</p>
+</li>
+<li>
+<p>Remove the SNAT rule and verify external connectivity breaks</p>
+</li>
+<li>
+<p>Use <code>ovn-trace</code> to trace a packet through the NAT pipeline</p>
+</li>
+<li>
+<p>Run <code>sudo ovn-sbctl lflow-list router1 | grep nat</code> to see NAT-related flows</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_9_load_balancing"><a class="anchor" href="#_exercise_9_load_balancing"></a>Exercise 9: Load Balancing</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Configure OVN&#8217;s built-in L4 load balancer to distribute traffic across multiple backends.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_9_1_create_backend_servers"><a class="anchor" href="#_step_9_1_create_backend_servers"></a>Step 9.1: Create backend servers</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># vm4 and vm5 are already set up on network2
+# Create a third backend: vm6
+sudo ovn-nbctl lsp-add network2 vm6
+sudo ovn-nbctl lsp-set-addresses vm6 "00:00:00:00:00:06 10.0.1.13"
+sudo ovn-nbctl lsp-set-port-security vm6 "00:00:00:00:00:06 10.0.1.13"
+
+sudo ip netns add vm6
+sudo ovs-vsctl add-port br-int vm6 -- set interface vm6 \
+    type=internal \
+    external_ids:iface-id=vm6
+sudo ip link set vm6 netns vm6
+sudo ip netns exec vm6 ip link set vm6 address 00:00:00:00:00:06
+sudo ip netns exec vm6 ip link set vm6 up
+sudo ip netns exec vm6 ip addr add 10.0.1.13/24 dev vm6
+sudo ip netns exec vm6 ip route add default via 10.0.1.1</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_2_start_web_servers_on_the_backends"><a class="anchor" href="#_step_9_2_start_web_servers_on_the_backends"></a>Step 9.2: Start web servers on the backends</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Start simple web servers that return their identity
+sudo ip netns exec vm4 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm4\n" | nc -l -p 8080 -q 1; done' &amp;
+VM4_LB_PID=$!
+
+sudo ip netns exec vm5 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm5\n" | nc -l -p 8080 -q 1; done' &amp;
+VM5_LB_PID=$!
+
+sudo ip netns exec vm6 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm6\n" | nc -l -p 8080 -q 1; done' &amp;
+VM6_LB_PID=$!</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_3_test_direct_access_to_backends"><a class="anchor" href="#_step_9_3_test_direct_access_to_backends"></a>Step 9.3: Test direct access to backends</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.11:8080/
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.12:8080/
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.13:8080/</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_4_create_a_load_balancer"><a class="anchor" href="#_step_9_4_create_a_load_balancer"></a>Step 9.4: Create a load balancer</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># VIP 10.0.1.100:80 distributes to backends on port 8080
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080,10.0.1.13:8080
+
+sudo ovn-nbctl lb-list</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_5_associate_the_load_balancer_with_the_router"><a class="anchor" href="#_step_9_5_associate_the_load_balancer_with_the_router"></a>Step 9.5: Associate the load balancer with the router</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl lr-lb-add router1 web-lb</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_6_test_load_balancing"><a class="anchor" href="#_step_9_6_test_load_balancing"></a>Step 9.6: Test load balancing</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Send multiple requests to the VIP from vm1
+for i in $(seq 1 9); do
+    sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.100:80/
+done</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You should see requests distributed across the three backends.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_7_verify_load_balancer_flows"><a class="anchor" href="#_step_9_7_verify_load_balancer_flows"></a>Step 9.7: Verify load balancer flows</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># See connection tracking entries
+sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_8_add_and_remove_backends"><a class="anchor" href="#_step_9_8_add_and_remove_backends"></a>Step 9.8: Add and remove backends</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Remove a backend (vm6)
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080
+
+# Test - traffic only goes to vm4 and vm5
+
+# Add vm6 back
+sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+    10.0.1.11:8080,10.0.1.12:8080,10.0.1.13:8080</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_9_9_clean_up_listeners"><a class="anchor" href="#_step_9_9_clean_up_listeners"></a>Step 9.9: Clean up listeners</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">kill $VM4_LB_PID $VM5_LB_PID $VM6_LB_PID 2&gt;/dev/null</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_9"><a class="anchor" href="#_what_just_happened_9"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You created an OVN load balancer with a VIP pointing to three backends</p>
+</li>
+<li>
+<p>Traffic to the VIP is distributed across backends using conntrack DNAT</p>
+</li>
+<li>
+<p>The load balancing happens entirely within the OVS datapath</p>
+</li>
+<li>
+<p>This is the same mechanism OVN-Kubernetes uses to implement Kubernetes Services</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_9"><a class="anchor" href="#_try_it_yourself_9"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Create a UDP load balancer: <code>sudo ovn-nbctl lb-add udp-lb 10.0.1.200:5353 10.0.1.11:5353,10.0.1.12:5353 udp</code></p>
+</li>
+<li>
+<p>Associate a load balancer with a logical switch instead of a router</p>
+</li>
+<li>
+<p>Create a second VIP on the same load balancer for a different port</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_exercise_10_ovn_trace_and_debugging"><a class="anchor" href="#_exercise_10_ovn_trace_and_debugging"></a>Exercise 10: OVN Trace and Debugging</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p><strong>Objective:</strong> Master the debugging tools available in OVN.</p>
+</div>
+<div class="sect2">
+<h3 id="_step_10_1_using_ovn_trace_summary_mode"><a class="anchor" href="#_step_10_1_using_ovn_trace_summary_mode"></a>Step 10.1: Using ovn-trace (summary mode)</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace an ICMP packet from vm1 to vm2 (same switch)
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; icmp4 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_2_using_ovn_trace_detailed_mode"><a class="anchor" href="#_step_10_2_using_ovn_trace_detailed_mode"></a>Step 10.2: Using ovn-trace (detailed mode)</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --detailed network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; icmp4 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_3_using_ovn_trace_minimal_mode"><a class="anchor" href="#_step_10_3_using_ovn_trace_minimal_mode"></a>Step 10.3: Using ovn-trace (minimal mode)</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --minimal network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; icmp4 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Expected output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># icmp,reg14=0x1,...,nw_src=10.0.0.11,nw_dst=10.0.0.12,...
+output("vm2");</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_4_tracing_cross_subnet_traffic_through_a_router"><a class="anchor" href="#_step_10_4_tracing_cross_subnet_traffic_through_a_router"></a>Step 10.4: Tracing cross-subnet traffic through a router</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:ff:01 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.1.11 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_5_tracing_a_dropped_packet"><a class="anchor" href="#_step_10_5_tracing_a_dropped_packet"></a>Step 10.5: Tracing a dropped packet</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace a packet that should be dropped by ACLs (TCP port 9999)
+sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; tcp.dst == 9999 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p><code>ovn-trace</code> is invaluable for debugging. When a packet is not reaching its destination, trace it to find which table drops it. The output tells you the exact table name and flow that made the decision.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_6_using_ovn_detrace"><a class="anchor" href="#_step_10_6_using_ovn_detrace"></a>Step 10.6: Using ovn-detrace</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Map physical OVS flows back to OVN logical flows
+sudo ovs-ofctl dump-flows br-int | sudo ovn-detrace --ovnsb=unix:/run/ovn/ovnsb_db.sock</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_7_reading_ovn_controller_logs"><a class="anchor" href="#_step_10_7_reading_ovn_controller_logs"></a>Step 10.7: Reading ovn-controller logs</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View ovn-controller logs
+sudo journalctl -u ovn-controller --no-pager -n 30
+
+# Increase log verbosity temporarily for debugging
+sudo ovs-appctl -t ovn-controller vlog/set dbg
+
+# Do something (create a port, etc.)
+sudo journalctl -u ovn-controller --no-pager -n 50
+
+# Reset log level to normal
+sudo ovs-appctl -t ovn-controller vlog/set info</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Debug logging is very verbose and can fill disk space quickly. Always reset to <code>info</code> after debugging.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_8_filtering_logical_flows"><a class="anchor" href="#_step_10_8_filtering_logical_flows"></a>Step 10.8: Filtering logical flows</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all logical flows for a specific datapath
+sudo ovn-sbctl lflow-list network1
+
+# Filter by table name
+sudo ovn-sbctl lflow-list network1 | grep "ls_in_l2_lkup"
+
+# Filter by match expression
+sudo ovn-sbctl lflow-list network1 | grep "00:00:00:00:00:01"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_9_correlating_nb_sb_ovs"><a class="anchor" href="#_step_10_9_correlating_nb_sb_ovs"></a>Step 10.9: Correlating NB &#8594; SB &#8594; OVS</h3>
+<div class="paragraph">
+<p><strong>Step A: Check the NB DB</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl list Logical_Switch_Port vm1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step B: Find the corresponding logical flows in the SB DB</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-sbctl lflow-list network1 | grep "vm1"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step C: Find the corresponding OpenFlow flows in OVS</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find the tunnel key for port vm1
+sudo ovn-sbctl find Port_Binding logical_port=vm1 | grep -E "tunnel_key|datapath"
+
+# Look for flows using that tunnel key (e.g., if tunnel_key is 1)
+sudo ovs-ofctl dump-flows br-int | grep "reg14=0x1"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step D: Use ovn-detrace to connect the dots</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-ofctl dump-flows br-int | grep "reg14=0x1" | \
+    sudo ovn-detrace --ovnsb=unix:/run/ovn/ovnsb_db.sock</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_step_10_10_common_debugging_scenarios"><a class="anchor" href="#_step_10_10_common_debugging_scenarios"></a>Step 10.10: Common debugging scenarios</h3>
+<div class="paragraph">
+<p><strong>Scenario 1: Port is not coming up</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-nbctl get Logical_Switch_Port vm1 up
+# If 'false':
+sudo ovn-sbctl find Port_Binding logical_port=vm1
+# If not bound:
+sudo ovs-vsctl find Interface external_ids:iface-id=vm1</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Scenario 2: Packets are being dropped</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-trace --summary network1 \
+    'inport == "vm1" &amp;&amp; eth.src == 00:00:00:00:00:01 &amp;&amp; eth.dst == 00:00:00:00:00:02 &amp;&amp; ip4.src == 10.0.0.11 &amp;&amp; ip4.dst == 10.0.0.12 &amp;&amp; ip.ttl == 64'
+# Look for "drop" in the output. The table name tells you what dropped it:
+#   ls_in_check_port_sec -&gt; Port security (wrong MAC/IP)
+#   ls_in_acl_eval       -&gt; ACL rule
+#   ls_out_check_port_sec -&gt; Egress port security</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Scenario 3: Cross-node traffic not working</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl show | grep geneve
+sudo ovs-ofctl show br-int | grep geneve
+sudo ovn-sbctl show
+sudo ovs-vsctl get Interface ovn-comput-0 statistics</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_just_happened_10"><a class="anchor" href="#_what_just_happened_10"></a>What just happened?</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>You learned to use <code>ovn-trace</code> in three modes (summary, detailed, minimal)</p>
+</li>
+<li>
+<p>You traced packets through L2 forwarding, L3 routing, and ACL evaluation</p>
+</li>
+<li>
+<p>You used <code>ovn-detrace</code> to map physical OVS flows back to OVN logical flows</p>
+</li>
+<li>
+<p>You practiced the NB &#8594; SB &#8594; OVS correlation workflow for debugging</p>
+</li>
+<li>
+<p>You reviewed common debugging scenarios and how to investigate them</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_try_it_yourself_10"><a class="anchor" href="#_try_it_yourself_10"></a>Try it yourself</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Trace a DHCP packet and follow the entire flow</p>
+</li>
+<li>
+<p>Trace a packet destined for the load balancer VIP</p>
+</li>
+<li>
+<p>Trace a packet that undergoes NAT (SNAT or DNAT)</p>
+</li>
+<li>
+<p>Use <code>ovs-appctl ofproto/trace br-int</code> to trace at the OpenFlow level and compare with <code>ovn-trace</code> output</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_lab_cleanup"><a class="anchor" href="#_lab_cleanup"></a>Lab Cleanup</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>When you are done with the lab, clean up the environment:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Remove network namespaces
+for ns in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+    sudo ip netns del $ns 2&gt;/dev/null
+done
+
+# Remove OVS ports (also removes the OVN port bindings)
+for port in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+    sudo ovs-vsctl --if-exists del-port br-int $port
+done
+
+# Remove OVN logical configuration
+sudo ovn-nbctl lr-del router1
+sudo ovn-nbctl ls-del network1
+sudo ovn-nbctl ls-del network2
+sudo ovn-nbctl ls-del external
+sudo ovn-nbctl lb-del web-lb
+
+# Verify everything is clean
+sudo ovn-nbctl show
+sudo ovn-sbctl show</code></pre>
+</div>
+</div>
+<hr>
+<div class="paragraph">
+<p><a href="04-ovn-architecture.html" class="xref page">Previous: Module 04 - OVN Architecture</a> | <a href="06-ovs-vs-ovn.html" class="xref page">Next: Module 06 - OVS vs OVN</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="04-ovn-architecture.html" class="query-params-link">OVN Architecture</a></span>
+  <span class="next"><a href="06-ovs-vs-ovn.html" class="query-params-link">OVS vs OVN</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

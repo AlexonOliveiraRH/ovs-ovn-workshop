@@ -1,0 +1,2522 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 08 - OVS and OVN in Red Hat OpenStack Services on OpenShift (RHOSO) :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="07-ovs-ovn-in-rhosp.html">
+    <link rel="next" href="09-ovn-in-openshift.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 08 - OVS and OVN in Red Hat OpenStack Services on OpenShift (RHOSO)</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>What is RHOSO</p>
+</li>
+<li>
+<p>Networking Architecture in RHOSO</p>
+</li>
+<li>
+<p>OVN in RHOSO</p>
+</li>
+<li>
+<p>Key Differences from RHOSP</p>
+</li>
+<li>
+<p>Hands-On: Exploring OVN in RHOSO</p>
+</li>
+<li>
+<p>Tracing a Packet in RHOSO</p>
+</li>
+<li>
+<p>Troubleshooting RHOSO-Specific Issues</p>
+</li>
+<li>
+<p>Summary</p>
+</li>
+</ol>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_what_is_rhoso"><a class="anchor" href="#_what_is_rhoso"></a>What is RHOSO</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Red Hat OpenStack Services on OpenShift (RHOSO) represents a fundamental shift in how OpenStack is deployed and managed. Instead of running OpenStack services as traditional systemd services on dedicated controller nodes (as in RHOSP), RHOSO runs the OpenStack control plane as containerized workloads managed by Kubernetes operators on an OpenShift cluster.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>RHOSO splits the OpenStack deployment into two distinct domains: the <strong>control plane</strong> (OpenStack services running as pods on OpenShift) and the <strong>data plane</strong> (compute, networking, and storage services running on bare-metal nodes or VMs outside the OpenShift cluster).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_the_high_level_architecture"><a class="anchor" href="#_the_high_level_architecture"></a>The High-Level Architecture</h3>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------------------------------------------------+
+|                   OpenShift Cluster (Control Plane)            |
+|                                                                |
+|  +------------------+  +------------------+  +---------------+ |
+|  | Neutron API Pod  |  | Nova API Pod     |  | Glance Pod    | |
+|  +------------------+  +------------------+  +---------------+ |
+|  +------------------+  +------------------+  +---------------+ |
+|  | OVN NB DB Pod    |  | OVN SB DB Pod    |  | ovn-northd    | |
+|  |                  |  |                  |  | Pod           | |
+|  +------------------+  +------------------+  +---------------+ |
+|  +------------------+  +------------------+                    |
+|  | Keystone Pod     |  | MariaDB/Galera   |                    |
+|  +------------------+  +------------------+                    |
+|                                                                |
++-------------------------------+--------------------------------+
+                                |
+                    Control Network (API, OVN SB)
+                                |
+        +-----------------------+-----------------------+
+        |                       |                       |
++-------+--------+    +--------+-------+    +-----------+----+
+| Data Plane     |    | Data Plane     |    | Data Plane     |
+| Node 1         |    | Node 2         |    | Node 3         |
+| (Compute)      |    | (Compute)      |    | (Compute/Net)  |
+|                |    |                |    |                |
+| ovn-controller |    | ovn-controller |    | ovn-controller |
+| OVS (br-int)   |    | OVS (br-int)   |    | OVS (br-int)   |
+| nova-compute   |    | nova-compute   |    | nova-compute   |
++----------------+    +----------------+    +----------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_why_the_shift_from_rhosp_to_rhoso"><a class="anchor" href="#_why_the_shift_from_rhosp_to_rhoso"></a>Why the Shift from RHOSP to RHOSO</h3>
+<div class="paragraph">
+<p>The move to RHOSO brings several operational advantages:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">RHOSP (Traditional)</th>
+<th class="tableblock halign-left valign-top">RHOSO (Operator-Based)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane hosting</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dedicated controller nodes (bare metal or VMs)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift pods managed by operators</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Lifecycle management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Director (TripleO), manual upgrades</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes operators, declarative CRDs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Scaling control plane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Complex, requires re-deployment</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Scale pods horizontally via OpenShift</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">High availability</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pacemaker/HAProxy clusters</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes native HA (replicas, liveness probes)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Puppet, Heat templates</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes CRDs, operator reconciliation</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Data plane management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TripleO-managed overcloud nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">edpm-ansible via OpenStackDataPlaneNodeSet CRDs</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>RHOSO 18.0 is the first major release following this new architecture. It replaces RHOSP 17.1 as the forward-looking deployment model for Red Hat OpenStack.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_networking_architecture_in_rhoso"><a class="anchor" href="#_networking_architecture_in_rhoso"></a>Networking Architecture in RHOSO</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Networking in RHOSO involves two fundamentally different domains that must work together seamlessly: the OpenShift cluster networking (for the control plane) and the traditional OVS/OVN networking (for the data plane where VMs actually run).</p>
+</div>
+<div class="sect2">
+<h3 id="_control_plane_networking"><a class="anchor" href="#_control_plane_networking"></a>Control Plane Networking</h3>
+<div class="paragraph">
+<p>The OpenShift cluster uses its own networking stack (OVN-Kubernetes, covered in Module 09) for communication between the OpenStack service pods. However, OpenStack services often need connectivity to networks that exist outside the OpenShift pod network - for example, the OVN southbound database must be reachable by ovn-controller instances running on data plane nodes.</p>
+</div>
+<div class="paragraph">
+<p>This is where <strong>NetworkAttachmentDefinitions (NADs)</strong> come in.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>A NetworkAttachmentDefinition is a Kubernetes Custom Resource that defines an additional network interface for pods. In RHOSO, NADs are used to give OpenStack service pods connectivity to external networks - such as the internal API network, the tenant tunnel network, or the storage network - that exist outside the OpenShift pod network.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------------------------------------------------+
+|                    OpenShift Cluster                           |
+|                                                                |
+|  Default Pod Network (OVN-Kubernetes CNI)                      |
+|  +---------+  +---------+  +---------+                        |
+|  | Pod A   |  | Pod B   |  | Pod C   |  &lt;-- Standard pod IPs  |
+|  +---------+  +---------+  +---------+                        |
+|                                                                |
+|  Additional Networks via NADs (Multus CNI)                     |
+|  +---------+  +---------+                                      |
+|  | OVN DB  |  | Neutron |                                      |
+|  | Pod     |  | Pod     |                                      |
+|  | net1:   |  | net1:   |  &lt;-- Additional NICs from NADs       |
+|  | 172.17. |  | 172.17. |      (internal API, tenant, etc.)    |
+|  +---------+  +---------+                                      |
+|                                                                |
++---------------------------------------------------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_nads_work_in_rhoso"><a class="anchor" href="#_how_nads_work_in_rhoso"></a>How NADs Work in RHOSO</h3>
+<div class="paragraph">
+<p>Multus is a meta-CNI plugin that runs on OpenShift and allows pods to have multiple network interfaces. The primary interface uses the cluster&#8217;s default CNI (OVN-Kubernetes), while additional interfaces are configured through NADs.</p>
+</div>
+<div class="paragraph">
+<p>In a RHOSO deployment, you will typically find NADs for:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">NAD Name</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+<th class="tableblock halign-left valign-top">Example Subnet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">internalapi</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Communication between OpenStack services</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.17.0.0/24</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">tenant</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tenant/tunnel network for Geneve overlay traffic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.19.0.0/24</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">storage</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Storage network (Ceph, NFS)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.18.0.0/24</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">storagemgmt</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Storage management network</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">172.20.0.0/24</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ctlplane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane provisioning network</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">192.168.122.0/24</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">external</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">External/public API access</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">10.0.0.0/24</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>To list the NADs in a RHOSO deployment:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get network-attachment-definitions -n openstack</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME           AGE
+ctlplane       3d
+internalapi    3d
+tenant         3d
+storage        3d
+storagemgmt    3d
+external       3d</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To see the details of a specific NAD:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get network-attachment-definition internalapi -n openstack -o yaml</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: internalapi
+  namespace: openstack
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "internalapi",
+      "type": "macvlan",
+      "master": "enp7s0.20",
+      "mode": "bridge",
+      "ipam": {
+        "type": "whereabouts",
+        "range": "172.17.0.0/24",
+        "range_start": "172.17.0.30",
+        "range_end": "172.17.0.70"
+      }
+    }</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The NAD configuration typically uses <code>macvlan</code> or <code>bridge</code> type plugins to connect pods directly to the physical network or a VLAN on the OpenShift nodes. The <code>whereabouts</code> IPAM plugin manages IP address allocation to avoid conflicts.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_data_plane_networking"><a class="anchor" href="#_data_plane_networking"></a>Data Plane Networking</h3>
+<div class="paragraph">
+<p>The data plane nodes are where the actual VM workloads run. These nodes have:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>OVS (Open vSwitch):</strong> The virtual switch that provides the data plane forwarding</p>
+</li>
+<li>
+<p><strong>ovn-controller:</strong> The local OVN agent that programs OVS based on instructions from the OVN southbound database</p>
+</li>
+<li>
+<p><strong>nova-compute:</strong> The compute service that manages VM lifecycle</p>
+</li>
+<li>
+<p><strong>os-net-config:</strong> Network configuration tool for the data plane node interfaces</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Data plane nodes require connectivity to several networks:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Network</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+<th class="tableblock halign-left valign-top">Used By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Communication with OpenShift for provisioning</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">edpm-ansible, SSH</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Internal API</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenStack service API calls</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">nova-compute, ovn-controller</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tenant</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Geneve tunnel traffic between compute nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS, ovn-controller</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Storage</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM disk I/O to storage backends</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">nova-compute, cinder</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Provider/External</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VM external network access (floating IPs, provider nets)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS, neutron-ovn-metadata-agent</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_the_openstack_operator"><a class="anchor" href="#_the_openstack_operator"></a>The OpenStack Operator</h3>
+<div class="paragraph">
+<p>The OpenStack Operator is the top-level Kubernetes operator that manages the entire RHOSO deployment. It is responsible for:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Deploying and configuring all OpenStack service operators (Nova, Neutron, Glance, etc.)</p>
+</li>
+<li>
+<p>Managing the OVN control plane components (OVN NB/SB databases, ovn-northd)</p>
+</li>
+<li>
+<p>Coordinating with the data plane operator for compute node management</p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the OpenStack control plane custom resource
+oc get openstackcontrolplane -n openstack</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME                 STATUS   MESSAGE
+openstack-galera     True     Setup complete</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Get detailed view of the control plane
+oc get openstackcontrolplane -n openstack -o yaml | grep -A 5 "ovn:"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>    ovn:
+      enabled: true
+      template:
+        ovnController:
+          networkAttachment: tenant
+          nicMappings:
+            datacentre: ospbr
+        ovnDBCluster:
+          ovndbcluster-nb:
+            dbType: NB
+            networkAttachment: internalapi
+            storageRequest: 10G
+          ovndbcluster-sb:
+            dbType: SB
+            networkAttachment: internalapi
+            storageRequest: 10G
+        ovnNorthd:
+          networkAttachment: internalapi</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The OpenStack Operator uses Custom Resource Definitions (CRDs) to declare the desired state of the OpenStack deployment. The operator continuously reconciles the actual state with the desired state, automatically handling configuration changes, scaling, and recovery.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_in_rhoso"><a class="anchor" href="#_ovn_in_rhoso"></a>OVN in RHOSO</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>OVN is the default and only supported networking backend in RHOSO. Unlike RHOSP, which historically supported both ML2/OVS and ML2/OVN, RHOSO standardizes entirely on OVN.</p>
+</div>
+<div class="sect2">
+<h3 id="_ovn_architecture_in_rhoso"><a class="anchor" href="#_ovn_architecture_in_rhoso"></a>OVN Architecture in RHOSO</h3>
+<div class="paragraph">
+<p>The OVN deployment in RHOSO splits across the two domains:</p>
+</div>
+<div class="paragraph">
+<p><strong>On OpenShift (Control Plane Pods):</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Runs As</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Northbound Database (NB DB)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">StatefulSet pod</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Stores the logical network configuration (logical switches, routers, ACLs)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Southbound Database (SB DB)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">StatefulSet pod</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Stores the physical-logical bindings (chassis, port bindings, tunnel endpoints)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployment pod</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Translates NB DB entries into SB DB logical flows</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>On Data Plane Nodes:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Runs As</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">systemd service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Reads SB DB logical flows and programs OVS accordingly</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS (ovs-vswitchd)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">systemd service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Performs the actual packet forwarding in the data path</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdb-server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">systemd service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manages the local OVS configuration database</p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------------------------------------------------+
+|                    OpenShift Cluster                           |
+|                                                                |
+|   +-------------+    +-------------+    +---------------+      |
+|   | OVN NB DB   |    | OVN SB DB   |    | ovn-northd    |      |
+|   | Pod         |    | Pod         |    | Pod           |      |
+|   | (ovsdb-     |    | (ovsdb-     |    | (translates   |      |
+|   |  server)    |    |  server)    |    |  NB -&gt; SB)    |      |
+|   +------+------+    +------+------+    +-------+-------+      |
+|          |                  |                   |              |
+|          +------------------+-------------------+              |
+|                             |                                  |
++-----------------------------+----------------------------------+
+                              |
+                    Internal API Network
+                    (via NAD: internalapi)
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
++-------+--------+  +--------+-------+  +----------+------+
+| Compute Node 1 |  | Compute Node 2 |  | Compute Node 3  |
+|                |  |                |  |                  |
+| ovn-controller |  | ovn-controller |  | ovn-controller   |
+|   connects to  |  |   connects to  |  |   connects to    |
+|   SB DB pod    |  |   SB DB pod    |  |   SB DB pod      |
+|                |  |                |  |                  |
+| OVS            |  | OVS            |  | OVS              |
+| +--------+    |  | +--------+    |  | +--------+       |
+| | br-int |    |  | | br-int |    |  | | br-int |       |
+| +--------+    |  | +--------+    |  | +--------+       |
+| | VMs    |    |  | | VMs    |    |  | | VMs    |       |
+| +--------+    |  | +--------+    |  | +--------+       |
++----------------+  +----------------+  +------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_the_distributed_model_works"><a class="anchor" href="#_how_the_distributed_model_works"></a>How the Distributed Model Works</h3>
+<div class="paragraph">
+<p>The flow of network configuration in RHOSO follows this path:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>A user or Neutron creates a network resource</strong> (e.g., a new network, subnet, or port) via the Neutron API running in an OpenShift pod.</p>
+</li>
+<li>
+<p><strong>Neutron writes to the OVN Northbound Database.</strong> The Neutron ML2/OVN driver translates Neutron API objects into OVN logical network objects and writes them to the NB DB pod.</p>
+</li>
+<li>
+<p><strong>ovn-northd translates logical configuration to logical flows.</strong> The ovn-northd pod reads the NB DB and generates logical flow entries in the SB DB.</p>
+</li>
+<li>
+<p><strong>ovn-controller on each data plane node reads the SB DB.</strong> Each ovn-controller connects to the OVN SB DB pod over the internal API network. It reads only the logical flows relevant to its chassis (the ports bound locally) and programs OVS accordingly.</p>
+</li>
+<li>
+<p><strong>OVS forwards packets.</strong> The programmed OpenFlow rules in OVS handle the actual packet switching, routing, NAT, and ACL enforcement on the data plane node.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The OVN SB DB pod must be reachable from all data plane nodes over the internal API network. This connectivity is typically provided through a NAD that connects the SB DB pod to a VLAN or physical network shared with the data plane nodes. If this connectivity breaks, ovn-controller on the data plane nodes loses its ability to receive flow updates, which can lead to stale flows and eventual connectivity failures.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_database_clustering_in_rhoso"><a class="anchor" href="#_ovn_database_clustering_in_rhoso"></a>OVN Database Clustering in RHOSO</h3>
+<div class="paragraph">
+<p>For high availability, the OVN NB and SB databases can run as clustered instances using the Raft consensus protocol. In RHOSO, this is configured through the OpenStack operator:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check OVN DB cluster status
+oc get pods -n openstack | grep ovn</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ovsdbserver-nb-0                          1/1     Running   0   3d
+ovsdbserver-nb-1                          1/1     Running   0   3d
+ovsdbserver-nb-2                          1/1     Running   0   3d
+ovsdbserver-sb-0                          1/1     Running   0   3d
+ovsdbserver-sb-1                          1/1     Running   0   3d
+ovsdbserver-sb-2                          1/1     Running   0   3d
+ovn-northd-6b8d7f9c4d-abc12              1/1     Running   0   3d</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The three NB DB pods and three SB DB pods form Raft clusters, providing automatic leader election and database replication.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the Raft cluster status for the NB DB
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovs-appctl -t /tmp/ovnnb_db.ctl cluster/status OVN_Northbound</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>2fd3
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234-5678-90ef-ghij-klmnopqrstuv)
+Server ID: 2fd3 (2fd31234-5678-90ef-ghij-klmnopqrstuv)
+Address: tcp:172.17.0.30:6643
+Status: cluster member
+Role: leader
+Term: 3
+Leader: self
+Vote: self
+
+Last Election started 259232 ms ago, reason: timeout
+Last Election won 259230 ms ago
+Election timer: 1000
+Log: [2, 1547]
+Entries not yet committed: 0
+Entries not yet applied: 0
+Connections:
+  tcp:172.17.0.31:6643 (db34): last msg 423 ms ago
+  tcp:172.17.0.32:6643 (ef56): last msg 423 ms ago
+Servers:
+  2fd3 (2fd3 at tcp:172.17.0.30:6643) (self) next_index=1547 match_index=1546
+  db34 (db34 at tcp:172.17.0.31:6643) next_index=1547 match_index=1546
+  ef56 (ef56 at tcp:172.17.0.32:6643) next_index=1547 match_index=1546</pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In a Raft cluster, if a majority of nodes become unavailable (e.g., 2 out of 3 pods go down), the cluster loses quorum and becomes read-only. No new writes can be committed until quorum is restored. This means that no new logical network configurations can be applied, and ovn-controller instances cannot register or update their chassis information. Existing flows on data plane nodes continue to work, but no changes can be made.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_differences_from_rhosp"><a class="anchor" href="#_key_differences_from_rhosp"></a>Key Differences from RHOSP</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Understanding the differences between RHOSP and RHOSO is critical for engineers who are transitioning between the two platforms or supporting both.</p>
+</div>
+<div class="sect2">
+<h3 id="_control_plane_location_and_access"><a class="anchor" href="#_control_plane_location_and_access"></a>Control Plane Location and Access</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">RHOSP 17.x</th>
+<th class="tableblock halign-left valign-top">RHOSO 18.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN NB/SB databases</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Run on controller nodes as systemd services</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Run as pods on OpenShift</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runs on controller nodes as systemd service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Runs as pod on OpenShift</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Access to OVN databases</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SSH to controller, run <code>ovn-nbctl</code> directly</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc exec</code> into pod, then run <code>ovn-nbctl</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuration files</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>/etc/neutron/</code>, <code>/etc/openvswitch/</code> on controllers</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ConfigMaps and Secrets in OpenShift</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Logs for control plane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl</code> or <code>/var/log/</code> on controllers</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc logs</code> for pod logs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">HA mechanism</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pacemaker manages OVN DB failover</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes manages pod scheduling and restart</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_accessing_ovn_databases_rhosp_vs_rhoso"><a class="anchor" href="#_accessing_ovn_databases_rhosp_vs_rhoso"></a>Accessing OVN Databases: RHOSP vs RHOSO</h3>
+<div class="paragraph">
+<p><strong>In RHOSP:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># SSH to a controller node
+ssh tripleo-admin@controller-0
+
+# Run OVN commands directly
+sudo ovn-nbctl show
+sudo ovn-sbctl show
+sudo ovn-sbctl list Chassis</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>In RHOSO:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find the OVN NB DB pod
+oc get pods -n openstack | grep ovsdbserver-nb
+
+# Exec into the pod to run ovn-nbctl
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl show
+
+# Or for the SB DB
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In RHOSO, you do not need to SSH into any node to access the OVN control plane. All control plane operations are done through <code>oc exec</code> into the appropriate pod. However, for data plane operations (checking OVS on compute nodes), you still SSH into the data plane nodes.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_data_plane_node_configuration"><a class="anchor" href="#_data_plane_node_configuration"></a>Data Plane Node Configuration</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">RHOSP 17.x</th>
+<th class="tableblock halign-left valign-top">RHOSO 18.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node provisioning</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">TripleO/Director (Heat, Puppet)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">edpm-ansible via OpenStackDataPlaneNodeSet CRDs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">os-net-config templates via TripleO</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">os-net-config configured by edpm-ansible</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Service deployment</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Containerized via Paunch/podman on overcloud</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Direct systemd services on data plane nodes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller config</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Puppet configures connection to SB DB</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">edpm-ansible configures connection to SB DB</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Adding compute nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Stack update via Director</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Create/update OpenStackDataPlaneNodeSet CR</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_data_plane_management_with_edpm_ansible"><a class="anchor" href="#_data_plane_management_with_edpm_ansible"></a>Data Plane Management with edpm-ansible</h3>
+<div class="paragraph">
+<p>In RHOSO, data plane nodes are configured using edpm-ansible, which is triggered by creating or updating an <code>OpenStackDataPlaneNodeSet</code> custom resource:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the data plane node sets
+oc get openstackdataplanenodesets -n openstack</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME                  STATUS   MESSAGE
+openstack-edpm        True     NodeSet Ready</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the nodes in a node set
+oc get openstackdataplanenodeset openstack-edpm -n openstack -o yaml | \
+  grep -A 20 "nodes:"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>    nodes:
+      edpm-compute-0:
+        hostName: edpm-compute-0
+        ansible:
+          ansibleHost: 192.168.122.100
+        networks:
+        - name: ctlplane
+          subnetName: subnet1
+          defaultRoute: true
+          fixedIP: 192.168.122.100
+        - name: internalapi
+          subnetName: subnet1
+          fixedIP: 172.17.0.100
+        - name: tenant
+          subnetName: subnet1
+          fixedIP: 172.19.0.100
+        - name: storage
+          subnetName: subnet1
+          fixedIP: 172.18.0.100</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_monitoring_and_logging"><a class="anchor" href="#_monitoring_and_logging"></a>Monitoring and Logging</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">What to Check</th>
+<th class="tableblock halign-left valign-top">RHOSP</th>
+<th class="tableblock halign-left valign-top">RHOSO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN NB/SB DB logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovn-northd</code> on controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc logs ovsdbserver-nb-0 -n openstack</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovn-northd</code> on controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc logs ovn-northd-xxx -n openstack</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u tripleo_neutron_api</code> or <code>/var/log/containers/neutron/</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc logs neutron-xxx -n openstack</code></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovn-controller</code> on compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovn-controller</code> on data plane node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS logs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovs-vswitchd</code> on compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>journalctl -u ovs-vswitchd</code> on data plane node</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In RHOSO, the logging split mirrors the architectural split. Control plane component logs are accessed through OpenShift (<code>oc logs</code>), while data plane component logs are accessed through traditional Linux tools (<code>journalctl</code>) on the data plane nodes. This means a complete troubleshooting session often involves both <code>oc</code> commands and SSH sessions.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_upgrade_model"><a class="anchor" href="#_upgrade_model"></a>Upgrade Model</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">RHOSP</th>
+<th class="tableblock halign-left valign-top">RHOSO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane upgrade</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Major undertaking: stack update via Director, often requires maintenance window</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Operator-driven: update the OpenStack operator, it rolls out new pod versions</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Data plane upgrade</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Part of stack update, nodes rebooted in sequence</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Separate step: create OpenStackDataPlaneDeployment CR to trigger edpm-ansible on nodes</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Rollback</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Complex, often requires re-deployment</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Operator can revert pod versions; data plane rollback still complex</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Downtime</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Often significant for control plane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal for control plane (rolling pod updates)</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_hands_on_exploring_ovn_in_rhoso"><a class="anchor" href="#_hands_on_exploring_ovn_in_rhoso"></a>Hands-On: Exploring OVN in RHOSO</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section provides commands you can run on a live RHOSO environment. The environment is assumed to be already deployed and operational.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>All commands in the "On OpenShift" sections require access to the OpenShift cluster via the <code>oc</code> CLI with appropriate permissions (typically <code>cluster-admin</code> or access to the <code>openstack</code> namespace). Commands in the "On Data Plane Nodes" sections require SSH access to the compute nodes with root privileges.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_on_openshift_control_plane"><a class="anchor" href="#_on_openshift_control_plane"></a>On OpenShift (Control Plane)</h3>
+<div class="sect3">
+<h4 id="_finding_the_ovn_pods"><a class="anchor" href="#_finding_the_ovn_pods"></a>Finding the OVN Pods</h4>
+<div class="paragraph">
+<p>Start by identifying all OVN-related pods running in the openstack namespace:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get pods -n openstack | grep -E "ovn|ovsdb"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ovn-northd-6b8d7f9c4d-abc12               1/1     Running   0   3d2h
+ovsdbserver-nb-0                           1/1     Running   0   3d2h
+ovsdbserver-nb-1                           1/1     Running   0   3d2h
+ovsdbserver-nb-2                           1/1     Running   0   3d2h
+ovsdbserver-sb-0                           1/1     Running   0   3d2h
+ovsdbserver-sb-1                           1/1     Running   0   3d2h
+ovsdbserver-sb-2                           1/1     Running   0   3d2h
+ovn-controller-ovs-7k4m2                   1/1     Running   0   3d2h</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The naming convention may vary slightly between RHOSO versions. The NB DB pods are typically <code>ovsdbserver-nb-<strong></code> and SB DB pods are <code>ovsdbserver-sb-</strong></code>. The <code>ovn-northd</code> pod runs the northd daemon that translates NB to SB entries.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_accessing_the_ovn_northbound_database"><a class="anchor" href="#_accessing_the_ovn_northbound_database"></a>Accessing the OVN Northbound Database</h4>
+<div class="paragraph">
+<p>The NB DB contains the logical network configuration - the networks, routers, ports, and ACLs that Neutron has configured.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show the full logical topology
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>switch 3a1b2c3d-4e5f-6789-abcd-ef0123456789 (neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab) (aka network1)
+    port 7a8b9c0d-1e2f-3456-7890-abcdef012345
+        type: ""
+        addresses: ["fa:16:3e:aa:bb:cc 192.168.1.10"]
+    port 8b9c0d1e-2f34-5678-90ab-cdef01234567
+        type: ""
+        addresses: ["fa:16:3e:dd:ee:ff 192.168.1.11"]
+    port provnet-e1f2a3b4-5678-90ab-cdef-1234567890ab
+        type: localnet
+        addresses: ["unknown"]
+switch 4b2c3d4e-5f67-8901-bcde-f01234567890 (neutron-f2e3d4c5-6789-01ab-cdef-234567890abc) (aka external)
+    port cr-lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+        type: router
+        router-port: lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+router 5c3d4e5f-6789-0123-cdef-0123456789ab (neutron-b3c4d5e6-7890-12ab-cdef-345678901234) (aka router1)
+    port lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef
+        mac: "fa:16:3e:11:22:33"
+        networks: ["10.0.0.1/24"]
+    port lrp-c2d3e4f5-6789-01ab-cdef-2345678901bc
+        mac: "fa:16:3e:44:55:66"
+        networks: ["192.168.1.1/24"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>List all logical switches with more detail:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl ls-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>3a1b2c3d-4e5f-6789-abcd-ef0123456789 (neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab)
+4b2c3d4e-5f67-8901-bcde-f01234567890 (neutron-f2e3d4c5-6789-01ab-cdef-234567890abc)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>List all logical routers:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lr-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>5c3d4e5f-6789-0123-cdef-0123456789ab (neutron-b3c4d5e6-7890-12ab-cdef-345678901234)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check the ACLs (security groups):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl acl-list \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>from-lport  1002 (inport == @pg_security_group_1 &amp;&amp; ip) allow-related
+  to-lport  1002 (outport == @pg_security_group_1 &amp;&amp; ip4 &amp;&amp; ip4.src == 0.0.0.0/0 &amp;&amp; tcp &amp;&amp; tcp.dst == 22) allow-related
+  to-lport  1002 (outport == @pg_security_group_1 &amp;&amp; ip4 &amp;&amp; ip4.src == 0.0.0.0/0 &amp;&amp; icmp4) allow-related
+  to-lport  1001 (outport == @pg_security_group_1 &amp;&amp; ip) drop
+from-lport  1001 (inport == @pg_security_group_1 &amp;&amp; ip) drop</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_accessing_the_ovn_southbound_database"><a class="anchor" href="#_accessing_the_ovn_southbound_database"></a>Accessing the OVN Southbound Database</h4>
+<div class="paragraph">
+<p>The SB DB contains the physical-logical bindings and the compiled logical flows.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show chassis registrations
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis "e1f2a3b4-5678-90ab-cdef-111111111111"
+    hostname: edpm-compute-0.localdomain
+    Encap geneve
+        ip: "172.19.0.100"
+        options: {csum="true"}
+    Port_Binding "7a8b9c0d-1e2f-3456-7890-abcdef012345"
+    Port_Binding "cr-lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef"
+Chassis "f2e3d4c5-6789-01ab-cdef-222222222222"
+    hostname: edpm-compute-1.localdomain
+    Encap geneve
+        ip: "172.19.0.101"
+        options: {csum="true"}
+    Port_Binding "8b9c0d1e-2f34-5678-90ab-cdef01234567"</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Each data plane node registers itself as a <strong>Chassis</strong> in the OVN Southbound Database. The chassis entry includes the node&#8217;s Geneve tunnel endpoint IP (on the tenant network) and the list of ports bound to that chassis. If a data plane node is missing from the chassis list, its ovn-controller is not connected to the SB DB.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>List all chassis:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl list Chassis</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : a1b2c3d4-5678-90ab-cdef-111111111111
+encaps              : [e1f2a3b4-1111-2222-3333-444444444444]
+hostname            : "edpm-compute-0.localdomain"
+name                : "e1f2a3b4-5678-90ab-cdef-111111111111"
+nb_cfg              : 45
+other_config        : {datapath-type="system", iface-id-ver="", is-interconn="false", ovn-bridge-mappings="datacentre:br-ex", ovn-cms-options=""}
+transport_zones     : []
+vtep_logical_switches: []</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check logical flows (the compiled pipeline):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List logical flows for a specific logical switch
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl lflow-list \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab | head -30</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Datapath: "neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab" aka "network1" (3a1b2c3d...)
+  table=0 (ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+  table=1 (ls_in_apply_port_sec), priority=50   , match=(reg0[15] == 1), action=(drop;)
+  table=1 (ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=2 (ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=3 (ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
+  table=4 (ls_in_pre_acl      ), priority=110  , match=(eth.dst == $svc_monitor_mac), action=(next;)
+  ...</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_checking_neutron_configuration"><a class="anchor" href="#_checking_neutron_configuration"></a>Checking Neutron Configuration</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find the Neutron pods
+oc get pods -n openstack | grep neutron</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>neutron-6f8c9d7e5b-xw2k4                  1/1     Running   0   3d2h
+neutron-6f8c9d7e5b-yz3l5                  1/1     Running   0   3d2h</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the ML2 plugin configuration
+oc exec -n openstack neutron-6f8c9d7e5b-xw2k4 -- \
+  cat /etc/neutron/plugins/ml2/ml2_conf.ini | grep -A 5 "\[ml2\]"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ml2]
+type_drivers = geneve,vlan,flat
+tenant_network_types = geneve
+mechanism_drivers = ovn
+extension_drivers = port_security,qos</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the OVN-specific Neutron configuration
+oc exec -n openstack neutron-6f8c9d7e5b-xw2k4 -- \
+  cat /etc/neutron/plugins/ml2/ml2_conf.ini | grep -A 10 "\[ovn\]"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ovn]
+ovn_nb_connection = tcp:172.17.0.30:6641,tcp:172.17.0.31:6641,tcp:172.17.0.32:6641
+ovn_sb_connection = tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642
+ovn_l3_scheduler = leastloaded
+ovn_metadata_enabled = true</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_viewing_ovn_logs"><a class="anchor" href="#_viewing_ovn_logs"></a>Viewing OVN Logs</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View ovn-northd pod logs
+oc logs -n openstack ovn-northd-6b8d7f9c4d-abc12 --tail=50</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>2024-05-15T10:30:15.123Z|00045|reconnect|INFO|tcp:172.17.0.30:6641: connected
+2024-05-15T10:30:15.125Z|00046|reconnect|INFO|tcp:172.17.0.30:6642: connected
+2024-05-15T10:30:15.200Z|00047|inc_proc_northd|INFO|Northbound database changed, updating southbound</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View NB DB pod logs
+oc logs -n openstack ovsdbserver-nb-0 --tail=30</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>2024-05-15T10:25:00.456Z|00012|raft|INFO|term 3: elected leader by 2/3 (needed 2)
+2024-05-15T10:25:00.457Z|00013|raft|INFO|term 3: 2fd3 is now leader
+2024-05-15T10:30:10.789Z|00014|ovsdb_server|INFO|update 2 monitor(s)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Follow logs in real time (useful during active troubleshooting)
+oc logs -n openstack ovsdbserver-sb-0 -f</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_on_data_plane_nodes"><a class="anchor" href="#_on_data_plane_nodes"></a>On Data Plane Nodes</h3>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>For data plane node commands, SSH into the compute node first: <code><code>bash ssh root@edpm-compute-0 </code></code></p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_checking_ovn_controller_status"><a class="anchor" href="#_checking_ovn_controller_status"></a>Checking ovn-controller Status</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo systemctl status ovn-controller</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ovn-controller.service - Open Virtual Network controller
+     Loaded: loaded (/usr/lib/systemd/system/ovn-controller.service; enabled; preset: disabled)
+     Active: active (running) since Mon 2024-05-13 08:15:30 UTC; 3 days ago
+   Main PID: 1234 (ovn-controller)
+      Tasks: 4 (limit: 49152)
+     Memory: 85.2M
+        CPU: 12min 34.567s
+     CGroup: /system.slice/ovn-controller.service</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Check the ovn-controller connection to the SB DB:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The <code>ovn-remote</code> external ID in OVS tells ovn-controller where to find the OVN Southbound Database. In RHOSO, this points to the IP addresses of the SB DB pods (via the NAD-provided network). This is configured by edpm-ansible during data plane node provisioning.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Verify the connection is active:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovn-appctl -t ovn-controller connection-status</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>connected</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If the output says <code>not connected</code>, the ovn-controller cannot reach the SB DB pods.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_checking_ovs_configuration"><a class="anchor" href="#_checking_ovs_configuration"></a>Checking OVS Configuration</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>6789abcd-ef01-2345-6789-abcdef012345
+    Manager "ptcp:6640:127.0.0.1"
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port ovn-edpm-c-0
+            Interface ovn-edpm-c-0
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="172.19.0.101"}
+        Port "tap7a8b9c0d-1e"
+            Interface "tap7a8b9c0d-1e"
+        Port patch-br-int-to-provnet-datacentre
+            Interface patch-br-int-to-provnet-datacentre
+                type: patch
+                options: {peer=patch-provnet-datacentre-to-br-int}
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port patch-provnet-datacentre-to-br-int
+            Interface patch-provnet-datacentre-to-br-int
+                type: patch
+                options: {peer=patch-br-int-to-provnet-datacentre}
+        Port enp8s0
+            Interface enp8s0</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_examining_ovs_flows"><a class="anchor" href="#_examining_ovs_flows"></a>Examining OVS Flows</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Count flows per table
+sudo ovs-ofctl dump-flows br-int | awk -F'table=' '{print $2}' | \
+  awk -F',' '{print $1}' | sort -n | uniq -c | sort -rn</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>     45 0
+     32 8
+     28 9
+     24 44
+     18 45
+     15 48
+     12 49
+      8 65
+      5 66
+      3 73</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump flows for a specific table (table 0 = ingress port security)
+sudo ovs-ofctl dump-flows br-int table=0 | head -10</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre> cookie=0xabcdef01, duration=259345.123s, table=0, n_packets=12345678, n_bytes=9876543210, priority=180,vlan_tci=0x0000/0x1000 actions=conjunction(100,1/2)
+ cookie=0xabcdef02, duration=259345.123s, table=0, n_packets=0, n_bytes=0, priority=180,conj_id=100 actions=load:0x1-&gt;NXM_NX_REG14[],load:0x1-&gt;NXM_NX_REG11[],load:0x2-&gt;NXM_NX_REG12[],load:0x1-&gt;OXM_OF_METADATA[],load:0x1-&gt;NXM_NX_REG13[],resubmit(,8)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_checking_geneve_tunnels"><a class="anchor" href="#_checking_geneve_tunnels"></a>Checking Geneve Tunnels</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all Geneve tunnel ports
+sudo ovs-vsctl find Interface type=geneve</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : a1b2c3d4-aaaa-bbbb-cccc-dddddddddddd
+admin_state         : up
+link_state          : up
+name                : "ovn-edpm-c-0"
+ofport              : 2
+options             : {csum="true", key=flow, remote_ip="172.19.0.101"}
+statistics          : {rx_bytes=123456, rx_packets=789, tx_bytes=654321, tx_packets=987}
+status              : {tunnel_egress_iface="enp7s0", tunnel_egress_iface_carrier=up}
+type                : geneve</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_verifying_chassis_registration"><a class="anchor" href="#_verifying_chassis_registration"></a>Verifying Chassis Registration</h4>
+<div class="paragraph">
+<p>On the data plane node, verify this node&#8217;s chassis name:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo ovs-vsctl get Open_vSwitch . external_ids:system-id</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"e1f2a3b4-5678-90ab-cdef-111111111111"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Then confirm it appears in the SB DB (from the OpenShift side):</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl list Chassis | \
+  grep -A 3 "e1f2a3b4-5678-90ab-cdef-111111111111"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>name                : "e1f2a3b4-5678-90ab-cdef-111111111111"
+hostname            : "edpm-compute-0.localdomain"
+nb_cfg              : 45
+other_config        : {datapath-type="system", ...}</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_tracing_a_packet_in_rhoso"><a class="anchor" href="#_tracing_a_packet_in_rhoso"></a>Tracing a Packet in RHOSO</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Understanding how a packet traverses the RHOSO networking stack is essential for troubleshooting. This section walks through three common scenarios.</p>
+</div>
+<div class="sect2">
+<h3 id="_scenario_1_vm_to_vm_on_the_same_compute_node"><a class="anchor" href="#_scenario_1_vm_to_vm_on_the_same_compute_node"></a>Scenario 1: VM to VM on the Same Compute Node</h3>
+<div class="paragraph">
+<p>Two VMs (<code>vm-a</code> with IP 192.168.1.10 and <code>vm-b</code> with IP 192.168.1.11) are on the same network and the same compute node (<code>edpm-compute-0</code>).</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>VM-A (192.168.1.10)        VM-B (192.168.1.11)
+       |                          |
+  tap7a8b9c0d-1e             tap8b9c0d1e-2f
+       |                          |
+       +--------br-int-----------+
+                  |
+          (all switching done
+           locally in OVS)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 1: Identify the ports on the compute node.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On edpm-compute-0
+sudo ovs-vsctl list-ports br-int | grep tap</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>tap7a8b9c0d-1e
+tap8b9c0d1e-2f</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 2: Check the logical port binding in the SB DB.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From OpenShift
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl find Port_Binding \
+  logical_port="7a8b9c0d-1e2f-3456-7890-abcdef012345"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : abcd1234-5678-90ef-ghij-klmnopqrstuv
+chassis             : [_uuid : a1b2c3d4-5678-90ab-cdef-111111111111]
+datapath            : [_uuid : 3a1b2c3d-4e5f-6789-abcd-ef0123456789]
+logical_port        : "7a8b9c0d-1e2f-3456-7890-abcdef012345"
+mac                 : ["fa:16:3e:aa:bb:cc 192.168.1.10"]
+type                : ""</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 3: Trace the logical flow using ovn-trace.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From the OVN NB DB pod (or ovn-northd pod)
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" &amp;&amp; eth.src == fa:16:3e:aa:bb:cc &amp;&amp; eth.dst == fa:16:3e:dd:ee:ff &amp;&amp; ip4.src == 192.168.1.10 &amp;&amp; ip4.dst == 192.168.1.11 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ingress(dp="network1", inport="7a8b9c0d...")
+-----------------------------------------
+ 0. ls_in_check_port_sec (northd.c:8210): 1, priority 50, uuid abcd1234
+    reg0[15] = check_in_port_sec();
+    next;
+ 1. ls_in_apply_port_sec (northd.c:8235): reg0[15] == 0, priority 50
+    next;
+    ...
+ 9. ls_in_acl_hint (northd.c:6587): !ct.new &amp;&amp; ct.est &amp;&amp; !ct.rpl &amp;&amp; ct_mark.blocked == 0, priority 7
+    reg0[8] = 1; reg0[10] = 1;
+    next;
+    ...
+24. ls_in_l2_lkup (northd.c:9456): eth.dst == fa:16:3e:dd:ee:ff, priority 50
+    outport = "8b9c0d1e-2f34-5678-90ab-cdef01234567";
+    output;
+
+egress(dp="network1", inport="7a8b9c0d...", outport="8b9c0d1e...")
+-----------------------------------------
+ 0. ls_out_pre_acl (northd.c:5870): 1, priority 0
+    next;
+    ...
+ 9. ls_out_apply_port_sec (northd.c:8300): outport == "8b9c0d1e...", priority 50
+    output;
+    /* output to "8b9c0d1e...", type "" */</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 4: Verify with tcpdump on the compute node.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On edpm-compute-0 - capture on the destination tap interface
+sudo tcpdump -i tap8b9c0d1e-2f -nn icmp -c 5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10:45:12.123456 IP 192.168.1.10 &gt; 192.168.1.11: ICMP echo request, id 1234, seq 1, length 64
+10:45:12.123789 IP 192.168.1.11 &gt; 192.168.1.10: ICMP echo reply, id 1234, seq 1, length 64</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_scenario_2_vm_to_vm_on_different_compute_nodes"><a class="anchor" href="#_scenario_2_vm_to_vm_on_different_compute_nodes"></a>Scenario 2: VM to VM on Different Compute Nodes</h3>
+<div class="paragraph">
+<p><code>vm-a</code> (192.168.1.10) on <code>edpm-compute-0</code> sends a packet to <code>vm-c</code> (192.168.1.20) on <code>edpm-compute-1</code>. Both are on the same logical network.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>edpm-compute-0                    edpm-compute-1
++-----------------+               +-----------------+
+| VM-A            |               | VM-C            |
+| 192.168.1.10    |               | 192.168.1.20    |
+| tap7a8b9c0d-1e  |               | tapabcdef01-23  |
+|       |         |               |       |         |
+|   br-int        |               |   br-int        |
+|       |         |               |       |         |
+| geneve tunnel   |               | geneve tunnel   |
+|  port (vni=flow)|               |  port (vni=flow)|
++----|------------+               +-------|----------+
+     |                                    |
+     +--------Tenant Network--------------+
+             (172.19.0.0/24)
+       172.19.0.100            172.19.0.101</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 1: Verify the tunnel exists.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On edpm-compute-0
+sudo ovs-vsctl find Interface type=geneve | grep -E "name|remote_ip"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>name                : "ovn-edpm-c-0"
+options             : {csum="true", key=flow, remote_ip="172.19.0.101"}</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 2: Check that vm-c&#8217;s port is bound to edpm-compute-1 chassis.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From OpenShift
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl find Port_Binding \
+  logical_port="abcdef01-2345-6789-0abc-def012345678" | grep chassis</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>chassis             : [_uuid : f2e3d4c5-6789-01ab-cdef-222222222222]</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 3: Capture the Geneve-encapsulated traffic on the tenant network.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On edpm-compute-0 - capture on the tenant interface
+sudo tcpdump -i enp7s0 -nn udp port 6081 -c 5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10:50:15.123456 IP 172.19.0.100.12345 &gt; 172.19.0.101.6081: Geneve, Flags [C], vni 0x5, proto TEB: fa:16:3e:aa:bb:cc &gt; fa:16:3e:77:88:99, ethertype IPv4, 192.168.1.10 &gt; 192.168.1.20: ICMP echo request
+10:50:15.124789 IP 172.19.0.101.12345 &gt; 172.19.0.100.6081: Geneve, Flags [C], vni 0x5, proto TEB: fa:16:3e:77:88:99 &gt; fa:16:3e:aa:bb:cc, ethertype IPv4, 192.168.1.20 &gt; 192.168.1.10: ICMP echo reply</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 4: Trace the logical flow.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" &amp;&amp; eth.src == fa:16:3e:aa:bb:cc &amp;&amp; eth.dst == fa:16:3e:77:88:99 &amp;&amp; ip4.src == 192.168.1.10 &amp;&amp; ip4.dst == 192.168.1.20 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The output will show the packet traversing the logical switch pipeline, being forwarded to the remote port, and the <code>output</code> action. OVN knows the port is on a different chassis, so it encapsulates the packet in a Geneve tunnel.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_scenario_3_vm_to_external_network"><a class="anchor" href="#_scenario_3_vm_to_external_network"></a>Scenario 3: VM to External Network</h3>
+<div class="paragraph">
+<p><code>vm-a</code> (192.168.1.10) sends traffic to an external host (8.8.8.8) via a floating IP (10.0.0.50). A logical router handles the NAT.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>edpm-compute-0                    edpm-compute-2 (gateway)
++-----------------+               +-----------------------+
+| VM-A            |               | OVN Gateway Chassis   |
+| 192.168.1.10    |               |                       |
+| FIP: 10.0.0.50  |               | Logical Router        |
+|       |         |               | (DNAT/SNAT)           |
+|   br-int        |               |   br-int              |
+|       |         |               |       |               |
+| geneve tunnel   |               |   br-ex               |
++-------|----------+               |       |               |
+        |                         |  enp8s0 (external)    |
+        +---Tenant Network--------+       |               |
+                                  +-------|----------------+
+                                          |
+                                     External Network
+                                      10.0.0.0/24</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 1: Check the NAT rules in the NB DB.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lr-nat-list \
+  neutron-b3c4d5e6-7890-12ab-cdef-345678901234</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TYPE             GATEWAY_PORT          EXTERNAL_IP        EXTERNAL_MAC            LOGICAL_IP          EXTERNAL_PORT_RANGE
+dnat_and_snat    lrp-a1b2c3d4-5678...  10.0.0.50          fa:16:3e:99:aa:bb      192.168.1.10
+snat             lrp-a1b2c3d4-5678...  10.0.0.1                                  192.168.1.0/24</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Step 2: Identify the gateway chassis for the logical router.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-nbctl lrp-get-gateway-chassis \
+  lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_f2e3d4c5-6789-01ab-cdef-222222222222    5
+lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_e1f2a3b4-5678-90ab-cdef-111111111111    1</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The first entry (priority 5) is the primary gateway chassis, and the second (priority 1) is the backup.</p>
+</div>
+<div class="paragraph">
+<p><strong>Step 3: Trace the full path with ovn-trace.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+  neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
+  'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" &amp;&amp; eth.src == fa:16:3e:aa:bb:cc &amp;&amp; eth.dst == fa:16:3e:44:55:66 &amp;&amp; ip4.src == 192.168.1.10 &amp;&amp; ip4.dst == 8.8.8.8 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The trace will show:
+. The packet enters the logical switch pipeline (ingress ACL, port security)
+. The packet is forwarded to the logical router port
+. The logical router applies DNAT/SNAT (replacing source IP with the floating IP 10.0.0.50)
+. The packet exits through the external logical switch
+. The packet is sent to the gateway chassis via <code>localnet</code> port to the physical network</p>
+</div>
+<div class="paragraph">
+<p><strong>Step 4: On the gateway node, verify the traffic on br-ex.</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On the gateway compute node
+sudo tcpdump -i enp8s0 -nn host 10.0.0.50 -c 5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10:55:20.123456 IP 10.0.0.50 &gt; 8.8.8.8: ICMP echo request, id 5678, seq 1, length 64
+10:55:20.145678 IP 8.8.8.8 &gt; 10.0.0.50: ICMP echo reply, id 5678, seq 1, length 64</pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_troubleshooting_rhoso_specific_issues"><a class="anchor" href="#_troubleshooting_rhoso_specific_issues"></a>Troubleshooting RHOSO-Specific Issues</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section covers common problems specific to the RHOSO architecture and how to diagnose them.</p>
+</div>
+<div class="sect2">
+<h3 id="_issue_1_ovn_controller_cannot_connect_to_sb_db"><a class="anchor" href="#_issue_1_ovn_controller_cannot_connect_to_sb_db"></a>Issue 1: ovn-controller Cannot Connect to SB DB</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VMs cannot get network connectivity</p>
+</li>
+<li>
+<p>New VMs fail to get DHCP addresses</p>
+</li>
+<li>
+<p><code>ovn-appctl -t ovn-controller connection-status</code> returns <code>not connected</code></p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnosis:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: On the data plane node, check connection status
+sudo ovn-appctl -t ovn-controller connection-status</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>not connected</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check where ovn-controller is trying to connect
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-remote</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Test connectivity to the SB DB IPs
+ping -c 3 172.17.0.30</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 172.17.0.30 (172.17.0.30) 56(84) bytes of data.
+--- 172.17.0.30 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 2003ms</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 4: Check the network interface used for internalapi
+ip addr show | grep 172.17</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>    inet 172.17.0.100/24 brd 172.17.0.255 scope global enp7s0.20</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 5: From OpenShift, verify the SB DB pods are running and their IPs
+oc get pods -n openstack -o wide | grep ovsdbserver-sb</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ovsdbserver-sb-0   1/1   Running   0   3d   172.17.0.30   master-0   &lt;none&gt;   &lt;none&gt;
+ovsdbserver-sb-1   1/1   Running   0   3d   172.17.0.31   master-1   &lt;none&gt;   &lt;none&gt;
+ovsdbserver-sb-2   1/1   Running   0   3d   172.17.0.32   master-2   &lt;none&gt;   &lt;none&gt;</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common Causes:</strong>
+. VLAN or network misconfiguration on the data plane node (wrong VLAN tag, wrong interface)
+. NAD misconfiguration on the OpenShift side (wrong master interface, wrong VLAN)
+. Firewall rules blocking port 6642 between data plane nodes and OpenShift nodes
+. SB DB pods were rescheduled and got new IPs (check if ovn-remote needs updating)</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If the SB DB pods are rescheduled to different OpenShift nodes, their NAD-assigned IPs may change (depending on IPAM configuration). If ovn-controller on data plane nodes has stale IP addresses in <code>ovn-remote</code>, it will fail to connect. In production, use stable IPs via the <code>whereabouts</code> IPAM plugin with fixed ranges, or use DNS names.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Resolution:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># If IPs changed, update ovn-remote on the data plane node
+sudo ovs-vsctl set Open_vSwitch . \
+  external_ids:ovn-remote="tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"
+
+# Restart ovn-controller to reconnect
+sudo systemctl restart ovn-controller
+
+# Verify connection
+sudo ovn-appctl -t ovn-controller connection-status</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>connected</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_issue_2_data_plane_node_not_registered_as_chassis"><a class="anchor" href="#_issue_2_data_plane_node_not_registered_as_chassis"></a>Issue 2: Data Plane Node Not Registered as Chassis</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VMs on a specific compute node have no network connectivity</p>
+</li>
+<li>
+<p>The node does not appear in <code>ovn-sbctl show</code></p>
+</li>
+<li>
+<p>Ports intended for this node show <code>chassis: []</code> in Port_Binding</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnosis:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From OpenShift, check if the chassis is registered
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-sbctl show | \
+  grep -A 5 "edpm-compute-0"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If there is no output, the node is not registered.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On the data plane node, check ovn-controller logs
+sudo journalctl -u ovn-controller --since "1 hour ago" | tail -20</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>May 15 10:30:00 edpm-compute-0 ovn-controller[1234]: ovs|00045|reconnect|WARN|tcp:172.17.0.30:6642: connection attempt failed (Connection refused)
+May 15 10:30:05 edpm-compute-0 ovn-controller[1234]: ovs|00046|reconnect|WARN|tcp:172.17.0.31:6642: connection attempt failed (Connection refused)
+May 15 10:30:10 edpm-compute-0 ovn-controller[1234]: ovs|00047|reconnect|WARN|tcp:172.17.0.32:6642: connection attempt failed (No route to host)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the system-id is set (required for chassis registration)
+sudo ovs-vsctl get Open_vSwitch . external_ids:system-id</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"e1f2a3b4-5678-90ab-cdef-111111111111"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the hostname is set
+sudo ovs-vsctl get Open_vSwitch . external_ids:hostname</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"edpm-compute-0.localdomain"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check that ovn-encap-type and ovn-encap-ip are set
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-type
+sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>"geneve"
+"172.19.0.100"</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common Causes:</strong>
+. ovn-controller not running or crashing
+. Cannot connect to SB DB (see Issue 1)
+. Missing <code>system-id</code>, <code>ovn-encap-type</code>, or <code>ovn-encap-ip</code> in external_ids
+. edpm-ansible did not complete successfully during provisioning</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_issue_3_edpm_ansible_networking_configuration_issues"><a class="anchor" href="#_issue_3_edpm_ansible_networking_configuration_issues"></a>Issue 3: edpm-ansible Networking Configuration Issues</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Data plane node has wrong network configuration after provisioning</p>
+</li>
+<li>
+<p>Missing VLANs, wrong IPs, or missing bridges</p>
+</li>
+<li>
+<p>edpm-ansible deployment fails with networking errors</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnosis:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the data plane deployment status
+oc get openstackdataplanedeployments -n openstack</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME                    STATUS   MESSAGE
+openstack-edpm-deploy   False    Deployment in progress</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the ansible job logs
+oc get jobs -n openstack | grep edpm</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>openstack-edpm-deploy-openstack-edpm-abcde   0/1   Running   0   10m</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the ansible job logs
+oc logs job/openstack-edpm-deploy-openstack-edpm-abcde -n openstack --tail=50</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TASK [edpm_os_net_config : Run os-net-config] **********************************
+fatal: [edpm-compute-0]: FAILED! =&gt; {
+    "changed": false,
+    "msg": "Error running os-net-config: Interface enp7s0 not found"
+}</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common Causes:</strong>
+. Wrong interface names in the OpenStackDataPlaneNodeSet CR
+. Missing physical interfaces on the data plane node
+. Network configuration template errors
+. SSH connectivity issues between OpenShift and data plane nodes</p>
+</div>
+<div class="paragraph">
+<p><strong>Resolution:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the actual interface names on the data plane node
+ssh root@edpm-compute-0 "ip link show"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; ...
+2: enp6s0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; ...
+3: enp8s0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; ...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Update the OpenStackDataPlaneNodeSet CR with the correct interface names and re-run the deployment.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_issue_4_checking_ovn_database_health_in_pods"><a class="anchor" href="#_issue_4_checking_ovn_database_health_in_pods"></a>Issue 4: Checking OVN Database Health in Pods</h3>
+<div class="paragraph">
+<p><strong>Diagnosis:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check NB DB cluster status
+oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- \
+  ovs-appctl -t /tmp/ovnnb_db.ctl cluster/status OVN_Northbound</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>2fd3
+Name: OVN_Northbound
+Cluster ID: abcd (abcd1234...)
+Server ID: 2fd3 (2fd31234...)
+Address: tcp:172.17.0.30:6643
+Status: cluster member
+Role: leader
+Term: 3
+Leader: self
+Vote: self
+...
+Servers:
+  2fd3 (2fd3 at tcp:172.17.0.30:6643) (self) next_index=1547 match_index=1546
+  db34 (db34 at tcp:172.17.0.31:6643) next_index=1547 match_index=1546
+  ef56 (ef56 at tcp:172.17.0.32:6643) next_index=1547 match_index=1546</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check SB DB cluster status
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- \
+  ovs-appctl -t /tmp/ovnsb_db.ctl cluster/status OVN_Southbound</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>What to look for:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Role:</strong> Should be <code>leader</code> for one pod and <code>follower</code> for the others</p>
+</li>
+<li>
+<p><strong>Status:</strong> Should be <code>cluster member</code> for all pods</p>
+</li>
+<li>
+<p><strong>Entries not yet committed:</strong> Should be 0 or very small; large numbers indicate replication issues</p>
+</li>
+<li>
+<p><strong>Connections:</strong> All peer addresses should show recent <code>last msg</code> times</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If a Raft cluster loses quorum (e.g., 2 of 3 pods down), the surviving pod will show <code>Status: cluster member</code> but <code>Role: candidate</code> because it cannot elect a leader alone. The database becomes read-only. Existing network configurations continue to work, but no new changes can be applied.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_issue_5_pod_restart_scenarios_and_impact_on_ovn"><a class="anchor" href="#_issue_5_pod_restart_scenarios_and_impact_on_ovn"></a>Issue 5: Pod Restart Scenarios and Impact on OVN</h3>
+<div class="paragraph">
+<p>Understanding what happens when OVN pods restart is critical for operations:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Pod Restarted</th>
+<th class="tableblock halign-left valign-top">Impact</th>
+<th class="tableblock halign-left valign-top">Recovery</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdbserver-nb (one of three)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal - remaining pods maintain quorum</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic - pod rejoins Raft cluster</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdbserver-nb (two of three)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Critical - loss of quorum, NB DB read-only</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual intervention may be needed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdbserver-sb (one of three)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal - ovn-controllers reconnect to remaining pods</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic - ovn-controllers have all SB endpoints configured</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdbserver-sb (two of three)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Critical - ovn-controllers cannot update chassis or receive flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Urgent - restore quorum</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Temporary - no NB to SB translation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic - Kubernetes restarts the pod</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron pods</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Temporary - API unavailable, no new network changes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic - existing networks unaffected</p></td>
+</tr>
+</tbody>
+</table>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check pod restart counts (high restart counts may indicate a problem)
+oc get pods -n openstack | grep -E "ovn|ovsdb"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>ovn-northd-6b8d7f9c4d-abc12               1/1     Running   0          3d
+ovsdbserver-nb-0                           1/1     Running   0          3d
+ovsdbserver-nb-1                           1/1     Running   2          3d
+ovsdbserver-nb-2                           1/1     Running   0          3d
+ovsdbserver-sb-0                           1/1     Running   0          3d
+ovsdbserver-sb-1                           1/1     Running   0          3d
+ovsdbserver-sb-2                           1/1     Running   0          3d</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If a pod shows a high restart count, check why:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check pod events
+oc describe pod ovsdbserver-nb-1 -n openstack | tail -20</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Events:
+  Type     Reason   Age                  From     Message
+  ----     ------   ----                 ----     -------
+  Warning  BackOff  5m (x3 over 10m)     kubelet  Back-off restarting failed container
+  Normal   Pulled   4m                   kubelet  Container image pulled successfully
+  Normal   Started  4m                   kubelet  Started container ovsdbserver-nb</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check previous container logs
+oc logs ovsdbserver-nb-1 -n openstack --previous --tail=30</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_summary"><a class="anchor" href="#_summary"></a>Summary</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This module covered the architecture and operation of OVS and OVN in Red Hat OpenStack Services on OpenShift (RHOSO). Key takeaways:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>RHOSO splits the deployment</strong> into an OpenShift-hosted control plane (OVN databases, ovn-northd, Neutron) and bare-metal data plane nodes (ovn-controller, OVS, nova-compute).</p>
+</li>
+<li>
+<p><strong>NetworkAttachmentDefinitions</strong> bridge the gap between the OpenShift pod network and the physical networks required by OpenStack services.</p>
+</li>
+<li>
+<p><strong>OVN is the sole networking backend</strong> in RHOSO. The NB/SB databases run as Raft-clustered StatefulSet pods, providing high availability.</p>
+</li>
+<li>
+<p><strong>Troubleshooting requires working across both domains:</strong> <code>oc exec</code> and <code>oc logs</code> for control plane components, SSH and <code>journalctl</code> for data plane components.</p>
+</li>
+<li>
+<p><strong>The connectivity between data plane nodes and the SB DB pods</strong> is the most critical network path. If it breaks, ovn-controller cannot receive flow updates.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>In the next module, we will explore how OVN is used in a completely different context: as the CNI (Container Network Interface) for OpenShift itself, powering pod-to-pod networking in OVN-Kubernetes.</p>
+</div>
+<hr>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Previous</th>
+<th class="tableblock halign-left valign-top">Next</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="07-ovs-ovn-in-rhosp.html" class="xref page">Module 07 - OVS and OVN in Red Hat OpenStack Platform</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="09-ovn-in-openshift.html" class="xref page">Module 09 - OVN-Kubernetes in OpenShift</a></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="07-ovs-ovn-in-rhosp.html" class="query-params-link">OVS/OVN in RHOSP</a></span>
+  <span class="next"><a href="09-ovn-in-openshift.html" class="query-params-link">OVN in OpenShift</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

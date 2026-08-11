@@ -1,0 +1,2713 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 07 - OVS and OVN in Red Hat OpenStack Platform :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="06-ovs-vs-ovn.html">
+    <link rel="next" href="08-ovs-ovn-in-rhoso.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 07 - OVS and OVN in Red Hat OpenStack Platform</h1>
+<div class="sect1">
+<h2 id="_introduction"><a class="anchor" href="#_introduction"></a>Introduction</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Red Hat OpenStack Platform (RHOSP) is where most Red Hat engineers encounter OVS and OVN in a production context. Understanding how Neutron integrates with both ML2/OVS and ML2/OVN is critical for troubleshooting, performance tuning, and helping customers through migrations.</p>
+</div>
+<div class="paragraph">
+<p>This module covers both architectures in detail - the legacy ML2/OVS approach and the current ML2/OVN approach - so you can support environments running either one, and explain the differences to customers considering migration.</p>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_rhosp_networking_architecture_overview"><a class="anchor" href="#_rhosp_networking_architecture_overview"></a>RHOSP Networking Architecture Overview</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_neutron_as_the_networking_service"><a class="anchor" href="#_neutron_as_the_networking_service"></a>Neutron as the Networking Service</h3>
+<div class="paragraph">
+<p>Neutron is OpenStack&#8217;s networking service. It provides an API for managing virtual networks, subnets, ports, routers, security groups, floating IPs, and other networking constructs. Neutron itself does not forward packets - it delegates the actual implementation to backend plugins and drivers.</p>
+</div>
+<div class="paragraph">
+<p>When a user creates a network in Horizon or via the OpenStack CLI, Neutron stores the desired state in its database and then calls the configured backend to implement it. The backend is responsible for programming the actual virtual switches, routers, and firewalls on the hypervisors.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+--------------------------------------------------+
+|               OpenStack API / Horizon             |
++--------------------------------------------------+
+                       |
+                       v
++--------------------------------------------------+
+|              Neutron Server                       |
+|                                                   |
+|  +--------------------------------------------+  |
+|  |              ML2 Plugin                     |  |
+|  |                                             |  |
+|  |  +------------------+ +------------------+  |  |
+|  |  | Type Drivers     | | Mechanism Driver |  |  |
+|  |  |                  | |                  |  |  |
+|  |  | - flat           | | - OVS            |  |  |
+|  |  | - vlan           | | - OVN            |  |  |
+|  |  | - vxlan          | | - linuxbridge    |  |  |
+|  |  | - geneve         | | - SRIOV          |  |  |
+|  |  +------------------+ +------------------+  |  |
+|  +--------------------------------------------+  |
++--------------------------------------------------+
+                       |
+                       v
+            Backend-specific agents or
+            database connections</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ml2_plugin_architecture"><a class="anchor" href="#_ml2_plugin_architecture"></a>ML2 Plugin Architecture</h3>
+<div class="paragraph">
+<p>The Modular Layer 2 (ML2) plugin is Neutron&#8217;s primary plugin. It separates networking concerns into two types of drivers:</p>
+</div>
+<div class="paragraph">
+<p><strong>Type Drivers</strong> define the network segmentation technology:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>flat</strong> - No segmentation; all traffic shares the same L2 domain.</p>
+</li>
+<li>
+<p><strong>vlan</strong> - VLAN tags (802.1Q) for segmentation; limited to 4094 networks.</p>
+</li>
+<li>
+<p><strong>vxlan</strong> - VXLAN encapsulation for overlay networks; up to 16 million network IDs.</p>
+</li>
+<li>
+<p><strong>geneve</strong> - Geneve encapsulation for overlay networks; extensible metadata, used by OVN.</p>
+</li>
+<li>
+<p><strong>gre</strong> - GRE tunnels for overlay networks.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Mechanism Drivers</strong> define how the networking is implemented on the infrastructure:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>openvswitch</strong> (ML2/OVS) - Uses OVS bridges and Neutron agents to implement networks.</p>
+</li>
+<li>
+<p><strong>ovn</strong> (ML2/OVN) - Uses OVN logical constructs, which program OVS automatically.</p>
+</li>
+<li>
+<p><strong>linuxbridge</strong> - Uses Linux bridges (less common in production).</p>
+</li>
+<li>
+<p><strong>sriov</strong> - Uses SR-IOV for direct NIC passthrough to VMs.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The type driver and mechanism driver work together. For example, ML2/OVN with the Geneve type driver means OVN implements tenant networks using Geneve tunnels between hypervisors.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The mechanism driver is the critical choice that determines the entire networking architecture. ML2/OVS and ML2/OVN are the two main mechanism drivers you will encounter in RHOSP environments. The choice between them affects agent architecture, packet flow paths, troubleshooting methodology, and operational procedures.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_neutron_abstracts_networking"><a class="anchor" href="#_how_neutron_abstracts_networking"></a>How Neutron Abstracts Networking</h3>
+<div class="paragraph">
+<p>Regardless of the backend, Neutron presents the same API objects:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Neutron Object</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Network</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An isolated L2 broadcast domain</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Subnet</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An IP address range associated with a network</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A virtual network interface (MAC + IP) attached to a network</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Router</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A virtual router connecting subnets and providing gateway access</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Security Group</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A set of ingress/egress firewall rules applied to ports</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Floating IP</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A public IP mapped (DNAT/SNAT) to a private IP on a port</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Trunk</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A parent port with sub-ports for VLAN-tagged traffic</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>These objects are the same whether ML2/OVS or ML2/OVN is the backend. What changes is how these objects are implemented under the hood.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ml2ovs_in_rhosp_legacy"><a class="anchor" href="#_ml2ovs_in_rhosp_legacy"></a>ML2/OVS in RHOSP (Legacy)</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_architecture"><a class="anchor" href="#_architecture"></a>Architecture</h3>
+<div class="paragraph">
+<p>In an ML2/OVS deployment, Neutron uses a set of agents running on each node to implement the network configuration:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+--------------------------------------------+
+|              Controller Node                |
+|                                             |
+|  Neutron Server (ML2/OVS mechanism driver)  |
+|  RabbitMQ (message bus)                     |
+|  MariaDB (Neutron database)                 |
++---------------------+----------------------+
+                      |
+                      | RPC via RabbitMQ
+                      |
+        +-------------+------------------+
+        |                                |
+        v                                v
++-----------------------------+  +-----------------------------+
+|     Network Node            |  |      Compute Node           |
+|                             |  |                             |
+| neutron-openvswitch-agent   |  | neutron-openvswitch-agent   |
+| neutron-l3-agent            |  |                             |
+| neutron-dhcp-agent          |  | OVS bridges:                |
+| neutron-metadata-agent      |  |   br-int                    |
+|                             |  |   br-tun                    |
+| OVS bridges:                |  |                             |
+|   br-int                    |  | VM-A        VM-B            |
+|   br-tun                    |  +-----------------------------+
+|   br-ex                     |
+|                             |
+| Router namespaces (qrouter) |
+| DHCP namespaces (qdhcp)     |
++-----------------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_key_components"><a class="anchor" href="#_key_components"></a>Key Components</h3>
+<div class="paragraph">
+<p><strong>neutron-openvswitch-agent</strong> (L2 agent) - Runs on every node (compute and network). Receives network state from the Neutron server via RabbitMQ and programs the local OVS bridges accordingly. It is responsible for:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Creating VLAN tags for internal tenant network segmentation on <code>br-int</code>.</p>
+</li>
+<li>
+<p>Setting up tunnel ports and flow rules on <code>br-tun</code> for overlay encapsulation.</p>
+</li>
+<li>
+<p>Adding VM ports to <code>br-int</code> when instances are launched.</p>
+</li>
+<li>
+<p>Programming MAC/IP-based flow rules for known destinations.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>neutron-l3-agent</strong> - Runs on network nodes (or on all nodes with DVR). Creates Linux network namespaces (<code>qrouter-&lt;router-id&gt;</code>) that act as virtual routers. Each namespace has interfaces connected to <code>br-int</code> and, for external connectivity, to <code>br-ex</code>. The L3 agent programs:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>IP addresses on namespace interfaces.</p>
+</li>
+<li>
+<p>IP routing rules inside the namespace.</p>
+</li>
+<li>
+<p>iptables/nftables rules for NAT (floating IPs, SNAT for external access).</p>
+</li>
+<li>
+<p>HA keepalived instances for router redundancy (VRRP-based).</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>neutron-dhcp-agent</strong> - Runs on network nodes. Creates Linux network namespaces (<code>qdhcp-&lt;network-id&gt;</code>) that each contain a <code>dnsmasq</code> process. This process serves DHCP and DNS for the corresponding tenant network. A port in <code>br-int</code> connects the namespace to the virtual network.</p>
+</div>
+<div class="paragraph">
+<p><strong>neutron-metadata-agent</strong> - Runs on network nodes (colocated with the L3 agent). Provides the OpenStack metadata service (169.254.169.254) to VMs through the router namespaces. VMs access metadata by sending HTTP requests to 169.254.169.254, which the namespace routes to the metadata agent, which proxies the request to the Nova metadata API.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_bridge_architecture_in_ml2ovs"><a class="anchor" href="#_ovs_bridge_architecture_in_ml2ovs"></a>OVS Bridge Architecture in ML2/OVS</h3>
+<div class="paragraph">
+<p>Each node running ML2/OVS has up to three OVS bridges:</p>
+</div>
+<div class="paragraph">
+<p><strong>br-int (Integration Bridge)</strong></p>
+</div>
+<div class="paragraph">
+<p>This is the central bridge where all VM ports are connected. It is the heart of the virtual network on each node.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+--------------------------------------------------------------------+
+|                          br-int                                     |
+|                                                                     |
+|  +---------+  +---------+  +---------+  +---------+  +---------+   |
+|  | VM port |  | VM port |  | DHCP    |  | Router  |  | patch   |   |
+|  | (qvo-)  |  | (qvo-)  |  | namespace| | namespace| | to      |   |
+|  |         |  |         |  | port    |  | port    |  | br-tun  |   |
+|  | tag=10  |  | tag=10  |  | tag=10  |  | tag=10  |  |         |   |
+|  +---------+  +---------+  +---------+  +---------+  +---------+   |
++--------------------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key characteristics:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Each port on <code>br-int</code> is assigned an internal VLAN tag. This tag is local to the node - VLAN 10 on one compute might represent a completely different tenant network than VLAN 10 on another compute.</p>
+</li>
+<li>
+<p>The L2 agent maps these local VLAN tags to/from tunnel IDs (VNI for VXLAN) when traffic crosses between <code>br-int</code> and <code>br-tun</code>.</p>
+</li>
+<li>
+<p>Flow rules on <code>br-int</code> handle local forwarding, ARP responses, and security group enforcement.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>br-tun (Tunnel Bridge)</strong></p>
+</div>
+<div class="paragraph">
+<p>This bridge handles overlay encapsulation and decapsulation. It connects to <code>br-int</code> via a patch port.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+--------------------------------------------------------------------+
+|                          br-tun                                     |
+|                                                                     |
+|  +---------+  +----------+  +----------+  +----------+             |
+|  | patch   |  | vxlan-   |  | vxlan-   |  | vxlan-   |             |
+|  | to      |  | compute2 |  | compute3 |  | network  |             |
+|  | br-int  |  |          |  |          |  | node     |             |
+|  +---------+  +----------+  +----------+  +----------+             |
++--------------------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key characteristics:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>One tunnel port per remote node (VXLAN, GRE, or Geneve endpoint).</p>
+</li>
+<li>
+<p>Ingress flows: Strip the tunnel encapsulation, map the VNI to a local VLAN tag, forward to <code>br-int</code>.</p>
+</li>
+<li>
+<p>Egress flows: Map the local VLAN tag to a VNI, encapsulate in a tunnel, send to the remote node&#8217;s tunnel IP.</p>
+</li>
+<li>
+<p>The <code>neutron-openvswitch-agent</code> manages tunnel port creation and flow rules on <code>br-tun</code>.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>br-ex (External Bridge)</strong></p>
+</div>
+<div class="paragraph">
+<p>This bridge exists only on network nodes (or gateway nodes) and provides connectivity to external/provider networks.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+--------------------------------------------------------------------+
+|                          br-ex                                      |
+|                                                                     |
+|  +---------+  +---------+                                           |
+|  | physical|  | Router  |                                           |
+|  | NIC     |  | namespace|                                          |
+|  | (e.g.,  |  | external |                                          |
+|  |  eth1)  |  | port    |                                           |
+|  +---------+  +---------+                                           |
++--------------------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key characteristics:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>The physical NIC connected to the external/provider network is added to <code>br-ex</code>.</p>
+</li>
+<li>
+<p>Router namespace external interfaces (<code>qg-&lt;port-id&gt;</code>) are connected to <code>br-ex</code>.</p>
+</li>
+<li>
+<p>Floating IP traffic exits through <code>br-ex</code> to the physical network.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_packet_flow_through_bridges"><a class="anchor" href="#_packet_flow_through_bridges"></a>Packet Flow Through Bridges</h3>
+<div class="sect3">
+<h4 id="_vm_to_vm_same_compute_same_network"><a class="anchor" href="#_vm_to_vm_same_compute_same_network"></a>VM to VM - Same Compute, Same Network</h4>
+<div class="paragraph">
+<p>This is the simplest case. Both VMs are on the same compute node and the same tenant network.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>VM-A (192.168.1.10) --&gt; qvb-A --&gt; qbr-A --&gt; qvo-A --&gt; br-int --&gt; qvo-B --&gt; qbr-B --&gt; qvb-B --&gt; VM-B (192.168.1.20)</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The <code>qbr</code> (quantum bridge) is a Linux bridge used as an intermediary between the VM&#8217;s tap interface and OVS. It was historically needed because OVS did not support iptables-based security groups. With the move to OVS native firewall (conntrack-based security groups), the <code>qbr</code> bridge may not be present in newer configurations.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Flow path on <code>br-int</code>:
+. Packet arrives from <code>qvo-A</code> on <code>br-int</code>.
+. Flow rules match the destination MAC and local VLAN tag.
+. Packet is forwarded to <code>qvo-B</code> on <code>br-int</code>.
+. Packet never leaves the compute node.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vm_to_vm_different_compute_same_network"><a class="anchor" href="#_vm_to_vm_different_compute_same_network"></a>VM to VM - Different Compute, Same Network</h4>
+<div class="paragraph">
+<p>VMs are on different compute nodes but the same tenant network.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Compute 1                                      Compute 2
+VM-A --&gt; qvo-A --&gt; br-int --&gt; patch --&gt; br-tun   br-tun --&gt; patch --&gt; br-int --&gt; qvo-B --&gt; VM-B
+                                   |                 ^
+                                   |  VXLAN tunnel   |
+                                   +-----------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Detailed flow:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>br-int on Compute 1</strong>: Packet from VM-A arrives on <code>qvo-A</code>. If the destination MAC is not known locally, the packet is forwarded to the patch port leading to <code>br-tun</code>. The packet carries the local VLAN tag for the tenant network.</p>
+</li>
+<li>
+<p><strong>br-tun on Compute 1</strong>: Flow table 0 classifies the packet as coming from <code>br-int</code>. Table 20 (unicast) or table 21 (broadcast/multicast/unknown) handles the forwarding:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>For known unicast: Table 20 matches the destination MAC, rewrites the local VLAN tag to the tunnel VNI, and outputs to the specific tunnel port for Compute 2.</p>
+</li>
+<li>
+<p>For unknown/broadcast: Table 21 rewrites the VLAN tag to VNI and outputs to all tunnel ports for this VNI.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Tunnel transport</strong>: The packet is encapsulated in a VXLAN (or GRE/Geneve) header with the VNI corresponding to the tenant network and sent over the underlay network to Compute 2.</p>
+</li>
+<li>
+<p><strong>br-tun on Compute 2</strong>: The packet arrives on the tunnel port from Compute 1. Table 4 (VXLAN input) matches the VNI, rewrites it to the local VLAN tag for this tenant network on this compute, and forwards to <code>br-int</code> via the patch port.</p>
+</li>
+<li>
+<p><strong>br-int on Compute 2</strong>: The packet arrives with the correct local VLAN tag. Flow rules match the destination MAC and forward to <code>qvo-B</code>.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vm_to_external_network"><a class="anchor" href="#_vm_to_external_network"></a>VM to External Network</h4>
+<div class="paragraph">
+<p>A VM accesses the internet or an external network. This requires a router with a gateway to the external network.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Compute Node                    Network Node
+VM-A --&gt; br-int --&gt; br-tun      br-tun --&gt; br-int --&gt; qr (router ns) --&gt; qg --&gt; br-ex --&gt; physical NIC
+              |                    ^
+              | VXLAN tunnel       |
+              +--------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Detailed flow:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Compute node</strong>: VM-A sends a packet to an external IP. Since the destination is not on the local subnet, the VM sends it to its default gateway (the router).</p>
+</li>
+<li>
+<p><strong>br-int &#8594; br-tun on compute</strong>: The packet is encapsulated in a VXLAN tunnel and sent to the network node.</p>
+</li>
+<li>
+<p><strong>Network node br-tun &#8594; br-int</strong>: The packet is decapsulated and forwarded to <code>br-int</code> with the correct local VLAN tag.</p>
+</li>
+<li>
+<p><strong>Router namespace (qrouter-)</strong>: The packet arrives on the router&#8217;s internal interface (<code>qr-&lt;port-id&gt;</code>). Inside the namespace:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>If the VM has a floating IP: SNAT rule translates the source IP from the VM&#8217;s private IP to the floating IP. The packet exits via the external interface (<code>qg-&lt;port-id&gt;</code>).</p>
+</li>
+<li>
+<p>If no floating IP but SNAT is enabled on the router: The source IP is translated to the router&#8217;s external IP.</p>
+</li>
+<li>
+<p>The packet is routed from the internal interface to the external interface based on the namespace&#8217;s routing table.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>br-ex on network node</strong>: The packet arrives on <code>br-ex</code> via the router&#8217;s external interface and is forwarded out the physical NIC to the external network.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In the legacy ML2/OVS architecture without DVR, all north-south traffic (VM to external) must pass through the network node. This makes the network node a potential bottleneck and single point of failure (unless HA L3 agent with VRRP is configured). This is one of the main motivations for moving to OVN.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_flow_tables_in_ml2ovs"><a class="anchor" href="#_flow_tables_in_ml2ovs"></a>Flow Tables in ML2/OVS</h3>
+<div class="paragraph">
+<p>Understanding the flow tables on each bridge is essential for troubleshooting.</p>
+</div>
+<div class="paragraph">
+<p><strong>br-int key tables:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump br-int flows (on a compute node)
+ovs-ofctl dump-flows br-int</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Table 0: Ingress classification
+- Matches incoming ports, applies VLAN tags for internal segmentation.
+- Drops invalid VLAN tagged traffic from VM ports (anti-spoofing).
+- Example: cookie=0x..., table=0, priority=3, in_port="qvo-abc", dl_vlan=0xffff, actions=mod_vlan_vid:10,resubmit(,60)
+
+Table 60: Forwarding based on destination MAC
+- For known unicast: output to the specific port.
+- For unknown: flood to all ports in the same VLAN.
+- Example: cookie=0x..., table=60, priority=20, dl_vlan=10, dl_dst=fa:16:3e:xx:xx:xx, actions=strip_vlan,output:"qvo-xyz"
+
+Table 24: Security group conntrack (if OVS native firewall)
+- Commit new connections to conntrack.
+- Allow established/related connections.
+- Drop invalid connections.</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>br-tun key tables:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">ovs-ofctl dump-flows br-tun</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Table 0: Classify source (patch port vs tunnel port)
+- From patch port (br-int): send to table 2 (egress processing)
+- From tunnel port: send to table 4 (VXLAN), 3 (GRE), or 6 (Geneve)
+
+Table 2: Egress - local VLAN to tunnel VNI
+- Example: table=2, dl_vlan=10, actions=strip_vlan,set_tunnel:0x64,resubmit(,20)
+
+Table 4: Ingress - tunnel VNI to local VLAN
+- Example: table=4, tun_id=0x64, actions=mod_vlan_vid:10,resubmit(,10)
+
+Table 10: MAC learning for incoming tunnel traffic
+Table 20: Unicast output (known destination MACs to specific tunnel ports)
+Table 21: Broadcast/multicast/unknown output (flood to all tunnels for this VNI)</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_security_groups_implementation"><a class="anchor" href="#_security_groups_implementation"></a>Security Groups Implementation</h3>
+<div class="paragraph">
+<p>Security groups in ML2/OVS have gone through two implementations:</p>
+</div>
+<div class="paragraph">
+<p><strong>iptables-based (older):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Each VM port has a Linux bridge (<code>qbr-&lt;port&gt;</code>) between the tap device and the OVS port.</p>
+</li>
+<li>
+<p>iptables rules are applied on the Linux bridge using the <code>physdev</code> module.</p>
+</li>
+<li>
+<p>This works but adds latency and complexity (extra bridge hop).</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>OVS conntrack-based / native firewall (newer):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Security group rules are implemented directly as OVS flow rules using connection tracking (<code>ct()</code> action).</p>
+</li>
+<li>
+<p>No Linux bridge intermediary needed.</p>
+</li>
+<li>
+<p>Better performance and cleaner architecture.</p>
+</li>
+<li>
+<p>Available in RHOSP 13+ with the <code>openvswitch</code> firewall driver.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check which firewall driver is configured
+grep firewall_driver /etc/neutron/plugins/ml2/openvswitch_agent.ini
+# firewall_driver = openvswitch  (native)
+# firewall_driver = iptables_hybrid  (legacy)</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_dvr_distributed_virtual_router_with_ml2ovs"><a class="anchor" href="#_dvr_distributed_virtual_router_with_ml2ovs"></a>DVR (Distributed Virtual Router) with ML2/OVS</h3>
+<div class="paragraph">
+<p>DVR was introduced to address the network node bottleneck. With DVR:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>East-west traffic (VM to VM across subnets) is routed locally on the compute node.</p>
+</li>
+<li>
+<p>North-south traffic with floating IPs is handled locally on the compute node.</p>
+</li>
+<li>
+<p>North-south traffic without floating IPs (SNAT) still goes through the network node.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>DVR adds complexity:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Each compute node gets router namespaces for routers that have ports on locally hosted VMs.</p>
+</li>
+<li>
+<p>Additional MAC address handling for "dvr" MAC addresses.</p>
+</li>
+<li>
+<p>More flow rules on <code>br-int</code> and <code>br-tun</code>.</p>
+</li>
+<li>
+<p>More failure modes to troubleshoot.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_limitations_of_the_ml2ovs_architecture"><a class="anchor" href="#_limitations_of_the_ml2ovs_architecture"></a>Limitations of the ML2/OVS Architecture</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Multiple agents to manage</strong> - L2 agent, L3 agent, DHCP agent, metadata agent, each with its own failure modes.</p>
+</li>
+<li>
+<p><strong>RabbitMQ dependency</strong> - All agent communication goes through RabbitMQ. Message bus issues cause networking issues.</p>
+</li>
+<li>
+<p><strong>Centralized routing without DVR</strong> - Network node bottleneck for all cross-subnet traffic.</p>
+</li>
+<li>
+<p><strong>DVR complexity</strong> - DVR solves the bottleneck but adds significant architectural complexity.</p>
+</li>
+<li>
+<p><strong>Multiple OVS bridges</strong> - <code>br-int</code>, <code>br-tun</code>, <code>br-ex</code> with flows on each. Troubleshooting requires understanding all three.</p>
+</li>
+<li>
+<p><strong>DHCP via dnsmasq</strong> - External process in a namespace, with its own failure modes (namespace deletion, dnsmasq crashes, port binding issues).</p>
+</li>
+<li>
+<p><strong>Scale limitations</strong> - Large deployments (thousands of VMs, hundreds of networks) strain the agent sync model and flow table sizes.</p>
+</li>
+</ol>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ml2ovn_in_rhosp_current"><a class="anchor" href="#_ml2ovn_in_rhosp_current"></a>ML2/OVN in RHOSP (Current)</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_architecture_2"><a class="anchor" href="#_architecture_2"></a>Architecture</h3>
+<div class="paragraph">
+<p>ML2/OVN replaces the multiple Neutron agents with OVN&#8217;s distributed architecture:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+-----------------------------------------------------+
+|                  Controller Node                     |
+|                                                      |
+|  Neutron Server (ML2/OVN mechanism driver)           |
+|  OVN Northbound DB (ovsdb-server)                    |
+|  OVN Southbound DB (ovsdb-server)                    |
+|  ovn-northd                                          |
++---------------------------+-------------------------+
+                            |
+                            | OVSDB protocol
+                            |
+          +-----------------+--------------------+
+          |                                      |
+          v                                      v
++---------------------------+    +---------------------------+
+|     Compute Node          |    |    Gateway / Network Node |
+|                           |    |                           |
+|  ovn-controller           |    |  ovn-controller           |
+|                           |    |                           |
+|  OVS: br-int              |    |  OVS: br-int, br-ex      |
+|    (single bridge)        |    |                           |
+|                           |    |  Gateway chassis for      |
+|  Geneve tunnel ports      |    |  external traffic         |
+|  (direct on br-int)       |    |                           |
+|                           |    |  Geneve tunnel ports      |
+|  VM-A       VM-B          |    +---------------------------+
++---------------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_key_differences_from_ml2ovs"><a class="anchor" href="#_key_differences_from_ml2ovs"></a>Key Differences from ML2/OVS</h3>
+<div class="paragraph">
+<p><strong>No more neutron-openvswitch-agent</strong> - Replaced by <code>ovn-controller</code>. The <code>ovn-controller</code> reads the OVN Southbound Database directly (no RabbitMQ) and programs OVS flow rules on <code>br-int</code>. This is more reliable and faster than the RabbitMQ-based agent sync.</p>
+</div>
+<div class="paragraph">
+<p><strong>No more neutron-l3-agent</strong> - Routing is handled natively by OVN&#8217;s distributed logical routers. Every compute node running <code>ovn-controller</code> can route traffic locally for VMs it hosts. There are no router namespaces, no keepalived processes, and no DVR complexity.</p>
+</div>
+<div class="paragraph">
+<p><strong>No more neutron-dhcp-agent</strong> - DHCP is handled by OVN&#8217;s built-in DHCP responder. When a VM sends a DHCP discover, OVN&#8217;s logical flows intercept it and generate a DHCP offer directly in the pipeline. There is no <code>dnsmasq</code> process, no DHCP namespace, and no external port needed.</p>
+</div>
+<div class="paragraph">
+<p><strong>No more neutron-metadata-agent</strong> (in most configurations) - OVN can provide metadata service through its own mechanism, eliminating the need for a separate metadata agent and the complex metadata proxy chain through router namespaces.</p>
+</div>
+<div class="paragraph">
+<p><strong>Single integration bridge</strong> - <code>br-int</code> handles everything. There is no separate <code>br-tun</code>. Geneve tunnel ports are added directly to <code>br-int</code>. This simplifies the architecture and reduces the number of flow table hops per packet.</p>
+</div>
+<div class="paragraph">
+<p><strong>No br-tun</strong> - In ML2/OVS, the <code>br-tun</code> bridge was responsible for VLAN-to-tunnel translation. In ML2/OVN, OVN handles the overlay logic within <code>br-int&#8217;s flow tables. Tunnel ports (Geneve) are added directly to `br-int</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVSDB instead of RabbitMQ</strong> - State distribution uses the OVSDB protocol between <code>ovn-controller</code> and the Southbound Database. This is more reliable, has better change notification (monitoring), and does not depend on a message broker.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The shift from ML2/OVS to ML2/OVN eliminates four separate agent processes (L2, L3, DHCP, metadata) and replaces them with a single <code>ovn-controller</code> per node. This dramatically reduces the number of moving parts that can fail and simplifies the operational model.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_neutron_maps_to_ovn"><a class="anchor" href="#_how_neutron_maps_to_ovn"></a>How Neutron Maps to OVN</h3>
+<div class="paragraph">
+<p>When the ML2/OVN mechanism driver processes a Neutron API request, it translates the Neutron objects into OVN Northbound Database objects:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Neutron Object</th>
+<th class="tableblock halign-left valign-top">OVN NB Object</th>
+<th class="tableblock halign-left valign-top">Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Network</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Switch</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each Neutron network becomes an OVN logical switch. The network&#8217;s segmentation ID maps to the logical switch&#8217;s tunnel key.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Subnet</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DHCP Options + Logical Switch config</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Subnet information (CIDR, gateway, DNS) is stored as DHCP options on the logical switch. OVN uses these to respond to DHCP requests.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Switch Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each Neutron port becomes a logical switch port with the same MAC and IP addresses. Port security settings are translated to OVN port security.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Router</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Router</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each Neutron router becomes an OVN logical router. Router interfaces become logical router ports.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Router Interface</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Router Port + Logical Switch Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Adding a router interface creates a logical router port and a "router" type logical switch port that connects the router to the logical switch.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Security Group</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ACLs (Address Sets)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each security group rule becomes one or more OVN ACLs. Security group membership is tracked using address sets, which are dynamically updated as ports are added or removed.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Floating IP</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NAT (DNAT + SNAT)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each floating IP becomes a NAT entry on the logical router with both DNAT (inbound) and SNAT (outbound) rules.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Router Gateway</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Router Gateway Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Setting a router&#8217;s external gateway creates a gateway port on the logical router, with SNAT for external access.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Trunk</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Parent Port + Child Ports</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Trunking is supported via OVN&#8217;s parent/child port relationship with VLAN tags.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>You can verify these mappings directly:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List Neutron networks and their corresponding OVN logical switches
+openstack network list
+ovn-nbctl ls-list
+
+# Compare a specific network
+openstack network show &lt;network-id&gt;
+ovn-nbctl ls-find external_ids:neutron\\:network_name=&lt;network-name&gt;
+
+# List OVN logical switch ports for a network
+ovn-nbctl lsp-list &lt;logical-switch-name&gt;
+
+# Check how a security group maps to ACLs
+openstack security group show &lt;sg-id&gt;
+ovn-nbctl acl-list &lt;logical-switch-name&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_packet_flow_in_ml2ovn"><a class="anchor" href="#_packet_flow_in_ml2ovn"></a>Packet Flow in ML2/OVN</h3>
+<div class="sect3">
+<h4 id="_vm_to_vm_same_compute_same_logical_switch"><a class="anchor" href="#_vm_to_vm_same_compute_same_logical_switch"></a>VM to VM - Same Compute, Same Logical Switch</h4>
+<div class="listingblock">
+<div class="content">
+<pre>VM-A (192.168.1.10) --&gt; tap-A --&gt; br-int --&gt; tap-B --&gt; VM-B (192.168.1.20)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Both ports are on the same logical switch, on the same hypervisor. The flow path within <code>br-int</code>:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Table 0 (Classifier)</strong>: Packet arrives from VM-A&#8217;s port. Classified as a local VM port.</p>
+</li>
+<li>
+<p><strong>Table 8 (Ingress Port Security)</strong>: Validates that the source MAC and IP match the port&#8217;s allowed addresses. Drops spoofed packets.</p>
+</li>
+<li>
+<p><strong>Tables 16-22 (Ingress ACLs)</strong>: Evaluates security group rules using conntrack. For an established connection, the packet is allowed immediately. For a new connection, the ACL rules are checked.</p>
+</li>
+<li>
+<p><strong>Table 24 (Ingress L2 Lookup)</strong>: Looks up the destination MAC address.</p>
+</li>
+<li>
+<p><strong>Table 32 (Egress Port Security)</strong>: Validates the destination port&#8217;s security settings.</p>
+</li>
+<li>
+<p><strong>Tables 40-48 (Egress ACLs)</strong>: Evaluates egress security group rules on the destination port.</p>
+</li>
+<li>
+<p><strong>Table 64 (Output)</strong>: Sends the packet out the destination port.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The packet never leaves <code>br-int</code> and never enters a tunnel.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vm_to_vm_different_compute_same_logical_switch"><a class="anchor" href="#_vm_to_vm_different_compute_same_logical_switch"></a>VM to VM - Different Compute, Same Logical Switch</h4>
+<div class="listingblock">
+<div class="content">
+<pre>Compute 1                                    Compute 2
+VM-A --&gt; br-int --&gt; geneve tunnel port       geneve tunnel port --&gt; br-int --&gt; VM-B
+                        |                             ^
+                        |   Geneve tunnel             |
+                        +-----------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Flow path:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Compute 1 - br-int ingress pipeline</strong>: Same as above through port security and ACLs.</p>
+</li>
+<li>
+<p><strong>Compute 1 - L2 Lookup</strong>: Destination MAC is on a remote chassis. The output action sends the packet to the Geneve tunnel port for Compute 2, with the logical datapath and logical output port encoded in the Geneve tunnel metadata.</p>
+</li>
+<li>
+<p><strong>Geneve transport</strong>: The packet is encapsulated in Geneve with:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>VNI = logical datapath tunnel key (identifies the logical switch).</p>
+</li>
+<li>
+<p>Geneve options = logical output port, logical input port.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Compute 2 - br-int tunnel classification</strong>: Packet arrives from a Geneve tunnel. The tunnel metadata identifies the logical datapath and destination port.</p>
+</li>
+<li>
+<p><strong>Compute 2 - egress pipeline</strong>: The packet enters the egress pipeline (egress port security, egress ACLs).</p>
+</li>
+<li>
+<p><strong>Compute 2 - Output</strong>: Packet is sent out VM-B&#8217;s port.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Notice there is no <code>br-tun</code> bridge, no VLAN-to-VNI translation, and no patch port between bridges. Everything happens within <code>br-int</code> and the Geneve tunnel metadata carries the logical context. This is simpler than the ML2/OVS approach.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vm_to_external_network_2"><a class="anchor" href="#_vm_to_external_network_2"></a>VM to External Network</h4>
+<div class="listingblock">
+<div class="content">
+<pre>Compute Node                        Gateway Node
+VM-A --&gt; br-int --&gt; geneve tunnel    geneve tunnel --&gt; br-int --&gt; router pipeline
+                        |                ^                  |
+                        +----------------+                  v
+                                                   br-ex --&gt; physical NIC</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Flow path:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Compute node</strong>: VM-A sends a packet to an external IP. The default gateway is the logical router.</p>
+</li>
+<li>
+<p><strong>Compute node - br-int routing pipeline</strong>: OVN performs L3 routing within the <code>br-int</code> flow tables. The packet&#8217;s TTL is decremented, the source MAC is changed to the router&#8217;s MAC, and the destination MAC is changed to the next hop&#8217;s MAC. But since the external port is on the gateway chassis (not this compute), the packet is sent via a Geneve tunnel to the gateway node.</p>
+</li>
+<li>
+<p><strong>Gateway node - br-int</strong>: The packet arrives and continues through the routing pipeline. NAT rules are applied:</p>
+<div class="ulist">
+<ul>
+<li>
+<p>If the VM has a floating IP: SNAT translates the source IP.</p>
+</li>
+<li>
+<p>If SNAT is enabled on the router: The source IP is translated to the router&#8217;s external IP.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p><strong>Gateway node - br-ex</strong>: The packet exits to the physical network through <code>br-ex</code>.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_gateway_nodes_and_chassis_redirect"><a class="anchor" href="#_gateway_nodes_and_chassis_redirect"></a>Gateway Nodes and Chassis Redirect</h3>
+<div class="paragraph">
+<p>In OVN, certain functions must be centralized on specific nodes because they require access to the physical external network. These nodes are called <strong>gateway chassis</strong>.</p>
+</div>
+<div class="paragraph">
+<p>When a logical router has a gateway port (external connectivity), OVN uses the concept of <strong>chassis redirect</strong>:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>The logical router port connected to the external network is a "redirect" type port.</p>
+</li>
+<li>
+<p>This port is bound to a specific gateway chassis.</p>
+</li>
+<li>
+<p>Traffic destined for external networks is tunneled to the gateway chassis for processing.</p>
+</li>
+<li>
+<p>Multiple gateway chassis can be configured for HA (active/standby using BFD).</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check which chassis is the gateway for a logical router port
+ovn-sbctl find port_binding type=chassisredirect
+
+# Check gateway chassis priority
+ovn-nbctl lrp-get-gateway-chassis &lt;router-port&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ha_for_gateway_routers"><a class="anchor" href="#_ha_for_gateway_routers"></a>HA for Gateway Routers</h3>
+<div class="paragraph">
+<p>OVN supports HA for gateway routers through multiple mechanisms:</p>
+</div>
+<div class="paragraph">
+<p><strong>Gateway Chassis HA:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Multiple gateway chassis can be assigned to a logical router port with different priorities.</p>
+</li>
+<li>
+<p>BFD (Bidirectional Forwarding Detection) monitors the health of each gateway chassis.</p>
+</li>
+<li>
+<p>If the active gateway chassis fails, OVN automatically redirects traffic to the next highest priority chassis.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Assign multiple gateway chassis with priorities
+ovn-nbctl lrp-set-gateway-chassis &lt;router-port&gt; &lt;chassis-1&gt; 20
+ovn-nbctl lrp-set-gateway-chassis &lt;router-port&gt; &lt;chassis-2&gt; 10
+
+# Check BFD status
+ovn-sbctl list bfd</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>L3 HA with distributed gateway ports:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>OVN can spread gateway ports across multiple chassis for different routers.</p>
+</li>
+<li>
+<p>Each router&#8217;s gateway port is bound to a specific chassis, but different routers can use different chassis.</p>
+</li>
+<li>
+<p>This distributes the north-south traffic load across multiple gateway nodes.</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_comparing_ml2ovs_vs_ml2ovn_in_rhosp"><a class="anchor" href="#_comparing_ml2ovs_vs_ml2ovn_in_rhosp"></a>Comparing ML2/OVS vs ML2/OVN in RHOSP</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_performance_differences"><a class="anchor" href="#_performance_differences"></a>Performance Differences</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">ML2/OVS</th>
+<th class="tableblock halign-left valign-top">ML2/OVN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">East-west routing (same subnet)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Local on compute (both)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Local on compute (both)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">East-west routing (cross-subnet)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through network node (without DVR)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Local on compute (always distributed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">North-south with floating IP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through network node (or compute with DVR)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through gateway chassis (or compute in some cases)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">North-south SNAT</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through network node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Through gateway chassis</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DHCP response time</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">dnsmasq process in namespace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Direct flow response (faster)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Security group evaluation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS conntrack or iptables</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS conntrack (always)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Control plane convergence</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RabbitMQ message delivery</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB change notification (faster)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Flow table size per compute</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Moderate</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Larger (more comprehensive pipeline)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The most significant performance improvement of ML2/OVN over ML2/OVS is the elimination of the network node bottleneck for east-west routing. In large deployments with significant cross-subnet traffic, this alone justifies the migration.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_feature_parity"><a class="anchor" href="#_feature_parity"></a>Feature Parity</h3>
+<div class="paragraph">
+<p>Most Neutron features are supported by both ML2/OVS and ML2/OVN. However, there are differences:</p>
+</div>
+<div class="paragraph">
+<p><strong>Features better supported in ML2/OVN:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Distributed routing (native, no DVR complexity)</p>
+</li>
+<li>
+<p>Built-in DHCP (no dnsmasq dependency)</p>
+</li>
+<li>
+<p>OVN-native load balancing</p>
+</li>
+<li>
+<p>Faster control plane convergence</p>
+</li>
+<li>
+<p>Simpler HA model (BFD-based gateway HA)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Features that were ML2/OVS-only (historically):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Some advanced QoS policies</p>
+</li>
+<li>
+<p>Certain Neutron extensions that relied on OVS agent hooks</p>
+</li>
+<li>
+<p>Specific iptables-based firewall rules (edge cases)</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>As of RHOSP 16.2 and later, ML2/OVN has reached full feature parity for the vast majority of use cases. Red Hat maintains a detailed feature comparison matrix in the product documentation. Always consult the release-specific documentation for the exact list of supported features.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_operational_differences"><a class="anchor" href="#_operational_differences"></a>Operational Differences</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">ML2/OVS</th>
+<th class="tableblock halign-left valign-top">ML2/OVN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Services to monitor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-openvswitch-agent, neutron-l3-agent, neutron-dhcp-agent, neutron-metadata-agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller, ovn-northd, OVN NB/SB databases</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Log locations</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Individual agent logs on each node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller log on each node, ovn-northd log on controllers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Troubleshooting starting point</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Agent logs, OVS flow dumps on multiple bridges</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN NB/SB DB inspection, ovn-trace, single bridge flows</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Namespace management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Router and DHCP namespaces to manage</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No namespaces for L3/DHCP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Backup criticality</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron DB is the source of truth</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron DB + OVN NB DB are both important</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upgrade impact</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Per-node agent restarts</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Central DB upgrade + per-node ovn-controller restart</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_migration_considerations"><a class="anchor" href="#_migration_considerations"></a>Migration Considerations</h3>
+<div class="paragraph">
+<p>When migrating from ML2/OVS to ML2/OVN in RHOSP:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Feature audit</strong> - Verify that all Neutron features in use are supported by ML2/OVN.</p>
+</li>
+<li>
+<p><strong>Performance baseline</strong> - Measure current performance (throughput, latency, connection rates) before migration.</p>
+</li>
+<li>
+<p><strong>Migration tooling</strong> - Use Red Hat&#8217;s provided migration tools (available in RHOSP 16.2+).</p>
+</li>
+<li>
+<p><strong>Downtime planning</strong> - The migration involves networking downtime. Plan a maintenance window.</p>
+</li>
+<li>
+<p><strong>Rollback plan</strong> - Have a tested rollback procedure in case issues arise.</p>
+</li>
+<li>
+<p><strong>Post-migration validation</strong> - Verify all network connectivity, security groups, floating IPs, and routing.</p>
+</li>
+<li>
+<p><strong>Monitoring update</strong> - Update monitoring and alerting to track OVN services instead of Neutron agents.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_red_hats_recommendation_and_direction"><a class="anchor" href="#_red_hats_recommendation_and_direction"></a>Red Hat&#8217;s Recommendation and Direction</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>RHOSP 16.2+</strong>: ML2/OVN is the default for new deployments.</p>
+</li>
+<li>
+<p><strong>RHOSP 17+</strong>: ML2/OVN is the standard networking backend.</p>
+</li>
+<li>
+<p><strong>RHOSO (Red Hat OpenStack Services on OpenShift)</strong>: Uses ML2/OVN exclusively.</p>
+</li>
+<li>
+<p><strong>New deployments</strong>: Should use ML2/OVN unless there is a specific, documented reason for ML2/OVS.</p>
+</li>
+<li>
+<p><strong>Existing ML2/OVS deployments</strong>: Red Hat recommends planning migration to ML2/OVN, especially before upgrading to versions where ML2/OVS support may be reduced.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>While ML2/OVS is still supported in currently maintained RHOSP versions, Red Hat&#8217;s engineering investment and new feature development are focused on ML2/OVN. Customers running ML2/OVS should plan their migration path.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_hands_on_exploring_ovsovn_in_a_rhosp_environment"><a class="anchor" href="#_hands_on_exploring_ovsovn_in_a_rhosp_environment"></a>Hands-On: Exploring OVS/OVN in a RHOSP Environment</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section provides commands to run on a live RHOSP environment. These assume the environment is already deployed and you have SSH access to the nodes.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>These commands are for exploration and learning. They are all read-only and safe to run on a production environment. Commands that modify state are clearly marked.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_for_ml2ovs_environments"><a class="anchor" href="#_for_ml2ovs_environments"></a>For ML2/OVS Environments</h3>
+<div class="sect3">
+<h4 id="_check_neutron_configuration"><a class="anchor" href="#_check_neutron_configuration"></a>Check Neutron Configuration</h4>
+<div class="paragraph">
+<p>On the controller node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the mechanism driver
+grep mechanism_drivers /etc/neutron/plugins/ml2/ml2_conf.ini</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>mechanism_drivers = openvswitch</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the type drivers
+grep type_drivers /etc/neutron/plugins/ml2/ml2_conf.ini</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>type_drivers = vxlan,vlan,flat,geneve</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the firewall driver (native OVS or iptables)
+grep firewall_driver /etc/neutron/plugins/ml2/openvswitch_agent.ini</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>firewall_driver = openvswitch</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_list_ovs_bridges"><a class="anchor" href="#_list_ovs_bridges"></a>List OVS Bridges</h4>
+<div class="paragraph">
+<p>On a compute node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all OVS bridges, ports, and interfaces
+ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Bridge br-int
+    Controller "tcp:127.0.0.1:6633"
+    fail_mode: secure
+    Port br-int
+        Interface br-int
+            type: internal
+    Port "qvo3a4f5b6c-de"
+        tag: 10
+        Interface "qvo3a4f5b6c-de"
+    Port patch-tun
+        Interface patch-tun
+            type: patch
+            options: {peer=patch-int}
+Bridge br-tun
+    Controller "tcp:127.0.0.1:6633"
+    fail_mode: secure
+    Port br-tun
+        Interface br-tun
+            type: internal
+    Port patch-int
+        Interface patch-int
+            type: patch
+            options: {peer=patch-tun}
+    Port "vxlan-c0a80102"
+        Interface "vxlan-c0a80102"
+            type: vxlan
+            options: {df_default="true", local_ip="192.168.1.1", remote_ip="192.168.1.2"}</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>On a network node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Same as compute plus br-ex:
+Bridge br-ex
+    Port br-ex
+        Interface br-ex
+            type: internal
+    Port "eth1"
+        Interface "eth1"
+    Port "qg-7d8e9f0a-bc"
+        Interface "qg-7d8e9f0a-bc"
+            type: internal</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_examine_flow_tables"><a class="anchor" href="#_examine_flow_tables"></a>Examine Flow Tables</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># br-int flows (compute node)
+ovs-ofctl dump-flows br-int</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Example output (abbreviated)
+cookie=0x..., table=0, priority=3,in_port="qvo3a4f5b6c-de",dl_vlan=0xffff actions=mod_vlan_vid:10,resubmit(,60)
+cookie=0x..., table=60, priority=20,dl_vlan=10,dl_dst=fa:16:3e:xx:xx:xx actions=strip_vlan,output:"qvo3a4f5b6c-de"
+cookie=0x..., table=60, priority=1 actions=NORMAL</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># br-tun flows (examine tunnel mapping)
+ovs-ofctl dump-flows br-tun</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Example output (abbreviated)
+cookie=0x..., table=0, priority=1,in_port="patch-int" actions=resubmit(,2)
+cookie=0x..., table=0, priority=1,in_port="vxlan-c0a80102" actions=resubmit(,4)
+cookie=0x..., table=2, priority=1,dl_vlan=10 actions=strip_vlan,set_tunnel:0x64,resubmit(,20)
+cookie=0x..., table=4, priority=1,tun_id=0x64 actions=mod_vlan_vid:10,resubmit(,10)</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># br-ex flows (network node)
+ovs-ofctl dump-flows br-ex</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_a_packet_from_vm_to_vm"><a class="anchor" href="#_trace_a_packet_from_vm_to_vm"></a>Trace a Packet from VM to VM</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find the VM's port on br-int
+ovs-vsctl list-ports br-int | grep qvo
+
+# Get the port number
+ovs-ofctl show br-int | grep qvo
+
+# Check which flows match for traffic from this port
+ovs-ofctl dump-flows br-int | grep "in_port=\"qvo3a4f5b6c-de\""
+
+# Check the corresponding tunnel flows
+ovs-ofctl dump-flows br-tun | grep "tun_id=0x64"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_security_group_flows"><a class="anchor" href="#_check_security_group_flows"></a>Check Security Group Flows</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># With native OVS firewall, security group flows use conntrack
+ovs-ofctl dump-flows br-int | grep "ct("
+
+# Example conntrack flow for allowing established connections
+# cookie=0x..., table=72, priority=50,ct_state=+est-rel-rpl,ct_mark=0, actions=output:&lt;port&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_l3_agent_router_namespaces"><a class="anchor" href="#_check_l3_agent_router_namespaces"></a>Check L3 Agent Router Namespaces</h4>
+<div class="paragraph">
+<p>On the network node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all router namespaces
+ip netns list | grep qrouter
+
+# Enter a router namespace and check its configuration
+ip netns exec qrouter-&lt;router-id&gt; ip addr show
+ip netns exec qrouter-&lt;router-id&gt; ip route show
+ip netns exec qrouter-&lt;router-id&gt; iptables -t nat -L -n -v</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_for_ml2ovn_environments"><a class="anchor" href="#_for_ml2ovn_environments"></a>For ML2/OVN Environments</h3>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+<div class="title">Containerized OVN Services in RHOSP 17.x</div>
+<div class="paragraph">
+<p>In RHOSP 17.x with TripleO, the OVN databases and <code>ovn-northd</code> run as Pacemaker-managed Podman containers on the controller nodes. You cannot run <code>ovn-nbctl</code> or <code>ovn-sbctl</code> directly on the host - you must <code>exec</code> into the appropriate container.</p>
+</div>
+<div class="paragraph">
+<p>The typical container names are:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovn_cluster_north_db_server</code> - hosts the OVN Northbound database</p>
+</li>
+<li>
+<p><code>ovn_cluster_south_db_server</code> - hosts the OVN Southbound database</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>To check which containers are running:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo podman ps --format "{{.Names}}" | grep ovn</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To access the OVN databases:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Northbound database commands
+sudo podman exec ovn_cluster_north_db_server ovn-nbctl show
+
+# Southbound database commands
+sudo podman exec ovn_cluster_south_db_server ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Because the OVN databases run in a Raft cluster across the three controllers, append <code>--no-leader-only</code> if you need to query a specific node rather than the current leader:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo podman exec ovn_cluster_north_db_server ovn-nbctl --no-leader-only show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To check Pacemaker resource status:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo pcs status | grep -A2 ovn</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>On <strong>compute nodes</strong>, <code>ovn-controller</code> runs as a Podman container named <code>ovn_controller</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The commands in the sections below are shown without the <code>podman exec</code> prefix for readability. In a RHOSP 17.x environment, prefix each command with <code>sudo podman exec &lt;container-name&gt;</code> as shown above.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_check_neutron_configuration_2"><a class="anchor" href="#_check_neutron_configuration_2"></a>Check Neutron Configuration</h4>
+<div class="paragraph">
+<p>On the controller node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the mechanism driver
+grep mechanism_drivers /etc/neutron/plugins/ml2/ml2_conf.ini</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>mechanism_drivers = ovn</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check OVN-specific configuration
+grep -A 20 "\[ovn\]" /etc/neutron/plugins/ml2/ml2_conf.ini</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ovn]
+ovn_nb_connection = tcp:&lt;controller-ip&gt;:6641
+ovn_sb_connection = tcp:&lt;controller-ip&gt;:6642
+ovn_l3_scheduler = leastloaded
+ovn_metadata_enabled = True</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_examine_ovn_northbound_database"><a class="anchor" href="#_examine_ovn_northbound_database"></a>Examine OVN Northbound Database</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all logical switches and ports
+ovn-nbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>switch 7a8b9c0d-1234-5678-abcd-ef0123456789 (neutron-&lt;network-id&gt;)
+    port &lt;port-id-1&gt;
+        addresses: ["fa:16:3e:xx:xx:xx 192.168.1.10"]
+    port &lt;port-id-2&gt;
+        addresses: ["fa:16:3e:yy:yy:yy 192.168.1.20"]
+    port provnet-&lt;network-id&gt;
+        type: localnet
+        addresses: ["unknown"]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all logical switches
+ovn-nbctl ls-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List ports on a specific logical switch
+ovn-nbctl lsp-list &lt;logical-switch-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show port details (addresses, security)
+ovn-nbctl lsp-get-addresses &lt;port-name&gt;
+ovn-nbctl lsp-get-port-security &lt;port-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show logical routers
+ovn-nbctl lr-list
+
+# Show router ports
+ovn-nbctl lrp-list &lt;router-name&gt;
+
+# Show router routes
+ovn-nbctl lr-route-list &lt;router-name&gt;
+
+# Show NAT rules (floating IPs, SNAT)
+ovn-nbctl lr-nat-list &lt;router-name&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_examine_ovn_southbound_database"><a class="anchor" href="#_examine_ovn_southbound_database"></a>Examine OVN Southbound Database</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all chassis and their port bindings
+ovn-sbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Chassis "chassis-1"
+    hostname: compute-1.example.com
+    Encap geneve
+        ip: "192.168.1.101"
+        options: {csum="true"}
+    Port_Binding "port-id-1"
+    Port_Binding "port-id-2"
+Chassis "chassis-2"
+    hostname: compute-2.example.com
+    Encap geneve
+        ip: "192.168.1.102"
+        options: {csum="true"}
+    Port_Binding "port-id-3"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all chassis
+ovn-sbctl list chassis</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check specific port bindings (which port is on which chassis)
+ovn-sbctl find port_binding logical_port=&lt;port-id&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_list_logical_flows"><a class="anchor" href="#_list_logical_flows"></a>List Logical Flows</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all logical flows (can be very large)
+ovn-sbctl lflow-list
+
+# List logical flows for a specific logical switch
+ovn-sbctl lflow-list &lt;logical-switch-name&gt;
+
+# List flows for a specific table (e.g., table 0 = classifier)
+ovn-sbctl lflow-list &lt;logical-switch-name&gt; | grep "table=0"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Example logical flow output
+Datapath: "neutron-&lt;network-id&gt;" (7a8b9c0d-...)
+  table=0 (ls_in_port_sec_l2), priority=50, match=(inport == "port-1" &amp;&amp; eth.src == {fa:16:3e:xx:xx:xx}), action=(next;)
+  table=6 (ls_in_acl), priority=34000, match=(ct.est &amp;&amp; !ct.rel &amp;&amp; !ct.new &amp;&amp; !ct.inv &amp;&amp; ct.rpl &amp;&amp; ct_mark.blocked == 0), action=(reg0[9] = 0; next;)
+  table=13 (ls_in_l2_lkup), priority=50, match=(eth.dst == fa:16:3e:yy:yy:yy), action=(outport = "port-2"; output;)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_ovs_flows_programmed_by_ovn"><a class="anchor" href="#_check_ovs_flows_programmed_by_ovn"></a>Check OVS Flows Programmed by OVN</h4>
+<div class="paragraph">
+<p>On a compute node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Dump physical flows on br-int (programmed by ovn-controller)
+ovs-ofctl dump-flows br-int</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># OVN-generated flows are organized by table number
+# Tables correspond to the OVN logical pipeline stages
+# The cookie value links physical flows back to logical flows</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># To correlate physical flows with logical flows, use ovn-detrace:
+ovs-ofctl dump-flows br-int | ovn-detrace --ovnsb=unix:/var/run/ovn/ovnsb_db.sock</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p><code>ovn-detrace</code> is an extremely useful tool that annotates OVS physical flows with their corresponding OVN logical flows. This bridges the gap between the physical and logical layers and is invaluable for troubleshooting.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_a_packet_with_ovn_trace"><a class="anchor" href="#_trace_a_packet_with_ovn_trace"></a>Trace a Packet with ovn-trace</h4>
+<div class="paragraph">
+<p><code>ovn-trace</code> simulates the logical pipeline for a given packet without sending an actual packet. This is one of OVN&#8217;s most powerful troubleshooting tools.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace a packet from port-1 to port-2 on the same logical switch
+ovn-trace --summary neutron-&lt;network-id&gt; \
+  'inport == "&lt;port-1&gt;" &amp;&amp; eth.src == fa:16:3e:xx:xx:xx &amp;&amp; eth.dst == fa:16:3e:yy:yy:yy &amp;&amp; ip4.src == 192.168.1.10 &amp;&amp; ip4.dst == 192.168.1.20 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Example output (summary mode)
+ingress(dp="neutron-&lt;network-id&gt;", inport="port-1")
+-------------------------------------------------
+ 0. ls_in_port_sec_l2: inport == "port-1" &amp;&amp; eth.src == {fa:16:3e:xx:xx:xx}, priority 50, uuid ...
+    next;
+ 6. ls_in_acl (allow-related): ..., priority 2002, uuid ...
+    ct_commit { ... }; next;
+13. ls_in_l2_lkup: eth.dst == fa:16:3e:yy:yy:yy, priority 50, uuid ...
+    outport = "port-2";
+    output;
+
+egress(dp="neutron-&lt;network-id&gt;", inport="port-1", outport="port-2")
+-------------------------------------------------
+ 1. ls_out_port_sec_l2: outport == "port-2" &amp;&amp; eth.dst == {fa:16:3e:yy:yy:yy}, priority 50, uuid ...
+    output;
+    /* output to "port-2", type "" */</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace a routed packet (cross-subnet)
+ovn-trace --summary neutron-&lt;network-id&gt; \
+  'inport == "&lt;port-1&gt;" &amp;&amp; eth.src == fa:16:3e:xx:xx:xx &amp;&amp; eth.dst == 00:00:00:00:01:01 &amp;&amp; ip4.src == 192.168.1.10 &amp;&amp; ip4.dst == 10.0.0.20 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The trace output shows every pipeline stage the packet traverses, which flow matched, and what action was taken. If a packet would be dropped, the trace shows exactly where and why.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_chassis_and_port_bindings"><a class="anchor" href="#_check_chassis_and_port_bindings"></a>Check Chassis and Port Bindings</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all chassis with hostnames and encapsulation info
+ovn-sbctl list chassis | grep -E "name|hostname|Encap"
+
+# Check which ports are bound to which chassis
+ovn-sbctl list port_binding | grep -E "logical_port|chassis|type"
+
+# Find unbound ports (ports with no chassis - VMs might be down or port is misconfigured)
+ovn-sbctl find port_binding chassis=[]
+
+# Check the binding status of a specific port
+ovn-sbctl get port_binding &lt;port-id&gt; chassis</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_verify_geneve_tunnels"><a class="anchor" href="#_verify_geneve_tunnels"></a>Verify Geneve Tunnels</h4>
+<div class="paragraph">
+<p>On a compute node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List Geneve tunnel ports on br-int
+ovs-vsctl find interface type=geneve</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : &lt;uuid&gt;
+admin_state         : up
+bfd                 : {}
+bfd_status          : {}
+cfm_fault           : []
+cfm_fault_status    : []
+cfm_mpid            : []
+name                : "ovn-chass2-0"
+ofport              : 2
+options             : {csum="true", key=flow, remote_ip="192.168.1.102"}
+type                : geneve</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify tunnel connectivity by checking OVS port statistics
+ovs-ofctl dump-ports br-int
+
+# Check for tunnel port errors
+ovs-vsctl list interface ovn-chass2-0 | grep -E "name|error|statistics"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_ovn_dhcp"><a class="anchor" href="#_check_ovn_dhcp"></a>Check OVN DHCP</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List DHCP options in the NB DB
+ovn-nbctl list dhcp_options</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : &lt;uuid&gt;
+cidr                : "192.168.1.0/24"
+external_ids        : {"neutron:revision_number"="0", "subnet_id"="&lt;subnet-id&gt;"}
+options             : {classless_static_route="{169.254.169.254/32,192.168.1.1, 0.0.0.0/0,192.168.1.1}", dns_server="{8.8.8.8}", lease_time="43200", mtu="1442", router="192.168.1.1", server_id="192.168.1.1", server_mac="fa:16:3e:xx:xx:xx"}</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the logical flows that implement DHCP
+ovn-sbctl lflow-list | grep -i dhcp</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Example DHCP responder flow
+table=14(ls_in_dhcp_options), priority=100, match=(inport == "port-1" &amp;&amp; eth.src == fa:16:3e:xx:xx:xx &amp;&amp; ip4.src == 0.0.0.0 &amp;&amp; ip4.dst == 255.255.255.255 &amp;&amp; udp.src == 68 &amp;&amp; udp.dst == 67), action=(reg0[3] = put_dhcp_opts(offerip = 192.168.1.10, ...); next;)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_ovn_acls_for_security_groups"><a class="anchor" href="#_check_ovn_acls_for_security_groups"></a>Check OVN ACLs for Security Groups</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List ACLs on a logical switch
+ovn-nbctl acl-list &lt;logical-switch-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>from-lport  1002 (inport == @pg_&lt;security-group-id&gt; &amp;&amp; ip4) allow-related
+from-lport  1002 (inport == @pg_&lt;security-group-id&gt; &amp;&amp; ip6) allow-related
+from-lport  1001 (inport == @pg_&lt;security-group-id&gt; &amp;&amp; ip) drop
+  to-lport  1002 (outport == @pg_&lt;security-group-id&gt; &amp;&amp; ip4 &amp;&amp; ip4.src == 0.0.0.0/0 &amp;&amp; tcp.dst == 22) allow-related
+  to-lport  1002 (outport == @pg_&lt;security-group-id&gt; &amp;&amp; ip4 &amp;&amp; ip4.src == 0.0.0.0/0 &amp;&amp; icmp4) allow-related
+  to-lport  1001 (outport == @pg_&lt;security-group-id&gt; &amp;&amp; ip) drop</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check address sets (used by security groups for dynamic group membership)
+ovn-nbctl list address_set</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify security group logical flows
+ovn-sbctl lflow-list | grep -E "acl|ct_commit|ct\("</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_common_rhosp_networking_issues_related_to_ovsovn"><a class="anchor" href="#_common_rhosp_networking_issues_related_to_ovsovn"></a>Common RHOSP Networking Issues Related to OVS/OVN</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_tunnel_connectivity_problems"><a class="anchor" href="#_tunnel_connectivity_problems"></a>Tunnel Connectivity Problems</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VMs on different computes cannot communicate.</p>
+</li>
+<li>
+<p><code>ping</code> between VMs on the same network but different hypervisors fails.</p>
+</li>
+<li>
+<p>OVN: Geneve tunnels show errors.</p>
+</li>
+<li>
+<p>ML2/OVS: VXLAN tunnel ports show errors.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check if tunnel ports are up
+ovs-vsctl show | grep -A 3 geneve    # OVN
+ovs-vsctl show | grep -A 3 vxlan     # ML2/OVS
+
+# Check tunnel port statistics for errors
+ovs-vsctl list interface &lt;tunnel-port-name&gt; | grep -E "name|error|statistics"
+
+# Verify underlay connectivity (can the hypervisors reach each other on the tunnel network?)
+ping &lt;remote-hypervisor-tunnel-ip&gt;
+
+# Check MTU (tunnels add overhead; underlay MTU must accommodate it)
+# Geneve overhead: ~58 bytes (standard) or more with options
+# VXLAN overhead: ~50 bytes
+ip link show &lt;underlay-interface&gt; | grep mtu
+
+# Check for firewall rules blocking tunnel traffic
+# Geneve: UDP port 6081
+# VXLAN: UDP port 4789
+iptables -L -n | grep -E "6081|4789"
+nft list ruleset | grep -E "6081|4789"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Underlay network connectivity issue (routing, firewall).</p>
+</li>
+<li>
+<p>MTU too small on the underlay network (tunneled packets are dropped due to fragmentation).</p>
+</li>
+<li>
+<p>Firewall blocking tunnel ports (UDP 6081 for Geneve, UDP 4789 for VXLAN).</p>
+</li>
+<li>
+<p>Wrong tunnel endpoint IP configured.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>MTU issues are one of the most common and hardest-to-diagnose tunnel problems. If small packets (e.g., ping with default size) work but large packets or TCP transfers fail, suspect an MTU issue. The underlay network MTU must be at least the VM MTU plus the tunnel overhead. For Geneve with a 1500-byte VM MTU, the underlay needs at least ~1558 bytes.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_vm_cannot_get_dhcp"><a class="anchor" href="#_vm_cannot_get_dhcp"></a>VM Cannot Get DHCP</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM boots but gets no IP address.</p>
+</li>
+<li>
+<p>VM is stuck at DHCP discovery.</p>
+</li>
+<li>
+<p><code>openstack server show</code> shows no IP assigned.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps for ML2/OVS:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the DHCP namespace exists
+ip netns list | grep qdhcp-&lt;network-id&gt;
+
+# Check dnsmasq is running in the namespace
+ip netns exec qdhcp-&lt;network-id&gt; ps aux | grep dnsmasq
+
+# Check the DHCP port is in br-int
+ovs-vsctl show | grep tap&lt;dhcp-port-id&gt;
+
+# Check dnsmasq lease file
+cat /var/lib/neutron/dhcp/&lt;network-id&gt;/leases
+
+# Capture DHCP traffic
+ip netns exec qdhcp-&lt;network-id&gt; tcpdump -i tap&lt;dhcp-port-id&gt; -n port 67 or port 68</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps for ML2/OVN:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check DHCP options are configured in OVN NB DB
+ovn-nbctl list dhcp_options | grep -A 5 &lt;subnet-id&gt;
+
+# Check the logical flows for DHCP
+ovn-sbctl lflow-list | grep -i dhcp
+
+# Verify the port has the correct addresses
+ovn-nbctl lsp-get-addresses &lt;port-id&gt;
+
+# Trace a DHCP packet
+ovn-trace --summary neutron-&lt;network-id&gt; \
+  'inport == "&lt;port-id&gt;" &amp;&amp; eth.src == &lt;vm-mac&gt; &amp;&amp; eth.dst == ff:ff:ff:ff:ff:ff &amp;&amp; ip4.src == 0.0.0.0 &amp;&amp; ip4.dst == 255.255.255.255 &amp;&amp; udp.src == 68 &amp;&amp; udp.dst == 67'
+
+# Check OVS flows for DHCP handling
+ovs-ofctl dump-flows br-int | grep "udp,.*tp_dst=67"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>ML2/OVS: DHCP agent not running, dnsmasq not started, namespace networking issue.</p>
+</li>
+<li>
+<p>ML2/OVN: DHCP options not configured for the subnet, port security blocking DHCP, missing logical flows.</p>
+</li>
+<li>
+<p>Both: Security group blocking DHCP (port 67/68), VM&#8217;s port not properly wired to OVS.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_security_group_blocking_traffic"><a class="anchor" href="#_security_group_blocking_traffic"></a>Security Group Blocking Traffic</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>VM has an IP address but cannot communicate.</p>
+</li>
+<li>
+<p>Some traffic works (e.g., SSH) but other traffic does not (e.g., HTTP).</p>
+</li>
+<li>
+<p>Ping works but TCP connections fail (or vice versa).</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check security group rules on the port
+openstack port show &lt;port-id&gt; -f json | grep security_group
+openstack security group rule list &lt;security-group-id&gt;
+
+# ML2/OVN: Check ACLs
+ovn-nbctl acl-list &lt;logical-switch-name&gt;
+
+# ML2/OVN: Trace the specific traffic pattern
+ovn-trace --summary neutron-&lt;network-id&gt; \
+  'inport == "&lt;port-id&gt;" &amp;&amp; eth.src == &lt;src-mac&gt; &amp;&amp; eth.dst == &lt;dst-mac&gt; &amp;&amp; ip4.src == &lt;src-ip&gt; &amp;&amp; ip4.dst == &lt;dst-ip&gt; &amp;&amp; tcp.dst == 80 &amp;&amp; ip.ttl == 64'
+
+# Check conntrack table for the connection
+conntrack -L | grep &lt;src-ip&gt;
+
+# Check OVS conntrack flows
+ovs-ofctl dump-flows br-int | grep "ct("</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Missing security group rule for the required protocol/port.</p>
+</li>
+<li>
+<p>Default security group only allows SSH and ICMP - other traffic is blocked.</p>
+</li>
+<li>
+<p>Conntrack table full (<code>net.netfilter.nf_conntrack_max</code> reached).</p>
+</li>
+<li>
+<p>Stale conntrack entries after security group rule change (rare; OVN handles this, but can happen in edge cases).</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_floating_ip_not_working"><a class="anchor" href="#_floating_ip_not_working"></a>Floating IP Not Working</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Cannot reach VM from external network using floating IP.</p>
+</li>
+<li>
+<p>VM cannot reach external network despite having a floating IP.</p>
+</li>
+<li>
+<p>Floating IP shows as "ACTIVE" in OpenStack but traffic does not flow.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps for ML2/OVS:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the router namespace has the floating IP
+ip netns exec qrouter-&lt;router-id&gt; ip addr show | grep &lt;floating-ip&gt;
+
+# Check NAT rules in the router namespace
+ip netns exec qrouter-&lt;router-id&gt; iptables -t nat -L -n -v | grep &lt;floating-ip&gt;
+
+# Check the external interface is in br-ex
+ovs-vsctl show | grep -A 2 br-ex
+
+# Check br-ex flows
+ovs-ofctl dump-flows br-ex</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps for ML2/OVN:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check NAT rules on the logical router
+ovn-nbctl lr-nat-list &lt;router-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TYPE             GATEWAY_PORT          EXTERNAL_IP        LOGICAL_IP        EXTERNAL_MAC
+dnat_and_snat    lrp-&lt;gateway-port&gt;    &lt;floating-ip&gt;      &lt;fixed-ip&gt;
+snat             lrp-&lt;gateway-port&gt;    &lt;router-ext-ip&gt;    &lt;subnet-cidr&gt;</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check chassis redirect (gateway port binding)
+ovn-sbctl find port_binding type=chassisredirect
+
+# Verify the gateway chassis is reachable
+ovn-sbctl list chassis | grep -E "name|hostname"
+
+# Trace a packet from external to the floating IP
+ovn-trace --summary neutron-&lt;external-network-id&gt; \
+  'inport == "&lt;provider-port&gt;" &amp;&amp; eth.src == &lt;external-mac&gt; &amp;&amp; ip4.src == &lt;external-ip&gt; &amp;&amp; ip4.dst == &lt;floating-ip&gt; &amp;&amp; ip.ttl == 64'
+
+# Check ARP responses for the floating IP on the external network
+# OVN should respond to ARP requests for floating IPs on the gateway chassis
+ovn-sbctl lflow-list | grep &lt;floating-ip&gt; | grep arp</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>ML2/OVS: Router namespace not properly configured, iptables NAT rules missing, br-ex not connected to physical network.</p>
+</li>
+<li>
+<p>ML2/OVN: Gateway chassis not reachable, NAT rules not in OVN NB DB, ARP not being responded to on external network.</p>
+</li>
+<li>
+<p>Both: External network misconfiguration, upstream router not routing to the floating IP subnet, physical network issue.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_performance_issues"><a class="anchor" href="#_performance_issues"></a>Performance Issues</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>High latency between VMs.</p>
+</li>
+<li>
+<p>Low throughput on VM-to-VM traffic.</p>
+</li>
+<li>
+<p>Intermittent packet loss.</p>
+</li>
+<li>
+<p>CPU spikes on compute nodes.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check OVS CPU usage
+top -p $(pgrep ovs-vswitchd)
+
+# Check for flow table misses (upcalls to userspace)
+ovs-appctl coverage/show | grep -E "upcall|flow_create"
+
+# Check the kernel datapath cache hit rate
+ovs-appctl dpctl/show | grep -E "hit|missed|lost"
+
+# Check for large flow tables
+ovs-ofctl dump-flows br-int | wc -l
+
+# Check conntrack table usage (ML2/OVN)
+sysctl net.netfilter.nf_conntrack_count
+sysctl net.netfilter.nf_conntrack_max
+
+# Check for conntrack table drops
+conntrack -S
+
+# Check interface errors and drops
+ovs-ofctl dump-ports br-int
+ip -s link show &lt;interface&gt;
+
+# Check for MTU issues (path MTU discovery failures)
+tcpdump -i &lt;interface&gt; 'icmp[icmptype] == 3 and icmp[icmpcode] == 4'
+
+# Check OVS memory usage
+ovs-appctl memory/show</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>MTU mismatch causing fragmentation or drops.</p>
+</li>
+<li>
+<p>Conntrack table exhaustion (<code>nf_conntrack_max</code> too low for the workload).</p>
+</li>
+<li>
+<p>High upcall rate (too many unique flows, causing frequent kernel-to-userspace transitions).</p>
+</li>
+<li>
+<p>CPU contention on compute nodes.</p>
+</li>
+<li>
+<p>Network interface ring buffer or interrupt configuration issues.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_database_synchronization_issues"><a class="anchor" href="#_ovn_database_synchronization_issues"></a>OVN Database Synchronization Issues</h3>
+<div class="paragraph">
+<p><strong>Symptoms (ML2/OVN only):</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Network changes from Neutron API do not take effect.</p>
+</li>
+<li>
+<p>Some compute nodes have stale configurations.</p>
+</li>
+<li>
+<p><code>ovn-controller</code> logs show connection errors.</p>
+</li>
+<li>
+<p>OVN database cluster shows unhealthy members.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check OVN NB DB cluster health
+ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre># Healthy output shows:
+# Role: leader (or follower)
+# Term: &lt;number&gt;
+# Status: cluster member
+# Connections: connected to all peers</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check OVN SB DB cluster health
+ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+
+# Check ovn-northd is running and processing
+systemctl status ovn-northd
+journalctl -u ovn-northd --since "10 minutes ago"
+
+# Check ovn-controller connectivity on a compute node
+ovs-vsctl get open_vswitch . external_ids:ovn-remote
+# Should show the SB DB connection string
+
+# Check ovn-controller status
+systemctl status ovn-controller
+journalctl -u ovn-controller --since "10 minutes ago" | grep -i "error\|warn\|disconnect"
+
+# Verify the controller is connected to the SB DB
+ovs-vsctl list open_vswitch | grep ovn
+
+# Check for unsynchronized ports
+# Compare NB DB ports with SB DB port bindings
+ovn-nbctl lsp-list &lt;logical-switch&gt; | wc -l
+ovn-sbctl list port_binding | grep -c "logical_port"</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Common causes:</strong></p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Network connectivity between ovn-controller and the SB DB.</p>
+</li>
+<li>
+<p>OVN database cluster lost quorum (in Raft HA mode, more than half the members must be available).</p>
+</li>
+<li>
+<p>ovn-northd not running or crashed (NB DB changes will not propagate to SB DB).</p>
+</li>
+<li>
+<p>ovn-controller not running on a compute node (flows will not be programmed on that node).</p>
+</li>
+<li>
+<p>Database compaction needed (database file has grown very large).</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Compact the databases if they are too large
+ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact
+ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+
+# Check database file sizes
+ls -lh /var/lib/ovn/ovnnb_db.db /var/lib/ovn/ovnsb_db.db</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If the OVN Raft cluster loses quorum (e.g., 2 out of 3 members are down), the databases become read-only. No new network changes can be applied until quorum is restored. This is a critical situation that requires immediate attention. Do not attempt to force a cluster reconfiguration without understanding the implications - consult the OVN documentation and Red Hat support.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_takeaways"><a class="anchor" href="#_key_takeaways"></a>Key Takeaways</h2>
+<div class="sectionbody">
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Neutron is the API layer; OVS/OVN is the implementation layer.</strong> Neutron defines what the network should look like. ML2/OVS or ML2/OVN implements it on the infrastructure.</p>
+</li>
+<li>
+<p><strong>ML2/OVS uses multiple agents; ML2/OVN uses a single ovn-controller.</strong> The agent reduction in ML2/OVN simplifies operations and reduces failure modes.</p>
+</li>
+<li>
+<p><strong>ML2/OVS uses br-int + br-tun + br-ex; ML2/OVN uses br-int (+ br-ex for external).</strong> Fewer bridges means simpler packet paths and easier troubleshooting.</p>
+</li>
+<li>
+<p><strong>ML2/OVN provides native distributed routing.</strong> No DVR complexity, no network node bottleneck for east-west traffic. This is the single biggest architectural advantage.</p>
+</li>
+<li>
+<p><strong>ML2/OVN eliminates external dependencies for DHCP, metadata, and routing.</strong> These are implemented as logical flows within OVN rather than external processes in namespaces.</p>
+</li>
+<li>
+<p><strong>Troubleshooting ML2/OVS is bottom-up (flows, bridges, namespaces). Troubleshooting ML2/OVN is top-down then bottom-up (logical topology, then flows).</strong> Use <code>ovn-trace</code> and <code>ovn-nbctl</code> before reaching for <code>ovs-ofctl</code> and <code>tcpdump</code>.</p>
+</li>
+<li>
+<p><strong>Red Hat&#8217;s direction is ML2/OVN.</strong> New deployments should use ML2/OVN. Existing ML2/OVS deployments should plan migration.</p>
+</li>
+<li>
+<p><strong>Know both architectures.</strong> You will encounter both ML2/OVS and ML2/OVN in customer environments, especially during migration periods. Being able to troubleshoot both is a valuable skill.</p>
+</li>
+</ol>
+</div>
+<hr>
+<div class="paragraph">
+<p><strong>Previous module:</strong> <a href="06-ovs-vs-ovn.html" class="xref page">Module 06 - OVS vs OVN: A Comprehensive Comparison</a>
+<strong>Next module:</strong> <a href="08-ovs-ovn-in-rhoso.html" class="xref page">Module 08 - OVS and OVN in RHOSO</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="06-ovs-vs-ovn.html" class="query-params-link">OVS vs OVN</a></span>
+  <span class="next"><a href="08-ovs-ovn-in-rhoso.html" class="query-params-link">OVS/OVN in RHOSO</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

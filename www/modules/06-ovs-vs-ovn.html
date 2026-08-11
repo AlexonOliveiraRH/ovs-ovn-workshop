@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 06 - OVS vs OVN: A Comprehensive Comparison :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="05-ovn-hands-on.html">
+    <link rel="next" href="07-ovs-ovn-in-rhosp.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="06-ovs-vs-ovn.html">OVS vs OVN</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 06 - OVS vs OVN: A Comprehensive Comparison</h1>
+<div class="sect1">
+<h2 id="_introduction"><a class="anchor" href="#_introduction"></a>Introduction</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This is one of the most important modules in the workshop. Engineers frequently encounter both OVS and OVN in Red Hat products, and one of the most common points of confusion is how they relate to each other. Some think OVN replaces OVS. Others believe they are completely independent projects. Neither is correct.</p>
+</div>
+<div class="paragraph">
+<p>This module lays out exactly what each technology does, how they fit together, when you would use one versus the other, and what the practical differences are in day-to-day operations. By the end, you will be able to clearly explain the OVS/OVN relationship to a customer and make informed decisions about which architecture fits a given scenario.</p>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_relationship_between_ovs_and_ovn"><a class="anchor" href="#_the_relationship_between_ovs_and_ovn"></a>The Relationship Between OVS and OVN</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_the_single_most_important_point"><a class="anchor" href="#_the_single_most_important_point"></a>The Single Most Important Point</h3>
+<div class="paragraph">
+<p><strong>OVN is NOT a replacement for OVS. OVN is built ON TOP of OVS.</strong></p>
+</div>
+<div class="paragraph">
+<p>This distinction is fundamental. Every deployment that runs OVN also runs OVS underneath it. OVN does not contain its own data plane - it relies entirely on OVS to forward packets. What OVN provides is an intelligent control plane and management layer that programs OVS automatically based on high-level intent.</p>
+</div>
+<div class="paragraph">
+<p>Think of it this way:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>OVS = the data plane</strong> - the virtual switch itself that moves packets from port to port based on flow rules.</p>
+</li>
+<li>
+<p><strong>OVN = the control plane + management layer</strong> - the brain that decides what flow rules OVS should have and programs them automatically.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>When you run OVN, you are still running OVS. OVN adds components on top of OVS but never removes or replaces the OVS components. Every <code>ovs-vsctl show</code> command, every <code>ovs-ofctl dump-flows</code> command, every kernel datapath operation - all of that still exists and still works when OVN is in the picture. OVN simply takes over the job of writing the OpenFlow rules that OVS enforces.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_the_traffic_light_analogy"><a class="anchor" href="#_the_traffic_light_analogy"></a>The Traffic Light Analogy</h3>
+<div class="paragraph">
+<p>Imagine a city-wide traffic light system:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>OVS standalone</strong> is like a set of programmable traffic lights at an intersection. Each light can be configured to change based on specific rules. But someone - either a traffic engineer or an automated system - must go to each intersection and program each light individually. If the city has a thousand intersections, that is a thousand individual configurations to write and maintain.</p>
+</li>
+<li>
+<p><strong>OVN on top of OVS</strong> is like adding a central traffic management system. Instead of programming each intersection individually, you describe your desired traffic patterns at a high level: "I want northbound traffic on Main Street to have priority during morning rush hour." The management system figures out which lights at which intersections need which timings and programs them all automatically. The traffic lights themselves (OVS) have not changed - they still do the same job of controlling traffic. But now there is an intelligent system (OVN) deciding how to configure them.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>This analogy captures the key properties:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>The traffic lights (OVS) still do all the actual work of directing traffic (forwarding packets).</p>
+</li>
+<li>
+<p>The management system (OVN) does not replace the traffic lights - it programs them.</p>
+</li>
+<li>
+<p>You can run traffic lights without the management system (standalone OVS), but you need to program them yourself.</p>
+</li>
+<li>
+<p>With the management system, you describe what you want rather than how to achieve it.</p>
+</li>
+<li>
+<p>The management system handles coordination across all intersections (multi-node).</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_ovn_programs_ovs"><a class="anchor" href="#_how_ovn_programs_ovs"></a>How OVN Programs OVS</h3>
+<div class="paragraph">
+<p>When OVN is running, it takes high-level network descriptions (logical switches, routers, ACLs) and translates them into OpenFlow rules that get installed in OVS. The chain looks like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Administrator / CMS (e.g., OpenStack, Kubernetes)
+         |
+         v
+   OVN Northbound DB    &lt;-- High-level intent (logical switches, routers, ACLs)
+         |
+         v
+     ovn-northd          &lt;-- Translates logical config into logical flows
+         |
+         v
+   OVN Southbound DB    &lt;-- Logical flows + chassis bindings
+         |
+         v
+   ovn-controller        &lt;-- On each hypervisor, translates logical flows
+         |                    into physical OpenFlow rules
+         v
+   OVS (ovs-vswitchd)   &lt;-- Executes OpenFlow rules, forwards packets
+         |
+         v
+   OVS kernel datapath   &lt;-- Fast path for packet forwarding</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Every step in this chain is important:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>A Cloud Management System (CMS) like OpenStack or Kubernetes tells OVN what it wants: "Create a logical switch with these ports, a logical router connecting these networks, ACLs blocking this traffic."</p>
+</li>
+<li>
+<p>OVN stores this in the Northbound Database as a logical network topology.</p>
+</li>
+<li>
+<p><code>ovn-northd</code> reads the Northbound DB and generates logical flows - forwarding rules expressed in terms of logical entities (logical ports, logical switches) rather than physical entities (specific OVS ports on specific hosts).</p>
+</li>
+<li>
+<p>These logical flows are stored in the Southbound Database along with information about which chassis (hypervisor) hosts which logical ports.</p>
+</li>
+<li>
+<p><code>ovn-controller</code> on each hypervisor reads the Southbound DB, takes the logical flows relevant to its chassis, and translates them into physical OpenFlow rules that reference actual OVS ports, tunnel ports, and MAC/IP addresses.</p>
+</li>
+<li>
+<p>These OpenFlow rules are installed in OVS&#8217;s <code>br-int</code> bridge.</p>
+</li>
+<li>
+<p>OVS forwards packets according to those rules, using the kernel datapath for performance.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>You never need to write OpenFlow rules manually when OVN is managing OVS. In fact, manually inserting flows into an OVN-managed bridge is dangerous because <code>ovn-controller</code> periodically reconciles the flows and will remove anything it did not program. If you need to change network behavior, change it in OVN (via <code>ovn-nbctl</code> or the CMS), not in OVS directly.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_feature_comparison"><a class="anchor" href="#_feature_comparison"></a>Feature Comparison</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The following table provides a detailed comparison of what you get with OVS on its own versus what OVN adds on top of it.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Feature</th>
+<th class="tableblock halign-left valign-top">OVS (Standalone)</th>
+<th class="tableblock halign-left valign-top">OVN (Using OVS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>L2 Switching</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual flow rules or MAC learning on individual bridges</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic via logical switches spanning multiple hypervisors</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>L3 Routing</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not built-in; requires an external router, Linux network namespaces, or an SDN controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in distributed logical routers; routing happens locally on each hypervisor</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Security / ACLs</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual OpenFlow rules; complex match/action sequences</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Declarative ACLs with integrated conntrack (stateful firewall); apply to logical ports</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DHCP</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not built-in; requires an external DHCP server</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in DHCP responder; OVN answers DHCP requests directly in the pipeline</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DNS</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not built-in</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in DNS responder for internal name resolution</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NAT</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not built-in; requires external iptables/nftables or SDN controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in SNAT and DNAT on logical routers</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Load Balancing</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not built-in</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in L4 load balancer (TCP/UDP) with VIP support</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Multi-node Networking</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual tunnel setup between each pair of hypervisors</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic tunnel management; OVN discovers chassis and establishes tunnels</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Overlay Protocol</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual tunnel port creation (VXLAN, GRE, Geneve, etc.)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic Geneve tunnels with metadata for logical network identification</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>High Availability</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manual or external HA; no built-in clustering for the database</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in HA via Raft consensus for NB/SB databases; BFD for tunnel health</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Management Model</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Imperative: you program each flow rule explicitly</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Declarative: you describe the desired network state; OVN implements it</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Scale Focus</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Single-node virtual switch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multi-node distributed virtual networking</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Primary CLI Tools</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vsctl</code> (config), <code>ovs-ofctl</code> (flows), <code>ovs-dpctl</code> (datapath)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl</code> (high-level), <code>ovn-sbctl</code> (low-level), plus all OVS tools</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Troubleshooting Tools</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-ofctl dump-flows</code>, <code>ovs-appctl</code>, <code>tcpdump</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-trace</code>, <code>ovn-detrace</code>, <code>ovn-sbctl lflow-list</code>, plus all OVS tools</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Performance Overhead</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal; direct datapath processing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Slight overhead from logical-to-physical flow translation and metadata processing</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Connection Tracking</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Available but must be manually configured via OpenFlow</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatically configured for ACLs and stateful services (NAT, LB)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Multicast / IGMP</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Basic support; manual configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built-in IGMP snooping and multicast group management</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Configuration Persistence</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB (local database per node)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB (local) + OVN NB DB and SB DB (centralized, clustered)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Notice the pattern in this table. For virtually every network function, OVS provides the raw mechanism but requires manual or external configuration. OVN provides the same function as a built-in, automated, distributed service. The trade-off is a small amount of additional complexity and overhead in exchange for dramatically simpler operations at scale.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_understanding_the_implications"><a class="anchor" href="#_understanding_the_implications"></a>Understanding the Implications</h3>
+<div class="paragraph">
+<p><strong>L2 Switching</strong> - With standalone OVS, you create bridges, add ports, and either rely on MAC learning (which has scale limitations) or write explicit flow rules. With OVN, you create a logical switch in the Northbound DB and OVN handles all the flow programming, including across multiple hypervisors with automatic tunneling.</p>
+</div>
+<div class="paragraph">
+<p><strong>L3 Routing</strong> - This is one of the biggest differences. Standalone OVS has no routing capability at all. In pre-OVN architectures (like ML2/OVS in OpenStack), routing was handled by Linux network namespaces running on dedicated network nodes - every packet that needed to cross subnets had to travel to the network node and back. OVN provides distributed routing: the routing decision happens locally on the hypervisor where the VM lives, and the packet goes directly to its destination. This eliminates the network node bottleneck for east-west traffic.</p>
+</div>
+<div class="paragraph">
+<p><strong>Security / ACLs</strong> - With standalone OVS, implementing a stateful firewall requires writing complex OpenFlow rules that use connection tracking (conntrack) actions and matches. You need to handle new connections, established connections, related connections, and invalid connections with separate flow entries. With OVN, you write a simple ACL like "allow TCP to port 80 from this address set" and OVN generates all the necessary conntrack flows.</p>
+</div>
+<div class="paragraph">
+<p><strong>DHCP</strong> - In standalone OVS environments, you need a DHCP server running somewhere (a <code>dnsmasq</code> process in a namespace, for example). With OVN, DHCP responses are generated directly in the logical flow pipeline - no external process needed. When a VM sends a DHCP discover, OVN&#8217;s logical flows intercept it and generate a DHCP offer with the configured IP, gateway, DNS, and other options.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_architecture_comparison"><a class="anchor" href="#_architecture_comparison"></a>Architecture Comparison</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovs_standalone_architecture"><a class="anchor" href="#_ovs_standalone_architecture"></a>OVS Standalone Architecture</h3>
+<div class="paragraph">
+<p>A standalone OVS deployment on a single node has three core components:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+-------------------------------------------------------+
+|                    User Space                          |
+|                                                        |
+|  +------------------+     +------------------------+   |
+|  |  ovsdb-server    |&lt;---&gt;|    ovs-vswitchd        |   |
+|  |                  |     |                        |   |
+|  | Stores config:   |     | OpenFlow processing    |   |
+|  | - bridges        |     | Flow table management  |   |
+|  | - ports          |     | Userspace slow path    |   |
+|  | - interfaces     |     |                        |   |
+|  | - QoS            |     | Communicates with      |   |
+|  +------------------+     | kernel datapath        |   |
+|                           +------------------------+   |
+|                                    |                   |
++-------------------------------------------------------+
+                                     |  Netlink
++-------------------------------------------------------+
+|                   Kernel Space                         |
+|                                                        |
+|  +--------------------------------------------------+ |
+|  |              OVS Kernel Datapath                  | |
+|  |                                                   | |
+|  | Fast-path packet forwarding                       | |
+|  | Flow cache (megaflow table)                       | |
+|  | Cache miss -&gt; upcall to ovs-vswitchd              | |
+|  +--------------------------------------------------+ |
++-------------------------------------------------------+</pre>
+</div>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>ovsdb-server</strong> - Stores the OVS configuration in a JSON-based database. This includes bridge definitions, port configurations, interface settings, and other persistent state.</p>
+</li>
+<li>
+<p><strong>ovs-vswitchd</strong> - The main switching daemon. It reads configuration from ovsdb-server, manages OpenFlow tables, and communicates with the kernel datapath. When a packet hits a flow that only exists in the userspace tables (a "cache miss" in the kernel), it gets sent up to ovs-vswitchd for classification.</p>
+</li>
+<li>
+<p><strong>OVS kernel datapath</strong> - A kernel module that performs fast-path packet forwarding. It maintains a cache of recently seen flow patterns (megaflows). Packets matching cached flows are forwarded entirely in kernel space without involving userspace at all.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>In this architecture, someone (or something) must program the OpenFlow tables in ovs-vswitchd. That "someone" could be:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>A human using <code>ovs-ofctl</code></p>
+</li>
+<li>
+<p>An SDN controller (like OpenDaylight) speaking OpenFlow</p>
+</li>
+<li>
+<p>A Neutron agent (like <code>neutron-openvswitch-agent</code>)</p>
+</li>
+<li>
+<p>A script or automation tool</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_architecture_built_on_ovs"><a class="anchor" href="#_ovn_architecture_built_on_ovs"></a>OVN Architecture (Built on OVS)</h3>
+<div class="paragraph">
+<p>When OVN is deployed, it adds several components while keeping all of the OVS components intact:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+------------------------------------------------------------------+
+|                     Central Nodes                                 |
+|                                                                   |
+|  +-------------------+            +-------------------+           |
+|  |  OVN Northbound   |            |  OVN Southbound   |           |
+|  |  Database         |            |  Database         |           |
+|  |                   |            |                   |           |
+|  | Logical switches  |            | Logical flows     |           |
+|  | Logical routers   |  ovn-northd| Chassis bindings  |           |
+|  | ACLs              |-----------&gt;| Port bindings     |           |
+|  | NAT rules         |  translates| Datapath bindings |           |
+|  | Load balancers    |            | MAC/IP bindings   |           |
+|  | DHCP options      |            |                   |           |
+|  +-------------------+            +-------------------+           |
+|                                           |                       |
++------------------------------------------------------------------+
+                                            |
+            +-------------------------------+-------- ...
+            |  OVSDB protocol               |
+            v                               v
++---------------------------+   +---------------------------+
+|     Hypervisor Node 1     |   |     Hypervisor Node 2     |
+|                           |   |                           |
+| +---------------------+  |   | +---------------------+   |
+| |  ovn-controller     |  |   | |  ovn-controller     |   |
+| |                     |  |   | |                     |   |
+| | Reads SB DB         |  |   | | Reads SB DB         |   |
+| | Translates logical  |  |   | | Translates logical  |   |
+| | flows to physical   |  |   | | flows to physical   |   |
+| | OpenFlow rules      |  |   | | OpenFlow rules      |   |
+| +----------+----------+  |   | +----------+----------+   |
+|            |              |   |            |              |
+|            v              |   |            v              |
+| +---------------------+  |   | +---------------------+   |
+| |  ovs-vswitchd       |  |   | |  ovs-vswitchd       |   |
+| |  ovsdb-server       |  |   | |  ovsdb-server       |   |
+| |  kernel datapath    |  |   | |  kernel datapath    |   |
+| +---------------------+  |   | +---------------------+   |
+|                           |   |                           |
+| VM-A     VM-B             |   | VM-C     VM-D            |
++---------------------------+   +---------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The additional OVN components are:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>OVN Northbound Database (NB DB)</strong> - Stores the logical network topology as defined by the administrator or CMS. This is the "desired state." Contains logical switches, logical routers, logical switch ports, ACLs, NAT rules, load balancers, and DHCP options.</p>
+</li>
+<li>
+<p><strong>OVN Southbound Database (SB DB)</strong> - Stores the physical-logical mappings and the compiled logical flows. This is the "implementation state." Contains logical flows, chassis registrations, port bindings, datapath bindings, and MAC/IP bindings.</p>
+</li>
+<li>
+<p><strong>ovn-northd</strong> - A centralized daemon that reads the Northbound DB and writes to the Southbound DB. It compiles high-level logical network definitions into lower-level logical flows.</p>
+</li>
+<li>
+<p><strong>ovn-controller</strong> - A daemon running on every hypervisor. It reads the Southbound DB, takes the logical flows relevant to its chassis, and translates them into physical OpenFlow rules that it installs in the local OVS instance.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The OVS components (ovs-vswitchd, ovsdb-server, kernel datapath) are still present and doing the same job they always did. OVN adds a layer above them. The relationship is additive, not substitutive.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_component_count_comparison"><a class="anchor" href="#_component_count_comparison"></a>Component Count Comparison</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">OVS Standalone</th>
+<th class="tableblock halign-left valign-top">OVN Deployment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovs-vswitchd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node (unchanged)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdb-server (OVS)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node (unchanged)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel datapath</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node (unchanged)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdb-server (NB DB)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 (or 3 for HA) centralized</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovsdb-server (SB DB)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 (or 3 for HA) centralized</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 active (+ standby for HA)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1 per node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Total per node</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>3 processes</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>4 processes</strong> (added ovn-controller)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Total central</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>0</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>3+ processes</strong> (NB DB, SB DB, northd)</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_when_to_use_which"><a class="anchor" href="#_when_to_use_which"></a>When to Use Which</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_use_ovs_standalone_when"><a class="anchor" href="#_use_ovs_standalone_when"></a>Use OVS Standalone When&#8230;&#8203;</h3>
+<div class="paragraph">
+<p><strong>You need a simple virtual switch on a single host.</strong>
+If your use case is straightforward - connecting VMs or containers on a single host with basic L2 switching - standalone OVS is simpler and has less overhead.</p>
+</div>
+<div class="paragraph">
+<p><strong>You have an external SDN controller.</strong>
+If you are using an SDN controller like OpenDaylight, ONOS, or a commercial controller that speaks OpenFlow, that controller takes OVN&#8217;s role of programming OVS.</p>
+</div>
+<div class="paragraph">
+<p><strong>You need maximum performance with minimal overhead.</strong>
+In highly performance-sensitive scenarios (such as network function virtualization with DPDK), you might want the thinnest possible stack between packets and forwarding decisions.</p>
+</div>
+<div class="paragraph">
+<p><strong>You are building custom network solutions.</strong>
+If you are developing specialized networking applications that need fine-grained control over every flow rule, standalone OVS gives you that direct access.</p>
+</div>
+<div class="paragraph">
+<p><strong>You are experimenting or learning.</strong>
+For understanding how virtual switching works at the fundamental level, starting with standalone OVS is the right approach.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_use_ovn_when"><a class="anchor" href="#_use_ovn_when"></a>Use OVN When&#8230;&#8203;</h3>
+<div class="paragraph">
+<p><strong>You need multi-tenant virtual networking.</strong>
+OVN was designed for multi-tenant environments where different tenants need isolated networks.</p>
+</div>
+<div class="paragraph">
+<p><strong>You want built-in L2, L3, security, NAT, and load balancing.</strong>
+OVN provides all of these out of the box.</p>
+</div>
+<div class="paragraph">
+<p><strong>You are integrating with a Cloud Management System.</strong>
+OpenStack (via ML2/OVN), Kubernetes (via OVN-Kubernetes), and other platforms have OVN integration.</p>
+</div>
+<div class="paragraph">
+<p><strong>You need distributed routing.</strong>
+OVN&#8217;s distributed logical routers route traffic locally on the hypervisor rather than hairpinning through a centralized network node.</p>
+</div>
+<div class="paragraph">
+<p><strong>You want automatic tunnel management.</strong>
+OVN automatically establishes and manages Geneve tunnels between all hypervisors.</p>
+</div>
+<div class="paragraph">
+<p><strong>You want declarative network configuration.</strong>
+With OVN, you describe what you want and OVN figures out the implementation.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_decision_matrix"><a class="anchor" href="#_decision_matrix"></a>Decision Matrix</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Scenario</th>
+<th class="tableblock halign-left valign-top">Recommended</th>
+<th class="tableblock halign-left valign-top">Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Single host, few VMs, simple L2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS standalone</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No multi-node coordination needed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multi-host, many VMs, multi-tenant</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Automatic multi-node, isolation, scale</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenStack / RHOSP deployment</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN (ML2/OVN)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat&#8217;s default and recommended architecture</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift / OCP deployment</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN (OVN-Kubernetes)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Default CNI since OCP 4.x</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network lab / learning</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Start with OVS, then add OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Understand the foundation first</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Existing SDN controller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS standalone</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Controller programs OVS directly</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NFV with DPDK, maximum performance</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS + DPDK (OVN optional)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimize overhead; OVN can still manage if features are needed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Quick network bridge for libvirt</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS standalone or Linux bridge</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN is overkill for this</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In the Red Hat ecosystem specifically, the direction is clearly toward OVN. RHOSP has moved from ML2/OVS to ML2/OVN as the default. OCP uses OVN-Kubernetes as the default CNI.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_migration_path_ovs_to_ovn"><a class="anchor" href="#_the_migration_path_ovs_to_ovn"></a>The Migration Path: OVS to OVN</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_historical_context"><a class="anchor" href="#_historical_context"></a>Historical Context</h3>
+<div class="paragraph">
+<p><strong>The ML2/OVS Era</strong></p>
+</div>
+<div class="paragraph">
+<p>In the early days of OpenStack networking (roughly 2012-2018 as the dominant architecture), the Neutron ML2/OVS plugin was the standard way to use OVS with OpenStack:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+------------------+
+| Neutron Server   |
+| (API + ML2/OVS)  |
++--------+---------+
+         |  RPC (RabbitMQ)
+         |
++--------+----------------------------+--------- ...
+|                                     |
+v                                     v
++----------------------------+   +----------------------------+
+| Controller / Network Node  |   |       Compute Node         |
+|                            |   |                            |
+| neutron-l3-agent           |   | neutron-openvswitch-agent  |
+| neutron-dhcp-agent         |   |                            |
+| neutron-metadata-agent     |   | OVS: br-int, br-tun        |
+| neutron-openvswitch-agent  |   |                            |
+|                            |   | VM-A       VM-B            |
+| OVS: br-int, br-tun, br-ex|   +----------------------------+
+| Router namespaces          |
+| DHCP namespaces            |
++----------------------------+</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Problems with ML2/OVS at Scale:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Network node bottleneck</strong> - All north-south traffic and (without DVR) all east-west routing traffic funneled through network nodes.</p>
+</li>
+<li>
+<p><strong>RabbitMQ dependency</strong> - Message bus congestion, partitions, or failures could cause networking state to become inconsistent.</p>
+</li>
+<li>
+<p><strong>Agent coordination</strong> - Multiple agents on multiple nodes needed to stay in sync.</p>
+</li>
+<li>
+<p><strong>DVR complexity</strong> - DVR addressed the routing bottleneck but its implementation was complex and introduced new failure modes.</p>
+</li>
+<li>
+<p><strong>Flow table scale</strong> - Large deployments could end up with tens of thousands of flows per compute node.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_the_shift_to_ovn"><a class="anchor" href="#_the_shift_to_ovn"></a>The Shift to OVN</h3>
+<div class="paragraph">
+<p>OVN was created specifically to address these problems:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Agent elimination</strong> - A single <code>ovn-controller</code> per node replaces four separate Neutron agents.</p>
+</li>
+<li>
+<p><strong>Native distributed routing</strong> - Every hypervisor can route traffic locally.</p>
+</li>
+<li>
+<p><strong>Built-in services</strong> - DHCP, DNS, and metadata are implemented as logical flows.</p>
+</li>
+<li>
+<p><strong>Database-driven state</strong> - OVSDB replaces RabbitMQ for state distribution.</p>
+</li>
+<li>
+<p><strong>Single bridge</strong> - One <code>br-int</code> handles everything, no separate <code>br-tun</code>.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_what_changed_architecturally"><a class="anchor" href="#_what_changed_architecturally"></a>What Changed Architecturally</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">ML2/OVS</th>
+<th class="tableblock halign-left valign-top">ML2/OVN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L2 agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-openvswitch-agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L3 agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-l3-agent (centralized or DVR)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN logical router (always distributed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DHCP agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-dhcp-agent (dnsmasq in namespace)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN built-in DHCP (logical flows)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Metadata agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-metadata-agent</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN metadata (logical flows)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">State distribution</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RabbitMQ (message bus)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB (database replication)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS bridges</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">br-int, br-tun, br-ex</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">br-int (+ br-ex for external only)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tunnel management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">neutron-openvswitch-agent manages</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller manages</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Routing location</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network nodes (or DVR nodes)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Every compute node (always distributed)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Flow programming</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L2 agent via OpenFlow</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-controller via OpenFlow</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Scalability</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Limited by RabbitMQ and agent sync</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Better - database-driven, fewer components</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_rhosp_migration_path_ml2ovs_to_ml2ovn"><a class="anchor" href="#_rhosp_migration_path_ml2ovs_to_ml2ovn"></a>RHOSP Migration Path: ML2/OVS to ML2/OVN</h3>
+<div class="paragraph">
+<p>In Red Hat OpenStack Platform:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>RHOSP 13</strong> - ML2/OVS was the default. ML2/OVN was available as a technology preview.</p>
+</li>
+<li>
+<p><strong>RHOSP 16.1</strong> - ML2/OVN became the default for new deployments. ML2/OVS was still supported.</p>
+</li>
+<li>
+<p><strong>RHOSP 16.2</strong> - ML2/OVN was the recommended and default. Migration tooling from ML2/OVS to ML2/OVN was provided.</p>
+</li>
+<li>
+<p><strong>RHOSP 17</strong> and later - ML2/OVN is the standard networking backend.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>An ML2/OVS to ML2/OVN migration causes networking downtime. This must be planned as a maintenance window.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_performance_considerations_in_the_migration"><a class="anchor" href="#_performance_considerations_in_the_migration"></a>Performance Considerations in the Migration</h3>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>East-west routing throughput</strong>: OVN is generally better because routing is distributed.</p>
+</li>
+<li>
+<p><strong>North-south throughput</strong>: Similar in most cases.</p>
+</li>
+<li>
+<p><strong>Connection setup latency</strong>: OVN may have slightly higher first-packet latency due to the longer flow pipeline.</p>
+</li>
+<li>
+<p><strong>Flow table size</strong>: OVN typically generates more flows per compute node than ML2/OVS.</p>
+</li>
+<li>
+<p><strong>Control plane responsiveness</strong>: OVN&#8217;s database-driven model is generally faster than ML2/OVS&#8217;s RabbitMQ-based model.</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_performance_comparison"><a class="anchor" href="#_performance_comparison"></a>Performance Comparison</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovs_kernel_datapath_performance"><a class="anchor" href="#_ovs_kernel_datapath_performance"></a>OVS Kernel Datapath Performance</h3>
+<div class="paragraph">
+<p>When OVS processes packets through the kernel datapath (the fast path), performance is very close to native Linux bridge performance. The kernel datapath cache hit rate should be above 99% for established traffic patterns.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_programmed_ovs_performance"><a class="anchor" href="#_ovn_programmed_ovs_performance"></a>OVN-Programmed OVS Performance</h3>
+<div class="paragraph">
+<p>When OVN programs OVS, the same kernel datapath is used. The packet forwarding performance is fundamentally the same. Differences include:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>More flow rules</strong> from the comprehensive logical pipeline</p>
+</li>
+<li>
+<p><strong>Megaflow cache</strong> efficiency may vary with more complex flow tables</p>
+</li>
+<li>
+<p><strong>Connection tracking overhead</strong> for ACLs, NAT, and load balancing</p>
+</li>
+<li>
+<p><strong>Metadata processing</strong> for Geneve tunnel options</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_flow_count_differences"><a class="anchor" href="#_flow_count_differences"></a>Flow Count Differences</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS (minimal):</strong> ~5-10 flows for two VMs on the same bridge.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN-managed OVS:</strong> ~50-100 flows for the same scenario, covering port security, ACLs, DHCP responder, ARP responder, and more.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_latency_considerations"><a class="anchor" href="#_latency_considerations"></a>Latency Considerations</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Scenario</th>
+<th class="tableblock halign-left valign-top">OVS Standalone</th>
+<th class="tableblock halign-left valign-top">OVN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">First packet of new flow</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcall to vswitchd, flow install</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upcall to vswitchd, flow install (same)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Subsequent packets (cached)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel fast path (~hundreds of ns)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kernel fast path (~hundreds of ns, same)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">New TCP connection (with ACLs)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No conntrack overhead (no ACLs)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack new entry (~microseconds)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Established TCP (with ACLs)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No conntrack overhead</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Conntrack lookup (~hundreds of ns)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cross-subnet routing</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Not applicable (external router)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Local logical router lookup</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ARP resolution</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Flood or external</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN ARP responder (local, fast)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>For most real-world workloads, the performance difference between standalone OVS and OVN-managed OVS is not significant enough to be a deciding factor.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovs_dpdk_with_and_without_ovn"><a class="anchor" href="#_ovs_dpdk_with_and_without_ovn"></a>OVS-DPDK with and without OVN</h3>
+<div class="paragraph">
+<p><strong>OVS-DPDK standalone</strong> processes packets entirely in userspace using poll-mode drivers - no kernel module, no interrupts. Can achieve line-rate forwarding on high-speed NICs.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVS-DPDK with OVN</strong> works the same way but with more OpenFlow rules from the OVN pipeline. Considerations include larger flow tables affecting EMC/SMC efficiency, connection tracking overhead in DPDK userspace, and the potential benefit of SmartNIC hardware offload.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_connection_tracking_overhead_with_ovn_acls"><a class="anchor" href="#_connection_tracking_overhead_with_ovn_acls"></a>Connection Tracking Overhead with OVN ACLs</h3>
+<div class="paragraph">
+<p>OVN uses conntrack extensively for ACLs, NAT, and load balancing. The overhead has two components:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Per-connection setup</strong>: Hash table insertion, ~microseconds per new connection.</p>
+</li>
+<li>
+<p><strong>Per-packet lookup</strong>: Hash table lookup, ~hundreds of nanoseconds.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>This becomes significant in high connection rate scenarios, large connection table scenarios, or short-lived connection workloads.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Check conntrack table size with <code>conntrack -C</code> and limits with <code>sysctl net.netfilter.nf_conntrack_max</code>.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_operational_differences"><a class="anchor" href="#_operational_differences"></a>Operational Differences</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_day_to_day_management"><a class="anchor" href="#_day_to_day_management"></a>Day-to-Day Management</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS</strong> - Direct and imperative. You interact with OVS using <code>ovs-vsctl</code>, <code>ovs-ofctl</code>, etc. Changes are made per-node.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN</strong> - Declarative and centralized. You interact with the OVN Northbound Database using <code>ovn-nbctl</code>. Changes propagate automatically to all relevant nodes.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>With standalone OVS, you manage per-node state. With OVN, you manage a centralized logical topology and OVN handles the per-node implementation.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_monitoring_approaches"><a class="anchor" href="#_monitoring_approaches"></a>Monitoring Approaches</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS</strong> - <code>ovs-appctl version</code>, <code>ovs-ofctl dump-flows</code>, <code>ovs-ofctl dump-ports</code>, <code>ovs-appctl dpctl/show</code>, <code>ovs-appctl coverage/show</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN (in addition to all OVS commands)</strong> - <code>ovn-nbctl show</code>, <code>ovn-sbctl show</code>, <code>ovn-sbctl lflow-list</code>, <code>ovn-appctl cluster/status</code>, <code>conntrack -C</code>, <code>conntrack -S</code>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_troubleshooting_methodology_differences"><a class="anchor" href="#_troubleshooting_methodology_differences"></a>Troubleshooting Methodology Differences</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS</strong> - Bottom-up: port status, flow rules, packet counters, datapath cache, tcpdump.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN</strong> - Top-down then bottom-up: logical topology, logical flows, port bindings, <code>ovn-trace</code>, then physical flows, tcpdump.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When troubleshooting OVN, always start with the logical layer before diving into physical flows. Many issues that look like OVS problems are actually logical configuration issues.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_backup_and_recovery"><a class="anchor" href="#_backup_and_recovery"></a>Backup and Recovery</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS</strong> - Backup <code>/etc/openvswitch/conf.db</code> or use <code>ovsdb-client backup</code>.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN</strong> - Back up both NB DB and SB DB. The NB DB is the most critical piece of state.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If you lose all copies of the NB DB (including all Raft replicas), you lose the entire logical network configuration. Regular backups are essential.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_upgrade_procedures"><a class="anchor" href="#_upgrade_procedures"></a>Upgrade Procedures</h3>
+<div class="paragraph">
+<p><strong>Standalone OVS</strong> - Per-node, independent rolling upgrades.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN</strong> - Upgrade central components first (NB DB, SB DB, northd), then rolling-upgrade ovn-controller on each node.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_takeaways"><a class="anchor" href="#_key_takeaways"></a>Key Takeaways</h2>
+<div class="sectionbody">
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>OVN is built on OVS, not a replacement for it.</strong> Every OVN deployment runs OVS underneath. OVN adds a control plane; it does not replace the data plane.</p>
+</li>
+<li>
+<p><strong>OVS is imperative, OVN is declarative.</strong> With OVS, you program each flow rule. With OVN, you describe the desired network topology and OVN generates the flows.</p>
+</li>
+<li>
+<p><strong>OVN adds built-in L3, security, DHCP, NAT, and LB.</strong> These features require external components in standalone OVS but are native in OVN.</p>
+</li>
+<li>
+<p><strong>OVN excels at multi-node, multi-tenant environments.</strong> If you are managing networks across multiple hypervisors with multiple tenants, OVN provides automation and consistency that is very difficult to achieve with standalone OVS.</p>
+</li>
+<li>
+<p><strong>The performance overhead of OVN is small.</strong> OVN generates more flows and uses connection tracking, which adds overhead. But for most workloads, this overhead is not significant.</p>
+</li>
+<li>
+<p><strong>The Red Hat ecosystem has standardized on OVN.</strong> RHOSP uses ML2/OVN, OCP uses OVN-Kubernetes.</p>
+</li>
+<li>
+<p><strong>Troubleshoot OVN top-down, OVS bottom-up.</strong> Start with logical tools (ovn-trace, ovn-nbctl, ovn-sbctl), then dive into physical tools (ovs-ofctl, tcpdump).</p>
+</li>
+<li>
+<p><strong>Know both layers.</strong> Even in an OVN-managed environment, you need to understand OVS to troubleshoot effectively.</p>
+</li>
+</ol>
+</div>
+<hr>
+<div class="paragraph">
+<p><strong>Next module:</strong> <a href="07-ovs-ovn-in-rhosp.html" class="xref page">Module 07 - OVS and OVN in Red Hat OpenStack Platform</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="05-ovn-hands-on.html" class="query-params-link">OVN Hands-On Lab</a></span>
+  <span class="next"><a href="07-ovs-ovn-in-rhosp.html" class="query-params-link">OVS/OVN in RHOSP</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

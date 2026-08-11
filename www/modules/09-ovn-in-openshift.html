@@ -1,0 +1,3227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 09 - OVN-Kubernetes in OpenShift :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="08-ovs-ovn-in-rhoso.html">
+    <link rel="next" href="10-traffic-flows.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="09-ovn-in-openshift.html">OVN in OpenShift</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 09 - OVN-Kubernetes in OpenShift</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>OpenShift Networking Overview</p>
+</li>
+<li>
+<p>OVN-Kubernetes Architecture</p>
+</li>
+<li>
+<p>OVN-Kubernetes Network Topology</p>
+</li>
+<li>
+<p>Packet Flows in OVN-Kubernetes</p>
+</li>
+<li>
+<p>Key Features in OVN-Kubernetes</p>
+</li>
+<li>
+<p>OVN-Kubernetes in Different OpenShift Variants</p>
+</li>
+<li>
+<p>Hands-On: Exploring OVN-Kubernetes in OpenShift</p>
+</li>
+<li>
+<p>Troubleshooting OVN-Kubernetes</p>
+</li>
+<li>
+<p>Summary</p>
+</li>
+</ol>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_openshift_networking_overview"><a class="anchor" href="#_openshift_networking_overview"></a>OpenShift Networking Overview</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Before diving into OVN-Kubernetes, it helps to understand the networking model that all Kubernetes distributions - including OpenShift - follow, and how OpenShift evolved to its current implementation.</p>
+</div>
+<div class="sect2">
+<h3 id="_the_cni_model"><a class="anchor" href="#_the_cni_model"></a>The CNI Model</h3>
+<div class="paragraph">
+<p>Kubernetes defines a set of networking requirements that any conformant implementation must satisfy:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Every pod gets its own IP address.</strong> There is no NAT between pods - they can communicate directly using their pod IPs.</p>
+</li>
+<li>
+<p><strong>All pods can communicate with all other pods</strong> on any node without NAT (the "flat" pod network).</p>
+</li>
+<li>
+<p><strong>Agents on a node</strong> (like kubelet or the system daemons) <strong>can communicate with all pods on that node.</strong></p>
+</li>
+<li>
+<p><strong>Services</strong> provide stable virtual IPs (ClusterIPs) that load-balance traffic to a set of backend pods.</p>
+</li>
+<li>
+<p><strong>Ingress</strong> controllers route external HTTP/HTTPS traffic into the cluster.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>These requirements define <strong>what</strong> the networking must do, but not <strong>how</strong> it is implemented. The <strong>how</strong> is the job of a <strong>CNI plugin</strong> (Container Network Interface).</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>A <strong>CNI plugin</strong> is the component responsible for setting up networking for each pod. When the kubelet creates a pod, it calls the CNI plugin to assign an IP address, create a network interface inside the pod&#8217;s network namespace, and set up the necessary routes. When the pod is deleted, the CNI plugin cleans up. The CNI plugin also handles inter-node pod traffic, services, and network policies.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_openshifts_networking_model"><a class="anchor" href="#_openshifts_networking_model"></a>OpenShift&#8217;s Networking Model</h3>
+<div class="paragraph">
+<p>OpenShift extends the base Kubernetes networking model with additional enterprise features:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Routes:</strong> OpenShift&#8217;s native ingress resource (predates Kubernetes Ingress), providing HTTP/HTTPS routing with TLS termination.</p>
+</li>
+<li>
+<p><strong>EgressIP:</strong> Stable, predictable source IPs for outbound pod traffic.</p>
+</li>
+<li>
+<p><strong>EgressFirewall:</strong> Namespace-level controls on outbound traffic destinations.</p>
+</li>
+<li>
+<p><strong>Multus:</strong> Support for multiple network interfaces per pod (used in RHOSO, covered in Module 08).</p>
+</li>
+<li>
+<p><strong>Network Observability:</strong> Built-in flow collection and dashboards for network traffic analysis.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_from_openshift_sdn_to_ovn_kubernetes"><a class="anchor" href="#_from_openshift_sdn_to_ovn_kubernetes"></a>From OpenShift SDN to OVN-Kubernetes</h3>
+<div class="paragraph">
+<p>OpenShift&#8217;s CNI history is directly relevant because it explains why OVN is the current choice:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">OpenShift Version</th>
+<th class="tableblock halign-left valign-top">Default CNI</th>
+<th class="tableblock halign-left valign-top">Technology</th>
+<th class="tableblock halign-left valign-top">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 3.x</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift SDN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS + OpenFlow (custom controller)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">End of life</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 4.0 - 4.11</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift SDN (default), OVN-Kubernetes (optional)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift SDN: OVS + custom controller; OVN-K: OVN + OVS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift SDN deprecated</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 4.12 - 4.13</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes (default)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN + OVS (centralized NB/SB DB with Raft)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Superseded by IC mode</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 4.14 - 4.16</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes (default, IC mode)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN + OVS (per-node NB/SB DB, zone-per-node)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migration from SDN available</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP 4.17+ / 5.x</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes (sole CNI)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN + OVS (IC mode, ANP GA, UDN GA)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Current - OpenShift SDN removed</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>OpenShift SDN</strong> used Open vSwitch as its data plane but implemented its own custom controller to program OVS flows. It supported three network modes: <code>Subnet</code> (flat network), <code>Multitenant</code> (project-level isolation), and <code>NetworkPolicy</code> (Kubernetes NetworkPolicy support). <strong>OpenShift SDN was removed in OCP 4.17</strong>, making OVN-Kubernetes the sole CNI going forward into OCP 5.x.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVN-Kubernetes</strong> replaced this with a fully OVN-based architecture. Instead of a custom controller, it uses OVN&#8217;s standard architecture (NB DB, SB DB, ovn-northd, ovn-controller) with a Kubernetes-specific management layer that translates Kubernetes objects into OVN logical network configurations.</p>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p><strong>OVN Interconnect (IC) mode is the default since OCP 4.14.</strong> In IC mode, each node runs its own independent NB/SB DB, ovn-northd, and ovn-controller. There is no centralized Raft-clustered database. Cross-node traffic uses a transit_switch with remote ports. This is a fundamental architectural change from the pre-4.14 centralized model.</p>
+</div>
+<div class="paragraph">
+<p>Starting with OCP 4.14, clusters can be migrated from OpenShift SDN to OVN-Kubernetes. This migration is a one-way operation - you cannot migrate back.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>The move to OVN-Kubernetes was driven by several factors:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Richer feature set:</strong> OVN provides native support for distributed routing, ACLs, load balancing, NAT, and IGMP snooping - features that OpenShift SDN had to implement in custom code.</p>
+</li>
+<li>
+<p><strong>Upstream alignment:</strong> OVN-Kubernetes is an upstream Kubernetes project with a broad community, reducing Red Hat&#8217;s maintenance burden.</p>
+</li>
+<li>
+<p><strong>Dual-stack support:</strong> OVN-Kubernetes natively supports IPv4, IPv6, and dual-stack networking.</p>
+</li>
+<li>
+<p><strong>Better scalability:</strong> OVN&#8217;s distributed architecture (with ovn-controller on each node processing only locally-relevant flows) scales better than centralized flow programming.</p>
+</li>
+<li>
+<p><strong>Feature parity with cloud providers:</strong> EgressIP, EgressFirewall, and other enterprise networking features map naturally to OVN constructs.</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_kubernetes_architecture"><a class="anchor" href="#_ovn_kubernetes_architecture"></a>OVN-Kubernetes Architecture</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>OVN-Kubernetes maps Kubernetes networking concepts to OVN logical network objects. Understanding this mapping is the key to debugging and understanding the system.</p>
+</div>
+<div class="sect2">
+<h3 id="_mapping_kubernetes_concepts_to_ovn"><a class="anchor" href="#_mapping_kubernetes_concepts_to_ovn"></a>Mapping Kubernetes Concepts to OVN</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Kubernetes Concept</th>
+<th class="tableblock halign-left valign-top">OVN Equivalent</th>
+<th class="tableblock halign-left valign-top">How It Works</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pod</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Logical Switch Port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each pod gets a port on its node&#8217;s logical switch with the pod&#8217;s IP and MAC</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Chassis + Node Logical Switch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Each node is an OVN chassis; its pods connect to a per-node logical switch</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Namespace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No direct mapping</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Namespaces are implemented through ACLs and address sets</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Service (ClusterIP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Load Balancer</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A virtual IP that DNATs to backend pod IPs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Service (NodePort)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Load Balancer + gateway rules</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Same as ClusterIP plus gateway handling for node-level access</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NetworkPolicy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN ACLs + Address Sets</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Policies translated to ACLs; pod selectors become address sets</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EgressIP</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN NAT (SNAT)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Outbound traffic SNATed to a specific IP on a specific node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EgressFirewall</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN ACLs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Namespace-level egress rules implemented as ACLs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multicast</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN IGMP Snooping</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IGMP group membership tracked per logical switch</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_components"><a class="anchor" href="#_components"></a>Components</h3>
+<div class="paragraph">
+<p>OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack. Since OCP 4.14, the architecture uses <strong>Interconnect (IC) mode</strong> where each node is an independent OVN zone with its own databases.</p>
+</div>
+<div class="sect3">
+<h4 id="_ic_mode_architecture_ocp_4_14_5_x"><a class="anchor" href="#_ic_mode_architecture_ocp_4_14_5_x"></a>IC Mode Architecture (OCP 4.14+ / 5.x)</h4>
+<div class="listingblock">
+<div class="content">
+<pre>+------------------------------------------------------------------------+
+|                     Every Node (zone-per-node)                          |
+|                                                                         |
+|  ovnkube-node pod (DaemonSet, 6 containers):                           |
+|  +------------------+ +------------------+ +-------------------+        |
+|  | nbdb container   | | sbdb container   | | northd container  |        |
+|  | (local NB DB)    | | (local SB DB)    | | (local ovn-northd)|        |
+|  +------------------+ +------------------+ +-------------------+        |
+|  +------------------+ +-------------------+ +------------------+        |
+|  | ovn-controller   | | ovnkube-controller| | OVS              |        |
+|  | Programs local   | | Watches K8s API   | | (ovs-vswitchd +  |        |
+|  | OVS flows        | | Translates to     | |  ovsdb-server)   |        |
+|  |                  | | local NB DB       | |                  |        |
+|  +------------------+ +-------------------+ +------------------+        |
++------------------------------------------------------------------------+
+|  Cross-node: transit_switch with remote ports (Geneve tunnels)          |
++------------------------------------------------------------------------+
+
++------------------------------------------------------------------------+
+|                     Control Plane Nodes (additional)                     |
+|  ovnkube-control-plane pod (Deployment):                                |
+|  +------------------+                                                   |
+|  | ovnkube-cluster- |  Coordinates cluster-wide resources               |
+|  | manager          |  (EgressIP, EgressFirewall, zone management)      |
+|  +------------------+                                                   |
++------------------------------------------------------------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_key_differences_from_pre_4_14_architecture"><a class="anchor" href="#_key_differences_from_pre_4_14_architecture"></a>Key Differences from Pre-4.14 Architecture</h4>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">Pre-4.14 (Centralized)</th>
+<th class="tableblock halign-left valign-top">4.14+ / 5.x (IC Mode)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NB/SB Database</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Centralized Raft cluster on control plane nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Per-node standalone databases (no Raft)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Centralized on control plane</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Per-node (inside ovnkube-node pod)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Failure blast radius</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DB failure affects entire cluster</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Failure isolated to single node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl show</code> scope</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full cluster topology</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node-local view only</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cross-node traffic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Direct Geneve tunnel</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Via transit_switch with remote ports</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DB access command</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc exec ovnkube-node-&lt;pod&gt; -c nbdb</code> or <code>-c sbdb</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>oc exec ovnkube-node-&lt;pod&gt; -c nbdb</code> or <code>-c sbdb</code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect3">
+<h4 id="_ovnkube_node"><a class="anchor" href="#_ovnkube_node"></a>ovnkube-node</h4>
+<div class="paragraph">
+<p>The <code>ovnkube-node</code> component runs on every node as a DaemonSet. In IC mode, it is the central component containing all OVN services:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>nbdb / sbdb containers:</strong> Run the node-local NB and SB databases.</p>
+</li>
+<li>
+<p><strong>northd container:</strong> Runs ovn-northd, compiling NB DB into SB DB logical flows for this node.</p>
+</li>
+<li>
+<p><strong>ovn-controller container:</strong> Translates SB DB logical flows into OVS OpenFlow rules.</p>
+</li>
+<li>
+<p><strong>ovnkube-controller container:</strong> Watches the Kubernetes API and translates K8s objects (pods, services, network policies) into OVN NB DB objects for this node.</p>
+</li>
+<li>
+<p><strong>Pod networking setup:</strong> Acts as the CNI plugin - creates veth pairs, assigns IPs, sets up routes.</p>
+</li>
+<li>
+<p><strong>Local OVS configuration:</strong> Ensures OVS bridges (br-int, br-ex) are properly configured.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_ovnkube_control_plane"><a class="anchor" href="#_ovnkube_control_plane"></a>ovnkube-control-plane</h4>
+<div class="paragraph">
+<p>The <code>ovnkube-control-plane</code> component runs on control plane nodes (Deployment with multiple replicas). In IC mode, its role is limited to cluster-wide coordination:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>EgressIP management:</strong> Coordinates EgressIP assignment across nodes.</p>
+</li>
+<li>
+<p><strong>EgressFirewall:</strong> Manages namespace-level egress rules.</p>
+</li>
+<li>
+<p><strong>Zone management:</strong> Coordinates the OVN Interconnect zones.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_ovs"><a class="anchor" href="#_ovs"></a>OVS</h4>
+<div class="paragraph">
+<p>Open vSwitch runs on every node, providing:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>br-int:</strong> The integration bridge where all pod traffic passes through</p>
+</li>
+<li>
+<p><strong>br-ex:</strong> The external bridge for traffic leaving the cluster (to external networks)</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_kubernetes_network_topology"><a class="anchor" href="#_ovn_kubernetes_network_topology"></a>OVN-Kubernetes Network Topology</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>OVN-Kubernetes creates a rich logical network topology to implement Kubernetes networking. Understanding this topology is essential for debugging.</p>
+</div>
+<div class="sect2">
+<h3 id="_the_logical_topology"><a class="anchor" href="#_the_logical_topology"></a>The Logical Topology</h3>
+<div class="listingblock">
+<div class="content">
+<pre>                        External Network
+                              |
+                    +--------------------+
+                    | Gateway Router(s)  |
+                    | (GR_node-x)        |
+                    | - SNAT for egress  |
+                    | - DNAT for NodePort|
+                    | - Load Balancers   |
+                    +--------------------+
+                              |
+                    +--------------------+
+                    | Join Logical Switch |
+                    | (join)              |
+                    | Connects routers   |
+                    +--------------------+
+                              |
+                    +--------------------+
+                    | Cluster Router     |
+                    | (ovn_cluster_      |
+                    |  router)           |
+                    | - Distributed      |
+                    | - Inter-node       |
+                    |   routing          |
+                    | - Load Balancers   |
+                    +--------------------+
+                     /        |         \
+           +--------+   +--------+   +--------+
+           | Node   |   | Node   |   | Node   |
+           | Switch |   | Switch |   | Switch |
+           | (node1)|   | (node2)|   | (node3)|
+           +--------+   +--------+   +--------+
+           / | \          / | \         / | \
+         pod pod pod   pod pod pod   pod pod pod</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_per_node_logical_switch"><a class="anchor" href="#_per_node_logical_switch"></a>Per-Node Logical Switch</h3>
+<div class="paragraph">
+<p>Each node in the cluster gets its own logical switch. All pods on that node are connected to this switch as logical switch ports.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Name convention:</strong> The logical switch is named after the node (e.g., <code>node1</code>, <code>worker-0</code>).</p>
+</li>
+<li>
+<p><strong>Subnet:</strong> Each node is assigned a pod subnet (e.g., <code>10.128.0.0/23</code> for node 1, <code>10.128.2.0/23</code> for node 2).</p>
+</li>
+<li>
+<p><strong>Ports:</strong> One port per pod, plus a router port connecting to the cluster router.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN-Kubernetes uses <strong>per-node subnet allocation</strong>. The cluster is configured with a large pod CIDR (e.g., <code>10.128.0.0/14</code>), and each node gets a smaller subnet from that range (e.g., <code>/23</code> giving 510 pod IPs per node). This means you can determine which node a pod is on just by looking at its IP address.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_join_logical_switch"><a class="anchor" href="#_join_logical_switch"></a>Join Logical Switch</h3>
+<div class="paragraph">
+<p>The join switch connects the cluster router to the gateway routers. It acts as the bridge between the internal pod network and the external network.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Name:</strong> <code>join</code></p>
+</li>
+<li>
+<p><strong>Ports:</strong> One port for the cluster router, one port per gateway router (one per node).</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_cluster_router_ovn_cluster_router"><a class="anchor" href="#_cluster_router_ovn_cluster_router"></a>Cluster Router (ovn_cluster_router)</h3>
+<div class="paragraph">
+<p>The cluster router is a <strong>distributed logical router</strong>. It connects all the per-node logical switches, enabling pod-to-pod communication across nodes.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Distributed:</strong> The router logic runs on every node via ovn-controller. A pod sending traffic to a pod on another node does not need to go through a centralized router.</p>
+</li>
+<li>
+<p><strong>Ports:</strong> One logical router port per node, connecting to that node&#8217;s logical switch.</p>
+</li>
+<li>
+<p><strong>Load Balancers:</strong> ClusterIP services are implemented as load balancers on this router.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_gateway_router_gr_node_x"><a class="anchor" href="#_gateway_router_gr_node_x"></a>Gateway Router (GR_node-x)</h3>
+<div class="paragraph">
+<p>Each node that can serve as a gateway gets a gateway router. The gateway router handles:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>SNAT for egress traffic:</strong> Pod traffic going to external destinations is SNATed to the node&#8217;s IP (or an EgressIP).</p>
+</li>
+<li>
+<p><strong>DNAT for ingress traffic:</strong> NodePort and LoadBalancer service traffic is DNATed to the appropriate backend pod.</p>
+</li>
+<li>
+<p><strong>External connectivity:</strong> Connects to the physical network through br-ex.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>By default, every node has a gateway router, but only worker nodes typically handle pod egress traffic. The <code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) manages which nodes serve as active gateways based on configuration and health.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_transit_switch_ic_mode"><a class="anchor" href="#_transit_switch_ic_mode"></a>Transit Switch (IC Mode)</h3>
+<div class="paragraph">
+<p>Since OCP 4.14, every cluster uses <strong>OVN Interconnect mode</strong> with a <strong>zone-per-node</strong> architecture. Each node is its own zone with an independent OVN control plane. A <strong>transit_switch</strong> connects all zones, using remote ports to route cross-node traffic.</p>
+</div>
+<div class="paragraph">
+<p>When a pod on Node A communicates with a pod on Node B, the packet passes through the transit_switch as an intermediate hop. The transit_switch uses Geneve tunnels between nodes, just like the pre-IC architecture, but the logical path includes the transit_switch routing step.</p>
+</div>
+<div class="paragraph">
+<p>The following is a real <code>ovn-trace</code> output from an OCP 4.18 cluster showing the cross-zone path. Notice how the packet traverses the node&#8217;s local logical switch, the cluster router, and then enters the <code>transit_switch</code> where the output port is of type <code>"remote"</code> - meaning it will be encapsulated in a Geneve tunnel to the destination node&#8217;s zone:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-none hljs">ingress(dp="worker-0-984bc", inport="demo-trace_pod-a") {    <i class="conum" data-value="1"></i><b>(1)</b>
+    ...
+    outport = "stor-worker-0-984bc";
+    output;
+    egress(dp="worker-0-984bc", ...) {
+        ...
+        ingress(dp="ovn_cluster_router", ...) {               <i class="conum" data-value="2"></i><b>(2)</b>
+            ip.ttl--;
+            reg0 = 100.88.0.7;
+            eth.src = 0a:58:64:58:00:06;
+            outport = "rtots-worker-0-984bc";                 <i class="conum" data-value="3"></i><b>(3)</b>
+            ...
+            output;
+            egress(dp="ovn_cluster_router", ...) {
+                output;
+                ingress(dp="transit_switch", ...) {           <i class="conum" data-value="4"></i><b>(4)</b>
+                    outport = "tstor-worker-0-gdztj";         <i class="conum" data-value="5"></i><b>(5)</b>
+                    output;
+                    egress(dp="transit_switch", ...) {
+                        output;
+                        /* output to "tstor-worker-0-gdztj",
+                           type "remote" */;                  <i class="conum" data-value="6"></i><b>(6)</b>
+                    };
+                };
+            };
+        };
+    };
+};</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><i class="conum" data-value="1"></i><b>1</b></td>
+<td>Packet enters the source node&#8217;s local logical switch</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="2"></i><b>2</b></td>
+<td>Routed through the cluster router (distributed, runs locally)</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="3"></i><b>3</b></td>
+<td>Exit via the router-to-transit-switch port</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="4"></i><b>4</b></td>
+<td>Enters the transit_switch</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="5"></i><b>5</b></td>
+<td>Destination is the remote node&#8217;s transit switch port</td>
+</tr>
+<tr>
+<td><i class="conum" data-value="6"></i><b>6</b></td>
+<td><code>type "remote"</code> - packet will be Geneve-encapsulated to the destination zone</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_pod_ip_assignment"><a class="anchor" href="#_pod_ip_assignment"></a>Pod IP Assignment</h3>
+<div class="paragraph">
+<p>When a new node joins the cluster:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) allocates a pod subnet from the cluster CIDR (e.g., <code>10.129.0.0/23</code>).</p>
+</li>
+<li>
+<p>It creates a logical switch for that node.</p>
+</li>
+<li>
+<p>It connects the logical switch to the cluster router.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>When a pod is scheduled to a node:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><code>ovnkube-node</code> allocates an IP from the node&#8217;s pod subnet.</p>
+</li>
+<li>
+<p>It creates a logical switch port on the node&#8217;s logical switch.</p>
+</li>
+<li>
+<p>It creates a veth pair: one end in the pod&#8217;s network namespace, one end connected to br-int.</p>
+</li>
+<li>
+<p>It assigns the pod IP and sets up routes (default gateway is the cluster router&#8217;s port IP).</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_host_networked_pods_vs_regular_pods"><a class="anchor" href="#_host_networked_pods_vs_regular_pods"></a>Host-Networked Pods vs Regular Pods</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">Regular Pod</th>
+<th class="tableblock halign-left valign-top">Host-Networked Pod</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network namespace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Own namespace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Shares node&#8217;s namespace</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IP address</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">From node&#8217;s pod subnet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node&#8217;s IP</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN integration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full - has logical switch port</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Minimal - bypasses OVN for most traffic</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Use cases</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Application workloads</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Infrastructure pods (CNI, monitoring, node exporters)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">br-int involvement</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">All traffic goes through br-int</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Traffic does not traverse br-int</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_packet_flows_in_ovn_kubernetes"><a class="anchor" href="#_packet_flows_in_ovn_kubernetes"></a>Packet Flows in OVN-Kubernetes</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Understanding how packets flow through the OVN-Kubernetes stack is critical for troubleshooting. This section walks through the most common scenarios.</p>
+</div>
+<div class="sect2">
+<h3 id="_pod_to_pod_same_node"><a class="anchor" href="#_pod_to_pod_same_node"></a>Pod to Pod - Same Node</h3>
+<div class="paragraph">
+<p>When two pods on the same node communicate, all traffic stays local within that node&#8217;s OVS instance.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Pod A (10.128.0.5)            Pod B (10.128.0.8)
+   |                              |
+   vethA                       vethB
+   |                              |
+   +-- port on node1 LS --+-- port on node1 LS --+
+                |
+            br-int (OVS)
+         (local switching)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What happens:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Pod A sends a packet to 10.128.0.8 (Pod B).</p>
+</li>
+<li>
+<p>The packet exits Pod A&#8217;s network namespace through the veth pair into br-int.</p>
+</li>
+<li>
+<p>OVS processes the packet through the OVN logical switch pipeline:</p>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Ingress port security:</strong> Verifies the source MAC and IP match the port binding.</p>
+</li>
+<li>
+<p><strong>Ingress ACLs:</strong> Checks network policies (if any) for the source pod.</p>
+</li>
+<li>
+<p><strong>L2 lookup:</strong> Finds the destination MAC in the logical switch&#8217;s FDB.</p>
+</li>
+<li>
+<p><strong>Egress ACLs:</strong> Checks network policies for the destination pod.</p>
+</li>
+<li>
+<p><strong>Egress port security:</strong> Verifies the destination port accepts this traffic.</p>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p>The packet is delivered to Pod B through its veth pair.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>No tunneling is involved - the packet never leaves the node.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_pod_to_pod_different_nodes"><a class="anchor" href="#_pod_to_pod_different_nodes"></a>Pod to Pod - Different Nodes</h3>
+<div class="paragraph">
+<p>When pods on different nodes communicate, the traffic must be encapsulated in a Geneve tunnel.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Node 1 (192.168.1.10)                    Node 2 (192.168.1.11)
++----------------------------+            +----------------------------+
+| Pod A (10.128.0.5)        |            | Pod C (10.128.2.3)        |
+|    |                       |            |    |                       |
+|  vethA                     |            |  vethC                     |
+|    |                       |            |    |                       |
+| node1 LS -- cluster router |            | node2 LS -- cluster router |
+|    |          |             |            |    |          |             |
+|  br-int    geneve port     |            |  br-int    geneve port     |
+|              |             |            |              |             |
++--------------+-------------+            +--------------+-------------+
+               |                                         |
+               +--------Physical Network-----------------+
+                         (Geneve tunnel)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What happens:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Pod A sends a packet to 10.128.2.3 (Pod C on Node 2).</p>
+</li>
+<li>
+<p>The packet enters br-int on Node 1.</p>
+</li>
+<li>
+<p>OVS processes the logical switch pipeline (port security, ACLs, L2 lookup).</p>
+</li>
+<li>
+<p>The L2 lookup does not find 10.128.2.3 on the local switch (different subnet). The packet is forwarded to the cluster router.</p>
+</li>
+<li>
+<p>The cluster router performs L3 routing: the destination 10.128.2.3 matches the route for Node 2&#8217;s subnet (10.128.2.0/23).</p>
+</li>
+<li>
+<p>OVN determines the destination port is on Node 2&#8217;s chassis. The packet is encapsulated in a <strong>Geneve tunnel</strong> destined for Node 2.</p>
+</li>
+<li>
+<p>The Geneve packet traverses the physical network from Node 1 to Node 2.</p>
+</li>
+<li>
+<p>On Node 2, the Geneve tunnel is decapsulated.</p>
+</li>
+<li>
+<p>OVS on Node 2 processes the packet through Node 2&#8217;s logical switch pipeline and delivers it to Pod C.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The cluster router is <strong>distributed</strong> - its routing logic runs on every node. When Pod A sends a packet to Pod C, the routing decision happens locally on Node 1 (inside OVS, programmed by ovn-controller). There is no centralized router that the packet must traverse. This is a key scalability advantage of OVN&#8217;s distributed architecture.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_pod_to_service_clusterip"><a class="anchor" href="#_pod_to_service_clusterip"></a>Pod to Service (ClusterIP)</h3>
+<div class="paragraph">
+<p>When a pod accesses a Kubernetes Service by its ClusterIP, OVN handles the load balancing.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Pod A (10.128.0.5)
+   |
+   | dst: 172.30.100.50:80 (Service ClusterIP)
+   |
+br-int (OVS)
+   |
+   | OVN Load Balancer (DNAT)
+   | 172.30.100.50:80 -&gt; 10.128.0.8:8080 (backend 1)
+   |                  -&gt; 10.128.2.3:8080 (backend 2)
+   |                  -&gt; 10.128.4.5:8080 (backend 3)
+   |
+   | Selected: 10.128.2.3:8080
+   |
+   | (packet now has dst: 10.128.2.3:8080)
+   | (follows pod-to-pod path from here)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What happens:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Pod A sends a packet to 172.30.100.50:80 (the Service ClusterIP).</p>
+</li>
+<li>
+<p>The packet enters br-int.</p>
+</li>
+<li>
+<p><strong>OVN Load Balancer (on the cluster router or logical switch):</strong> OVN matches the destination IP:port against its load balancer rules. It selects a backend pod and performs DNAT - rewriting the destination IP and port to the selected backend.</p>
+</li>
+<li>
+<p>From this point, the packet follows the normal pod-to-pod path (same node or cross-node).</p>
+</li>
+<li>
+<p>The return traffic is un-DNATed (the source is rewritten back to the Service ClusterIP) so Pod A sees responses from the Service IP.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>OVN load balancers are stateful - once a backend is selected for a connection, all packets in that connection go to the same backend. This is tracked using connection tracking (conntrack) in OVS.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_pod_to_external"><a class="anchor" href="#_pod_to_external"></a>Pod to External</h3>
+<div class="paragraph">
+<p>When a pod sends traffic to an external destination (outside the cluster), it must go through a gateway router.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Pod A (10.128.0.5)
+   |
+   | dst: 8.8.8.8
+   |
+br-int on Node 1
+   |
+   | cluster router (routing decision)
+   | -&gt; next hop: gateway router on this node (or another node)
+   |
+   | join switch
+   |
+   | Gateway Router (GR_node1)
+   | SNAT: src 10.128.0.5 -&gt; src 192.168.1.10 (node IP)
+   |
+   | br-ex
+   |
+   | Physical NIC
+   |
+External Network -&gt; 8.8.8.8</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What happens:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Pod A sends a packet to 8.8.8.8.</p>
+</li>
+<li>
+<p>The packet enters br-int, goes through the logical switch pipeline.</p>
+</li>
+<li>
+<p>The cluster router receives the packet. The destination 8.8.8.8 does not match any pod subnet, so it matches the default route pointing to the gateway router.</p>
+</li>
+<li>
+<p>The packet traverses the join switch to reach the gateway router.</p>
+</li>
+<li>
+<p>The <strong>gateway router performs SNAT:</strong> It rewrites the source IP from the pod IP (10.128.0.5) to the node&#8217;s external IP (192.168.1.10). This is necessary because external hosts do not know how to route to pod IPs.</p>
+</li>
+<li>
+<p>The packet exits through br-ex and the physical NIC to the external network.</p>
+</li>
+<li>
+<p>Return traffic arrives at the node&#8217;s external IP, the gateway router un-SNATs it (restoring the pod IP as the destination), and forwards it back to the pod.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_external_to_nodeportloadbalancer"><a class="anchor" href="#_external_to_nodeportloadbalancer"></a>External to NodePort/LoadBalancer</h3>
+<div class="paragraph">
+<p>When external traffic arrives at a NodePort or LoadBalancer service:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>External Client
+   |
+   | dst: 192.168.1.10:30080 (NodePort)
+   |
+Physical NIC on Node 1
+   |
+br-ex
+   |
+Gateway Router (GR_node1)
+   |
+   | OVN Load Balancer (DNAT)
+   | 192.168.1.10:30080 -&gt; 10.128.2.3:8080 (backend pod)
+   |
+   | (if backend is on another node, Geneve tunnel)
+   |
+Pod C (10.128.2.3:8080)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What happens:</strong></p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>External traffic arrives at the node&#8217;s IP on the NodePort (e.g., 192.168.1.10:30080).</p>
+</li>
+<li>
+<p>The packet enters through br-ex into the gateway router.</p>
+</li>
+<li>
+<p>The <strong>gateway router&#8217;s OVN Load Balancer</strong> matches the NodePort and performs DNAT to a backend pod.</p>
+</li>
+<li>
+<p>If the backend pod is on the same node, the packet is forwarded locally. If it is on a different node, the packet is sent through a Geneve tunnel.</p>
+</li>
+<li>
+<p>The return traffic follows the reverse path.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ingress_traffic_flow"><a class="anchor" href="#_ingress_traffic_flow"></a>Ingress Traffic Flow</h3>
+<div class="paragraph">
+<p>OpenShift Ingress (via the HAProxy-based Ingress Controller) adds another layer:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>External Client
+   |
+   | dst: app.example.com (DNS -&gt; LoadBalancer/NodePort IP)
+   |
+Physical NIC -&gt; br-ex -&gt; Gateway Router
+   |
+   | DNAT to Ingress Controller pod (e.g., 10.128.0.20:443)
+   |
+Ingress Controller Pod (HAProxy)
+   |
+   | HTTP routing based on Host header / path
+   | Proxies to backend service
+   |
+   | dst: 172.30.100.50:80 (Service ClusterIP)
+   |
+   | OVN Load Balancer (DNAT to backend pod)
+   |
+Backend Pod (10.128.2.3:8080)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The Ingress Controller pod itself is a regular pod running HAProxy. It receives the external traffic (via a LoadBalancer or NodePort Service), makes HTTP-level routing decisions, and proxies to the backend Service. From OVN&#8217;s perspective, this is just pod-to-service traffic.</p>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_key_features_in_ovn_kubernetes"><a class="anchor" href="#_key_features_in_ovn_kubernetes"></a>Key Features in OVN-Kubernetes</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_network_policies"><a class="anchor" href="#_network_policies"></a>Network Policies</h3>
+<div class="paragraph">
+<p>Kubernetes NetworkPolicies allow you to control which pods can communicate with each other. OVN-Kubernetes implements these using <strong>OVN ACLs</strong> and <strong>Address Sets</strong>.</p>
+</div>
+<div class="sect3">
+<h4 id="_how_networkpolicies_map_to_ovn"><a class="anchor" href="#_how_networkpolicies_map_to_ovn"></a>How NetworkPolicies Map to OVN</h4>
+<div class="paragraph">
+<p>When you create a NetworkPolicy, <code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) translates it into:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><strong>Address Sets:</strong> Collections of IP addresses representing the pods matched by selectors. For example, all pods with label <code>app=web</code> in namespace <code>production</code> get their IPs added to an address set.</p>
+</li>
+<li>
+<p><strong>ACLs:</strong> Rules on the logical switch that allow or deny traffic based on address sets, ports, and protocols.</p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Kubernetes NetworkPolicy              OVN Implementation
++---------------------------+          +---------------------------+
+| spec:                     |          | Address Set:              |
+|   podSelector:            |          |   name: production.web    |
+|     matchLabels:          |   ---&gt;   |   addresses: [10.128.0.5, |
+|       app: web            |          |               10.128.2.3] |
+|   ingress:                |          |                           |
+|   - from:                 |          | ACL (on logical switch):  |
+|     - podSelector:        |          |   match: ip4.src ==       |
+|         matchLabels:      |   ---&gt;   |     @production.api &amp;&amp;    |
+|           app: api        |          |     outport == @prod.web  |
+|     ports:                |          |   action: allow-related   |
+|     - port: 8080          |          |   priority: 1001          |
+|       protocol: TCP       |          |                           |
++---------------------------+          +---------------------------+</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_default_behavior"><a class="anchor" href="#_default_behavior"></a>Default Behavior</h4>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In Kubernetes, the default network behavior is <strong>allow all</strong>. Without any NetworkPolicy, all pods can communicate with all other pods. Once you apply a NetworkPolicy to a pod (by matching its <code>podSelector</code>), that pod&#8217;s traffic is restricted to only what the policy explicitly allows. This is called <strong>default deny</strong> for the selected pods.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Ingress policies</strong> control incoming traffic to the selected pods. <strong>Egress policies</strong> control outgoing traffic from the selected pods.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_efficiency_through_address_sets"><a class="anchor" href="#_efficiency_through_address_sets"></a>Efficiency Through Address Sets</h4>
+<div class="paragraph">
+<p>Address sets are the key to OVN&#8217;s efficient implementation of NetworkPolicies:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Instead of creating one ACL per source-destination pod pair, OVN creates address sets that group pods by selector.</p>
+</li>
+<li>
+<p>When pods are added or removed, only the address set is updated (adding or removing an IP), not the ACL itself.</p>
+</li>
+<li>
+<p>This means NetworkPolicy changes scale with the number of policies, not the number of pods.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_admin_network_policies_ocp_4_16"><a class="anchor" href="#_admin_network_policies_ocp_4_16"></a>Admin Network Policies (OCP 4.16+)</h3>
+<div class="paragraph">
+<p>Admin Network Policies (ANP) are cluster-scoped, non-overridable network policies that give cluster administrators priority control over network traffic. They are GA since OCP 4.16.</p>
+</div>
+<div class="sect3">
+<h4 id="_hierarchical_acl_tiers"><a class="anchor" href="#_hierarchical_acl_tiers"></a>Hierarchical ACL Tiers</h4>
+<div class="paragraph">
+<p>OVN-Kubernetes implements Admin Network Policies using <strong>hierarchical ACL tiers</strong>:</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Tier</th>
+<th class="tableblock halign-left valign-top">Policy Type</th>
+<th class="tableblock halign-left valign-top">Scope</th>
+<th class="tableblock halign-left valign-top">Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tier 1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Admin Network Policy (ANP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cluster-scoped, admin-managed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Highest - evaluated first</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tier 2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NetworkPolicy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Namespace-scoped, developer-managed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Standard</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tier 3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Baseline Admin Network Policy (BANP)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cluster-scoped, admin-managed</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Lowest - fallback rules</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The <strong>pass</strong> action in ANP delegates the decision to the next tier. For example, an ANP can explicitly allow management traffic (Tier 1 allow), then pass all other traffic to standard NetworkPolicies (Tier 2) for per-namespace control.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_troubleshooting_anp"><a class="anchor" href="#_troubleshooting_anp"></a>Troubleshooting ANP</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find ANP-generated ACLs in OVN (Tier 1)
+oc exec -n openshift-ovn-kubernetes &lt;ovnkube-node-pod&gt; \
+  -c nbdb -- ovn-nbctl find ACL tier=1
+
+# Check all tiers
+oc exec -n openshift-ovn-kubernetes &lt;ovnkube-node-pod&gt; \
+  -c nbdb -- ovn-nbctl list ACL | grep -E "tier|match|action"</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_user_defined_networks_ocp_4_17"><a class="anchor" href="#_user_defined_networks_ocp_4_17"></a>User-Defined Networks (OCP 4.17+)</h3>
+<div class="paragraph">
+<p>User-Defined Networks (UDN) allow creating additional, isolated network topologies beyond the default cluster network. They are GA since OCP 4.17.</p>
+</div>
+<div class="paragraph">
+<p>Each UDN gets its own set of OVN logical objects: gateway routers, logical switches, and transit switches. This means <code>ovn-nbctl show</code> output is richer and contains per-network topology. When troubleshooting UDN, identify which network the pod belongs to before tracing.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_egressip"><a class="anchor" href="#_egressip"></a>EgressIP</h3>
+<div class="paragraph">
+<p>EgressIP allows you to assign a specific, stable IP address to all outbound traffic from pods in a namespace. This is critical for environments where external systems use IP-based allowlists.</p>
+</div>
+<div class="sect3">
+<h4 id="_what_it_is_and_why_it_matters"><a class="anchor" href="#_what_it_is_and_why_it_matters"></a>What It Is and Why It Matters</h4>
+<div class="paragraph">
+<p>Without EgressIP, outbound pod traffic is SNATed to the node&#8217;s IP. Since pods can be rescheduled to different nodes, the source IP of outbound traffic is unpredictable. EgressIP solves this by assigning a dedicated external IP.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Without EgressIP:                    With EgressIP:
+Pod on Node 1 -&gt; SNAT 192.168.1.10   Pod on Node 1 -&gt; SNAT 10.0.0.50
+Pod on Node 2 -&gt; SNAT 192.168.1.11   Pod on Node 2 -&gt; SNAT 10.0.0.50
+(source IP changes if pod moves)     (source IP is stable)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_how_ovn_implements_egressip"><a class="anchor" href="#_how_ovn_implements_egressip"></a>How OVN Implements EgressIP</h4>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>The <code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) watches for EgressIP custom resources.</p>
+</li>
+<li>
+<p>It selects a node to host the EgressIP (based on node labels and availability).</p>
+</li>
+<li>
+<p>It configures an <strong>OVN SNAT rule</strong> on the gateway router of the selected node, SNATing traffic from the namespace&#8217;s pods to the EgressIP.</p>
+</li>
+<li>
+<p>The EgressIP is added as a secondary IP on the selected node&#8217;s external interface.</p>
+</li>
+<li>
+<p>If the hosting node goes down, the EgressIP is <strong>automatically reassigned</strong> to another eligible node (failover).</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>EgressIP failover requires at least two nodes labeled as eligible for the EgressIP. The <code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) monitors node health and reassigns the EgressIP if the hosting node becomes unreachable.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_egressfirewall"><a class="anchor" href="#_egressfirewall"></a>EgressFirewall</h3>
+<div class="paragraph">
+<p>EgressFirewall (also known as <code>EgressNetworkPolicy</code> in older versions) controls what external destinations pods in a namespace can access.</p>
+</div>
+<div class="sect3">
+<h4 id="_how_it_works"><a class="anchor" href="#_how_it_works"></a>How It Works</h4>
+<div class="ulist">
+<ul>
+<li>
+<p>Defined per namespace.</p>
+</li>
+<li>
+<p>Rules specify <code>Allow</code> or <code>Deny</code> for traffic to specific CIDR ranges or DNS names.</p>
+</li>
+<li>
+<p>Implemented as <strong>OVN ACLs</strong> on the logical switch.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Example EgressFirewall resource:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>apiVersion: k8s.ovn.org/v1
+kind: EgressFirewall
+metadata:
+  name: default
+  namespace: production
+spec:
+  egress:
+  - type: Allow
+    to:
+      cidrSelector: 10.0.0.0/8
+  - type: Allow
+    to:
+      dnsName: "*.example.com"
+  - type: Deny
+    to:
+      cidrSelector: 0.0.0.0/0</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This policy allows pods in <code>production</code> to reach <code>10.0.0.0/8</code> and <code>*.example.com</code>, but blocks all other external traffic.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_dns_based_egress_rules"><a class="anchor" href="#_dns_based_egress_rules"></a>DNS-Based Egress Rules</h4>
+<div class="paragraph">
+<p>OVN-Kubernetes supports DNS-based egress rules. When a DNS name is specified:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p><code>ovnkube-controller</code> (in IC mode, running inside each ovnkube-node pod) resolves the DNS name periodically.</p>
+</li>
+<li>
+<p>It updates the corresponding address set with the resolved IPs.</p>
+</li>
+<li>
+<p>The ACL references the address set, so it automatically picks up DNS changes.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>DNS-based egress rules depend on DNS resolution working correctly from the control plane. If DNS is unreliable, the address sets may contain stale IPs, leading to unexpected allow/deny behavior. Also, DNS resolution happens at the controller level, not at the pod level, so TTL-based load balancing may behave differently than expected.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_multicast"><a class="anchor" href="#_multicast"></a>Multicast</h3>
+<div class="paragraph">
+<p>OVN-Kubernetes supports multicast traffic within the cluster using OVN&#8217;s IGMP snooping capability.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>IGMP snooping</strong> is enabled per logical switch.</p>
+</li>
+<li>
+<p>When a pod joins a multicast group (sends an IGMP join), OVN tracks the membership.</p>
+</li>
+<li>
+<p>Multicast traffic is only forwarded to ports that have joined the group, preventing unnecessary flooding.</p>
+</li>
+<li>
+<p>Multicast must be explicitly enabled in the cluster network configuration.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ipsec"><a class="anchor" href="#_ipsec"></a>IPsec</h3>
+<div class="paragraph">
+<p>OVN-Kubernetes supports encrypting all pod-to-pod traffic that traverses Geneve tunnels using IPsec.</p>
+</div>
+<div class="sect3">
+<h4 id="_how_it_works_2"><a class="anchor" href="#_how_it_works_2"></a>How It Works</h4>
+<div class="ulist">
+<ul>
+<li>
+<p>IPsec encrypts the outer Geneve packets as they travel between nodes.</p>
+</li>
+<li>
+<p>Uses IKE (Internet Key Exchange) for key negotiation, with certificates managed by the OpenShift certificate infrastructure.</p>
+</li>
+<li>
+<p>Provides confidentiality and integrity for all inter-node pod traffic.</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Without IPsec:
+Node 1 ---[Geneve(plaintext)]---&gt; Node 2
+
+With IPsec:
+Node 1 ---[IPsec(Geneve(encrypted))]---&gt; Node 2</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>IPsec adds CPU overhead for encryption/decryption on every node. This can impact throughput and latency, especially for high-bandwidth workloads. Test performance in your environment before enabling in production.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>To check if IPsec is enabled:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get network.operator cluster -o jsonpath='{.spec.defaultNetwork.ovnKubernetesConfig.ipsecConfig}'</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_interconnect_ic_mode_zone_per_node"><a class="anchor" href="#_interconnect_ic_mode_zone_per_node"></a>Interconnect (IC) Mode - Zone-Per-Node</h3>
+<div class="paragraph">
+<p>Since OCP 4.14, OVN-Kubernetes uses <strong>OVN Interconnect mode</strong> as the default architecture. In this model, <strong>each node is its own zone</strong> with an independent NB DB, SB DB, and ovn-northd instance. This eliminates the centralized Raft-clustered database and provides per-node failure isolation.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>+---------------------+        +---------------------+
+|   Node 1 (Zone 1)   |        |   Node 2 (Zone 2)   |
+|                      |        |                      |
+| NB DB, SB DB, northd |        | NB DB, SB DB, northd |
+| ovn-controller       |        | ovn-controller       |
+| ovnkube-controller   |        | ovnkube-controller   |
+|                      |        |                      |
++----------+-----------+        +----------+-----------+
+           |                               |
+           +-------Transit Switch----------+
+           |    (OVN Interconnect)         |
+           +-------------------------------+</pre>
+</div>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Aspect</th>
+<th class="tableblock halign-left valign-top">Pre-4.14 (Centralized)</th>
+<th class="tableblock halign-left valign-top">4.14+ / 5.x (IC Mode, Zone-Per-Node)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN databases</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One NB DB, one SB DB cluster (Raft)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One standalone NB/SB DB per node (no Raft)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-northd</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One centralized instance</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">One per node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Failure blast radius</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DB failure affects entire cluster</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Isolated to single node</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Inter-node traffic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Direct Geneve tunnel</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Via transit_switch with remote ports</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl show</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full cluster topology</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Node-local view only</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Scale</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">~250 nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">No practical limit</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In IC mode, <code>ovn-nbctl show</code> on any given node only shows that node&#8217;s local topology. To see the full cluster, you must query each node individually. This is a common source of confusion during troubleshooting - if you query a node that does not host the pod you are looking for, you will get empty results. Always query the specific node where the pod is running.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_ovn_kubernetes_in_different_openshift_variants"><a class="anchor" href="#_ovn_kubernetes_in_different_openshift_variants"></a>OVN-Kubernetes in Different OpenShift Variants</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>OVN-Kubernetes is the CNI across all major OpenShift variants, but the underlying cloud infrastructure affects how it integrates with the physical/virtual network.</p>
+</div>
+<div class="sect2">
+<h3 id="_comparison_across_variants"><a class="anchor" href="#_comparison_across_variants"></a>Comparison Across Variants</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Variant</th>
+<th class="tableblock halign-left valign-top">Platform</th>
+<th class="tableblock halign-left valign-top">Network Underlay</th>
+<th class="tableblock halign-left valign-top">Key Considerations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OCP (self-managed)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Bare metal, VMware, OpenStack, etc.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Full control over physical network</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Standard OVN-K deployment; you manage everything</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ROSA</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">AWS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VPC, Subnets, ENIs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Geneve tunnels over VPC; AWS security groups coexist with OVN ACLs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ARO</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Azure</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">VNet, Subnets, NSGs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Geneve tunnels over VNet; Azure NSGs coexist with OVN ACLs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ROKS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IBM Cloud</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">IBM Cloud VPC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Similar to AWS/Azure model</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Single Node OpenShift (SNO)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Any</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Single node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Simplified topology - no inter-node tunnels</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ocp_self_managed"><a class="anchor" href="#_ocp_self_managed"></a>OCP (Self-Managed)</h3>
+<div class="paragraph">
+<p>In self-managed OCP, you have full control over the network infrastructure:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>You configure the physical switches, VLANs, and IP addressing.</p>
+</li>
+<li>
+<p>OVN-Kubernetes Geneve tunnels run over whatever network you provide between nodes.</p>
+</li>
+<li>
+<p>You can configure custom br-ex mappings for external network connectivity.</p>
+</li>
+<li>
+<p>MTU considerations are your responsibility (Geneve overhead is typically 100 bytes; ensure the physical network MTU accommodates this).</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_rosa_red_hat_openshift_service_on_aws"><a class="anchor" href="#_rosa_red_hat_openshift_service_on_aws"></a>ROSA (Red Hat OpenShift Service on AWS)</h3>
+<div class="paragraph">
+<p>On ROSA, OVN-Kubernetes runs on top of AWS VPC networking:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Geneve tunnels</strong> between nodes run over the VPC network.</p>
+</li>
+<li>
+<p>Each node is an EC2 instance with one or more <strong>Elastic Network Interfaces (ENIs)</strong>.</p>
+</li>
+<li>
+<p><strong>AWS Security Groups</strong> operate at the EC2/ENI level, while OVN ACLs operate at the pod level. Both must be considered during troubleshooting.</p>
+</li>
+<li>
+<p>The <strong>VPC CNI</strong> is not used - OVN-Kubernetes handles all pod networking.</p>
+</li>
+<li>
+<p>Pod IPs are from the cluster pod CIDR, not from the VPC CIDR (pods are not directly routable from the VPC without additional configuration).</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>On ROSA, if AWS Security Groups block Geneve traffic (UDP port 6081) between nodes, pod-to-pod communication across nodes will fail. This is a common misconfiguration when custom security groups are applied.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_aro_azure_red_hat_openshift"><a class="anchor" href="#_aro_azure_red_hat_openshift"></a>ARO (Azure Red Hat OpenShift)</h3>
+<div class="paragraph">
+<p>On ARO, OVN-Kubernetes runs on top of Azure VNet networking:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Geneve tunnels</strong> between nodes run over the VNet.</p>
+</li>
+<li>
+<p><strong>Azure Network Security Groups (NSGs)</strong> operate at the subnet or NIC level, alongside OVN ACLs.</p>
+</li>
+<li>
+<p>Azure&#8217;s network policies and OVN&#8217;s network policies operate at different layers and do not conflict, but both must allow the required traffic.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_roks_red_hat_openshift_on_ibm_cloud"><a class="anchor" href="#_roks_red_hat_openshift_on_ibm_cloud"></a>ROKS (Red Hat OpenShift on IBM Cloud)</h3>
+<div class="paragraph">
+<p>ROKS uses IBM Cloud VPC as the underlay:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Similar model to AWS and Azure - Geneve tunnels over VPC networking.</p>
+</li>
+<li>
+<p>IBM Cloud-specific security groups and ACLs at the VPC level.</p>
+</li>
+</ul>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_hands_on_exploring_ovn_kubernetes_in_openshift"><a class="anchor" href="#_hands_on_exploring_ovn_kubernetes_in_openshift"></a>Hands-On: Exploring OVN-Kubernetes in OpenShift</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section provides commands you can run on a live OpenShift cluster to explore the OVN-Kubernetes implementation. The cluster is assumed to be already deployed and operational.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>All commands require access to the OpenShift cluster via the <code>oc</code> CLI with appropriate permissions. Most inspection commands require <code>cluster-admin</code> privileges.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_cluster_overview"><a class="anchor" href="#_cluster_overview"></a>Cluster Overview</h3>
+<div class="sect3">
+<h4 id="_view_the_network_configuration"><a class="anchor" href="#_view_the_network_configuration"></a>View the Network Configuration</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get network.config cluster -o yaml</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>apiVersion: config.openshift.io/v1
+kind: Network
+metadata:
+  name: cluster
+spec:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  externalIP:
+    policy: {}
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
+status:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  clusterNetworkMTU: 1400
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key fields:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>networkType: OVNKubernetes</code> confirms OVN-K is the CNI.</p>
+</li>
+<li>
+<p><code>clusterNetwork: 10.128.0.0/14</code> with <code>hostPrefix: 23</code> means each node gets a /23 subnet (510 pod IPs).</p>
+</li>
+<li>
+<p><code>serviceNetwork: 172.30.0.0/16</code> is the ClusterIP range for Services.</p>
+</li>
+<li>
+<p><code>clusterNetworkMTU: 1400</code> is the MTU for pod interfaces (reduced from physical MTU to account for Geneve encapsulation overhead).</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_find_ovn_kubernetes_pods"><a class="anchor" href="#_find_ovn_kubernetes_pods"></a>Find OVN-Kubernetes Pods</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get pods -n openshift-ovn-kubernetes -o wide</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME                                     READY   STATUS    RESTARTS   AGE   IP              NODE
+ovnkube-control-plane-6f8c9d7e5b-abc12   1/1     Running   0          5d    192.168.1.10    master-0
+ovnkube-control-plane-6f8c9d7e5b-def34   1/1     Running   0          5d    192.168.1.11    master-1
+ovnkube-control-plane-6f8c9d7e5b-ghi56   1/1     Running   0          5d    192.168.1.12    master-2
+ovnkube-node-abc12                       8/8     Running   0          5d    192.168.1.10    master-0
+ovnkube-node-def34                       8/8     Running   0          5d    192.168.1.11    master-1
+ovnkube-node-ghi56                       8/8     Running   0          5d    192.168.1.12    master-2
+ovnkube-node-jkl78                       8/8     Running   0          5d    192.168.1.20    worker-0
+ovnkube-node-mno90                       8/8     Running   0          5d    192.168.1.21    worker-1
+ovnkube-node-pqr12                       8/8     Running   0          5d    192.168.1.22    worker-2</pre>
+</div>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>ovnkube-control-plane</code> pods run on control plane nodes and coordinate cluster-wide resources (EgressIP, zone management).</p>
+</li>
+<li>
+<p><code>ovnkube-node</code> pods run on every node (DaemonSet) and contain the full OVN stack in IC mode: nbdb, sbdb, northd, ovn-controller, and ovnkube-controller. <strong>These are the pods you use to query OVN databases.</strong></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_node_ips_and_pod_cidrs"><a class="anchor" href="#_check_node_ips_and_pod_cidrs"></a>Check Node IPs and Pod CIDRs</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,INTERNAL-IP:'.status.addresses[?(@.type=="InternalIP")].address',POD-CIDR:.spec.podCIDR</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME        STATUS   INTERNAL-IP      POD-CIDR
+master-0    Ready    192.168.1.10     10.128.0.0/23
+master-1    Ready    192.168.1.11     10.128.2.0/23
+master-2    Ready    192.168.1.12     10.128.4.0/23
+worker-0    Ready    192.168.1.20     10.129.0.0/23
+worker-1    Ready    192.168.1.21     10.129.2.0/23
+worker-2    Ready    192.168.1.22     10.130.0.0/23</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This output confirms the per-node subnet allocation. For example, all pods on <code>worker-0</code> will have IPs in the <code>10.129.0.0/23</code> range.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_examining_ovn_state"><a class="anchor" href="#_examining_ovn_state"></a>Examining OVN State</h3>
+<div class="sect3">
+<h4 id="_access_the_ovn_northbound_database"><a class="anchor" href="#_access_the_ovn_northbound_database"></a>Access the OVN Northbound Database</h4>
+<div class="paragraph">
+<p>To run <code>ovn-nbctl</code> commands in IC mode (OCP 4.14+), exec into the specific node&#8217;s <code>ovnkube-node</code> pod using the <code>nbdb</code> container. Each node has its own database showing only its local topology:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>switch 1a2b3c4d-5e6f-7890-abcd-ef0123456789 (worker-0)
+    port worker-0-k8s-node
+        type: router
+        router-port: rtos-worker-0
+    port namespace1_pod-abc-12345
+        addresses: ["0a:58:0a:81:00:05 10.129.0.5"]
+    port namespace2_pod-def-67890
+        addresses: ["0a:58:0a:81:00:08 10.129.0.8"]
+switch 2b3c4d5e-6f78-9012-bcde-f01234567890 (worker-1)
+    port worker-1-k8s-node
+        type: router
+        router-port: rtos-worker-1
+    port namespace1_pod-ghi-11111
+        addresses: ["0a:58:0a:81:02:03 10.129.2.3"]
+switch 3c4d5e6f-7890-1234-cdef-012345678901 (join)
+    port jtor-ovn_cluster_router
+        type: router
+        router-port: rtoj-ovn_cluster_router
+    port jtor-GR_worker-0
+        type: router
+        router-port: rtoj-GR_worker-0
+    port jtor-GR_worker-1
+        type: router
+        router-port: rtoj-GR_worker-1
+router 4d5e6f78-9012-3456-def0-123456789012 (ovn_cluster_router)
+    port rtos-worker-0
+        mac: "0a:58:0a:81:00:01"
+        networks: ["10.129.0.1/23"]
+    port rtos-worker-1
+        mac: "0a:58:0a:81:02:01"
+        networks: ["10.129.2.1/23"]
+    port rtoj-ovn_cluster_router
+        mac: "0a:58:64:40:00:01"
+        networks: ["100.64.0.1/16"]
+router 5e6f7890-1234-5678-ef01-234567890123 (GR_worker-0)
+    port rtoj-GR_worker-0
+        mac: "0a:58:64:40:00:03"
+        networks: ["100.64.0.3/16"]
+    port rtoe-GR_worker-0
+        mac: "0a:58:c0:a8:01:14"
+        networks: ["192.168.1.20/24"]
+    nat dnat_and_snat ...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This output shows the full OVN-Kubernetes topology:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Per-node logical switches (<code>worker-0</code>, <code>worker-1</code>) with pod ports</p>
+</li>
+<li>
+<p>The <code>join</code> logical switch connecting routers</p>
+</li>
+<li>
+<p>The <code>ovn_cluster_router</code> (distributed router for inter-node routing)</p>
+</li>
+<li>
+<p>Gateway routers (<code>GR_worker-0</code>) for external traffic</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_list_all_logical_switches"><a class="anchor" href="#_list_all_logical_switches"></a>List All Logical Switches</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl ls-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1a2b3c4d-5e6f-7890-abcd-ef0123456789 (worker-0)
+2b3c4d5e-6f78-9012-bcde-f01234567890 (worker-1)
+5f6g7h8i-9012-3456-efgh-ijklmnopqrst (worker-2)
+6g7h8i9j-0123-4567-ghij-klmnopqrstuv (master-0)
+7h8i9j0k-1234-5678-hijk-lmnopqrstuvw (master-1)
+8i9j0k1l-2345-6789-ijkl-mnopqrstuvwx (master-2)
+3c4d5e6f-7890-1234-cdef-012345678901 (join)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_list_all_logical_routers"><a class="anchor" href="#_list_all_logical_routers"></a>List All Logical Routers</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lr-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>4d5e6f78-9012-3456-def0-123456789012 (ovn_cluster_router)
+5e6f7890-1234-5678-ef01-234567890123 (GR_worker-0)
+6f789012-3456-7890-f012-345678901234 (GR_worker-1)
+7g890123-4567-8901-0123-456789012345 (GR_worker-2)
+8h901234-5678-9012-1234-567890123456 (GR_master-0)
+9i012345-6789-0123-2345-678901234567 (GR_master-1)
+0j123456-7890-1234-3456-789012345678 (GR_master-2)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_examine_logical_switch_ports_for_pods"><a class="anchor" href="#_examine_logical_switch_ports_for_pods"></a>Examine Logical Switch Ports for Pods</h4>
+<div class="paragraph">
+<p>To find the logical switch port for a specific pod:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># First, find the pod's IP
+oc get pod my-app-abc12 -n production -o wide</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME            READY   STATUS    RESTARTS   AGE   IP            NODE
+my-app-abc12    1/1     Running   0          2h    10.129.0.5    worker-0</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Then find the corresponding logical switch port
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl find Logical_Switch_Port name=production_my-app-abc12</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : abcdef01-2345-6789-abcd-ef0123456789
+addresses           : ["0a:58:0a:81:00:05 10.129.0.5"]
+dhcpv4_options      : []
+dhcpv6_options      : []
+dynamic_addresses   : []
+enabled             : [true]
+external_ids        : {namespace=production, pod="true"}
+ha_chassis_group    : []
+name                : "production_my-app-abc12"
+options             : {iface-id-ver="abcdef01-2345-6789-abcd-ef0123456789", requested-chassis=worker-0}
+parent_name         : []
+port_security       : ["0a:58:0a:81:00:05 10.129.0.5"]
+tag                 : []
+tag_request         : []
+type                : ""
+up                  : [true]</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_load_balancers_for_services"><a class="anchor" href="#_check_load_balancers_for_services"></a>Check Load Balancers (for Services)</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List all load balancers
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lb-list</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>UUID                                    LB                  PROTO      VIP                      IPs
+abcd1234-5678-90ef-ghij-klmnopqrstuv    Service_production  tcp        172.30.100.50:80         10.129.0.5:8080,10.129.2.3:8080
+bcde2345-6789-01fg-hijk-lmnopqrstuvw    Service_production  tcp        172.30.100.51:443        10.129.0.6:8443,10.129.2.4:8443
+cdef3456-7890-12gh-ijkl-mnopqrstuvwx    Service_kube-sys    tcp        172.30.0.1:443           192.168.1.10:6443,192.168.1.11:6443,192.168.1.12:6443</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_acls_for_networkpolicies"><a class="anchor" href="#_check_acls_for_networkpolicies"></a>Check ACLs (for NetworkPolicies)</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List ACLs on a specific logical switch
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl acl-list worker-0</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>from-lport  1001 (inport == @a16382154715504756660 &amp;&amp; ip) allow-related
+from-lport  1001 (inport == @a16382154715504756660 &amp;&amp; ip4 &amp;&amp; ip4.dst == 172.30.0.0/16) allow
+  to-lport  1001 (outport == @a16382154715504756660 &amp;&amp; ip4 &amp;&amp; ip4.src == 10.128.0.0/14) allow-related
+  to-lport  1000 (outport == @a16382154715504756660 &amp;&amp; ip) drop</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check address sets (used by ACLs for pod selectors)
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl list Address_Set | head -20</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : aabbccdd-1122-3344-5566-778899001122
+addresses           : ["10.129.0.5", "10.129.2.3"]
+external_ids        : {direction=ingress, gress_policy_idx="0", ip_family=v4, name=production.allow-web-policy, namespace=production, policy=allow-web}
+name                : a16382154715504756660</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_examining_ovs_state"><a class="anchor" href="#_examining_ovs_state"></a>Examining OVS State</h3>
+<div class="sect3">
+<h4 id="_check_ovs_configuration_on_a_node"><a class="anchor" href="#_check_ovs_configuration_on_a_node"></a>Check OVS Configuration on a Node</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-0 -- chroot /host ovs-vsctl show</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Starting pod/worker-0-debug-xxxxx ...
+To use host binaries, run `chroot /host`
+abcdef01-2345-6789-0123-456789abcdef
+    Bridge br-int
+        fail_mode: secure
+        datapath_type: system
+        Port br-int
+            Interface br-int
+                type: internal
+        Port "patch-br-int-to-br-ex"
+            Interface "patch-br-int-to-br-ex"
+                type: patch
+                options: {peer="patch-br-ex-to-br-int"}
+        Port "ovn-k8s-mp0"
+            Interface "ovn-k8s-mp0"
+                type: internal
+        Port "5e6f7890_worker"
+            Interface "5e6f7890_worker"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="192.168.1.21"}
+        Port "6f789012_worker"
+            Interface "6f789012_worker"
+                type: geneve
+                options: {csum="true", key=flow, remote_ip="192.168.1.22"}
+        Port "abcdef01234"
+            Interface "abcdef01234"
+    Bridge br-ex
+        Port br-ex
+            Interface br-ex
+                type: internal
+        Port "patch-br-ex-to-br-int"
+            Interface "patch-br-ex-to-br-int"
+                type: patch
+                options: {peer="patch-br-int-to-br-ex"}
+        Port enp1s0
+            Interface enp1s0
+
+Removing debug pod ...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Key observations:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>br-int</strong> has Geneve tunnel ports to other nodes, pod ports, and a patch port to br-ex.</p>
+</li>
+<li>
+<p><strong>br-ex</strong> connects to the physical NIC (enp1s0) and has a patch port back to br-int.</p>
+</li>
+<li>
+<p><strong>ovn-k8s-mp0</strong> is the management port used by OVN-Kubernetes for node-level networking.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_dump_ovs_flows"><a class="anchor" href="#_dump_ovs_flows"></a>Dump OVS Flows</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-0 -- chroot /host ovs-ofctl dump-flows br-int | head -30</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Starting pod/worker-0-debug-xxxxx ...
+ cookie=0xdeadbeef, duration=432000.123s, table=0, n_packets=98765432, n_bytes=12345678901, priority=180,vlan_tci=0x0000/0x1000 actions=conjunction(100,1/2)
+ cookie=0xdeadbeef, duration=432000.123s, table=0, n_packets=0, n_bytes=0, priority=180,conj_id=100 actions=load:0x1-&gt;NXM_NX_REG14[],load:0x3-&gt;NXM_NX_REG11[],load:0x4-&gt;NXM_NX_REG12[],load:0x5-&gt;OXM_OF_METADATA[],load:0x1-&gt;NXM_NX_REG13[],resubmit(,8)
+ ...
+
+Removing debug pod ...</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The <code>oc debug node/&lt;node&gt;</code> command creates a temporary debug pod on the specified node and gives you a shell with access to the host filesystem (via <code>chroot /host</code>). This is the standard way to run host-level commands on OpenShift nodes without direct SSH access.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_geneve_tunnels_between_nodes"><a class="anchor" href="#_check_geneve_tunnels_between_nodes"></a>Check Geneve Tunnels Between Nodes</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-0 -- chroot /host ovs-vsctl find Interface type=geneve</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : abcdef01-aaaa-bbbb-cccc-dddddddddddd
+admin_state         : up
+link_state          : up
+name                : "5e6f7890_worker"
+ofport              : 3
+options             : {csum="true", key=flow, remote_ip="192.168.1.21"}
+statistics          : {rx_bytes=12345678, rx_packets=98765, tx_bytes=87654321, tx_packets=76543}
+status              : {tunnel_egress_iface="enp1s0", tunnel_egress_iface_carrier=up}
+type                : geneve
+
+_uuid               : bcdef012-bbbb-cccc-dddd-eeeeeeeeeeee
+admin_state         : up
+link_state          : up
+name                : "6f789012_worker"
+ofport              : 4
+options             : {csum="true", key=flow, remote_ip="192.168.1.22"}
+statistics          : {rx_bytes=23456789, rx_packets=87654, tx_bytes=76543210, tx_packets=65432}
+status              : {tunnel_egress_iface="enp1s0", tunnel_egress_iface_carrier=up}
+type                : geneve</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Verify that <code>link_state</code> is <code>up</code> and <code>tunnel_egress_iface_carrier</code> is <code>up</code> for all tunnels.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_br_ex_for_external_connectivity"><a class="anchor" href="#_check_br_ex_for_external_connectivity"></a>Check br-ex for External Connectivity</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-0 -- chroot /host ovs-vsctl list-ports br-ex</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>enp1s0
+patch-br-ex-to-br-int</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc debug node/worker-0 -- chroot /host ip addr show br-ex</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>12: br-ex: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 52:54:00:aa:bb:cc brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.20/24 brd 192.168.1.255 scope global noprefixroute br-ex
+       valid_lft forever preferred_lft forever</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_tracing_packet_flows"><a class="anchor" href="#_tracing_packet_flows"></a>Tracing Packet Flows</h3>
+<div class="sect3">
+<h4 id="_create_test_pods"><a class="anchor" href="#_create_test_pods"></a>Create Test Pods</h4>
+<div class="paragraph">
+<p>First, create test pods on different nodes to trace traffic:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a test namespace
+oc new-project ovn-trace-test
+
+# Create a pod pinned to worker-0
+cat &lt;&lt;EOF | oc apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod-a
+  namespace: ovn-trace-test
+spec:
+  nodeName: worker-0
+  containers:
+  - name: test
+    image: registry.access.redhat.com/ubi9/ubi-minimal
+    command: ["sleep", "infinity"]
+EOF
+
+# Create a pod pinned to worker-1
+cat &lt;&lt;EOF | oc apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod-b
+  namespace: ovn-trace-test
+spec:
+  nodeName: worker-1
+  containers:
+  - name: test
+    image: registry.access.redhat.com/ubi9/ubi-minimal
+    command: ["sleep", "infinity"]
+EOF</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Wait for pods to be running and get their IPs
+oc get pods -n ovn-trace-test -o wide</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME         READY   STATUS    RESTARTS   AGE   IP            NODE
+test-pod-a   1/1     Running   0          30s   10.129.0.50   worker-0
+test-pod-b   1/1     Running   0          30s   10.129.2.30   worker-1</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_pod_to_pod_same_node"><a class="anchor" href="#_trace_pod_to_pod_same_node"></a>Trace Pod-to-Pod Same Node</h4>
+<div class="paragraph">
+<p>If there is another pod on the same node (worker-0), verify local traffic does not leave the node:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n ovn-trace-test test-pod-a -- ping -c 3 10.129.0.8</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This traffic stays entirely within br-int on worker-0. No Geneve encapsulation occurs.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_pod_to_pod_cross_node"><a class="anchor" href="#_trace_pod_to_pod_cross_node"></a>Trace Pod-to-Pod Cross Node</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Test cross-node connectivity
+oc exec -n ovn-trace-test test-pod-a -- ping -c 3 10.129.2.30</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>PING 10.129.2.30 (10.129.2.30) 56(84) bytes of data.
+64 bytes from 10.129.2.30: icmp_seq=1 ttl=63 time=0.523 ms
+64 bytes from 10.129.2.30: icmp_seq=2 ttl=63 time=0.412 ms
+64 bytes from 10.129.2.30: icmp_seq=3 ttl=63 time=0.398 ms</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The TTL decreases by 1 (from 64 to 63) because the packet passes through the cluster router (a Layer 3 hop) on its way to the other node&#8217;s logical switch.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_use_ovn_trace_from_ovn_k_pods"><a class="anchor" href="#_use_ovn_trace_from_ovn_k_pods"></a>Use ovn-trace from OVN-K Pods</h4>
+<div class="paragraph">
+<p><code>ovn-trace</code> is a powerful tool that simulates packet processing through the OVN logical pipeline without sending actual packets:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># First, find the logical port names for the test pods
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl find Logical_Switch_Port \
+  external_ids:namespace=ovn-trace-test | grep "name\|addresses"</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>addresses           : ["0a:58:0a:81:00:32 10.129.0.50"]
+name                : "ovn-trace-test_test-pod-a"
+addresses           : ["0a:58:0a:81:02:1e 10.129.2.30"]
+name                : "ovn-trace-test_test-pod-b"</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Run ovn-trace for pod-a to pod-b (cross-node)
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-trace --detailed worker-0 \
+  'inport == "ovn-trace-test_test-pod-a" &amp;&amp; eth.src == 0a:58:0a:81:00:32 &amp;&amp; eth.dst == 0a:58:0a:81:00:01 &amp;&amp; ip4.src == 10.129.0.50 &amp;&amp; ip4.dst == 10.129.2.30 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The output will show every logical flow table the packet passes through:
+. Ingress pipeline on the source logical switch (worker-0)
+. The cluster router routing the packet to the destination subnet
+. Egress pipeline on the destination logical switch (worker-1)</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_pod_to_service"><a class="anchor" href="#_trace_pod_to_service"></a>Trace Pod-to-Service</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a simple service
+cat &lt;&lt;EOF | oc apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-svc
+  namespace: ovn-trace-test
+spec:
+  selector:
+    app: test-backend
+  ports:
+  - port: 80
+    targetPort: 8080
+EOF
+
+# Get the service ClusterIP
+oc get svc test-svc -n ovn-trace-test</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>NAME       TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+test-svc   ClusterIP   172.30.200.100   &lt;none&gt;        80/TCP    10s</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Trace traffic from pod-a to the service
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-trace --detailed worker-0 \
+  'inport == "ovn-trace-test_test-pod-a" &amp;&amp; eth.src == 0a:58:0a:81:00:32 &amp;&amp; eth.dst == 0a:58:0a:81:00:01 &amp;&amp; ip4.src == 10.129.0.50 &amp;&amp; ip4.dst == 172.30.200.100 &amp;&amp; ip.ttl == 64 &amp;&amp; tcp.dst == 80'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The trace will show the OVN load balancer performing DNAT from the service IP to a backend pod IP.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_trace_pod_to_external"><a class="anchor" href="#_trace_pod_to_external"></a>Trace Pod-to-External</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-trace --detailed worker-0 \
+  'inport == "ovn-trace-test_test-pod-a" &amp;&amp; eth.src == 0a:58:0a:81:00:32 &amp;&amp; eth.dst == 0a:58:0a:81:00:01 &amp;&amp; ip4.src == 10.129.0.50 &amp;&amp; ip4.dst == 8.8.8.8 &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This trace will show:
+. The packet going through the node&#8217;s logical switch.
+. The cluster router forwarding it toward the gateway.
+. The gateway router performing SNAT (replacing the source with the node&#8217;s external IP).
+. The packet exiting through the external logical switch.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_use_tcpdump_to_capture_geneve_traffic"><a class="anchor" href="#_use_tcpdump_to_capture_geneve_traffic"></a>Use tcpdump to Capture Geneve Traffic</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># On worker-0, capture Geneve-encapsulated traffic
+oc debug node/worker-0 -- chroot /host tcpdump -i enp1s0 -nn udp port 6081 -c 10</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>10:30:00.123456 IP 192.168.1.20.12345 &gt; 192.168.1.21.6081: Geneve, Flags [C], vni 0xa, proto TEB: 0a:58:0a:81:00:32 &gt; 0a:58:0a:81:02:01, ethertype IPv4, 10.129.0.50 &gt; 10.129.2.30: ICMP echo request
+10:30:00.124789 IP 192.168.1.21.12345 &gt; 192.168.1.20.6081: Geneve, Flags [C], vni 0xa, proto TEB: 0a:58:0a:81:02:1e &gt; 0a:58:0a:81:00:01, ethertype IPv4, 10.129.2.30 &gt; 10.129.0.50: ICMP echo reply</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This captures the Geneve-encapsulated ICMP packets traveling between worker-0 and worker-1.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_network_policies_2"><a class="anchor" href="#_network_policies_2"></a>Network Policies</h3>
+<div class="sect3">
+<h4 id="_create_a_networkpolicy"><a class="anchor" href="#_create_a_networkpolicy"></a>Create a NetworkPolicy</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">cat &lt;&lt;EOF | oc apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-same-namespace
+  namespace: ovn-trace-test
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+EOF</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This policy allows ingress only from pods in the same namespace and denies all other ingress.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_verify_corresponding_ovn_acls"><a class="anchor" href="#_verify_corresponding_ovn_acls"></a>Verify Corresponding OVN ACLs</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check ACLs on the logical switch where the pods are
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl acl-list worker-0</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>from-lport  1001 (inport == @a16382154715504756660 &amp;&amp; ip) allow-related
+  to-lport  1001 (outport == @a16382154715504756660 &amp;&amp; ip4 &amp;&amp; ip4.src == @a16382154715504756660) allow-related
+  to-lport  1000 (outport == @a16382154715504756660 &amp;&amp; ip) drop</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The ACLs show:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>from-lport 1001</code>: Allow all outbound traffic from matched pods (egress is not restricted by this policy).</p>
+</li>
+<li>
+<p><code>to-lport 1001</code>: Allow inbound traffic from the same address set (same namespace pods).</p>
+</li>
+<li>
+<p><code>to-lport 1000</code>: Drop all other inbound traffic (default deny for selected pods).</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_check_address_sets"><a class="anchor" href="#_check_address_sets"></a>Check Address Sets</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># List address sets related to our namespace
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl find Address_Set \
+  external_ids:namespace=ovn-trace-test</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>_uuid               : aabbccdd-1122-3344-5566-778899001122
+addresses           : ["10.129.0.50", "10.129.2.30"]
+external_ids        : {direction=ingress, gress_policy_idx="0", ip_family=v4, name=ovn-trace-test.allow-from-same-namespace, namespace=ovn-trace-test, policy=allow-from-same-namespace}
+name                : a16382154715504756660</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The address set contains the IPs of both test pods. When a pod is added or removed from the namespace, only this address set is updated.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_test_policy_enforcement"><a class="anchor" href="#_test_policy_enforcement"></a>Test Policy Enforcement</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From a pod in the same namespace - should work
+oc exec -n ovn-trace-test test-pod-a -- curl -s --connect-timeout 3 10.129.2.30:8080
+
+# From a pod in a different namespace - should be blocked
+oc exec -n default test-pod-other -- curl -s --connect-timeout 3 10.129.0.50:8080</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>curl: (28) Connection timed out after 3001 milliseconds</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_egressip_2"><a class="anchor" href="#_egressip_2"></a>EgressIP</h3>
+<div class="sect3">
+<h4 id="_create_an_egressip_resource"><a class="anchor" href="#_create_an_egressip_resource"></a>Create an EgressIP Resource</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Label nodes eligible for EgressIP
+oc label node worker-1 k8s.ovn.org/egress-assignable=""
+oc label node worker-2 k8s.ovn.org/egress-assignable=""
+
+# Create the EgressIP object
+cat &lt;&lt;EOF | oc apply -f -
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: production-egress
+spec:
+  egressIPs:
+  - 192.168.1.100
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ovn-trace-test
+EOF</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Verify the EgressIP assignment
+oc get egressip production-egress -o yaml</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: production-egress
+spec:
+  egressIPs:
+  - 192.168.1.100
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ovn-trace-test
+status:
+  items:
+  - egressIP: 192.168.1.100
+    node: worker-1</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_verify_ovn_nat_rules"><a class="anchor" href="#_verify_ovn_nat_rules"></a>Verify OVN NAT Rules</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check the NAT rules on the gateway router of the assigned node
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lr-nat-list GR_worker-1</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>TYPE             GATEWAY_PORT     EXTERNAL_IP        EXTERNAL_MAC    LOGICAL_IP          EXTERNAL_PORT_RANGE
+snat             rtoe-GR_worker-1 192.168.1.100                      10.129.0.50
+snat             rtoe-GR_worker-1 192.168.1.100                      10.129.2.30
+snat             rtoe-GR_worker-1 192.168.1.21                       10.129.2.0/23</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The first two SNAT rules are for the EgressIP (matching the specific pod IPs in the namespace). The third is the default SNAT for the node&#8217;s own pods.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_test_outbound_traffic_source_ip"><a class="anchor" href="#_test_outbound_traffic_source_ip"></a>Test Outbound Traffic Source IP</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># From a pod in the namespace, check the external source IP
+oc exec -n ovn-trace-test test-pod-a -- curl -s ifconfig.me</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>192.168.1.100</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The external source IP is now the EgressIP (192.168.1.100) instead of the node&#8217;s IP.</p>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_clean_up_test_resources"><a class="anchor" href="#_clean_up_test_resources"></a>Clean Up Test Resources</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">oc delete project ovn-trace-test
+oc delete egressip production-egress
+oc label node worker-1 k8s.ovn.org/egress-assignable-
+oc label node worker-2 k8s.ovn.org/egress-assignable-</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_troubleshooting_ovn_kubernetes"><a class="anchor" href="#_troubleshooting_ovn_kubernetes"></a>Troubleshooting OVN-Kubernetes</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section covers common OVN-Kubernetes issues and how to diagnose them systematically.</p>
+</div>
+<div class="sect2">
+<h3 id="_pod_cannot_reach_another_pod"><a class="anchor" href="#_pod_cannot_reach_another_pod"></a>Pod Cannot Reach Another Pod</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> Pod-to-pod communication fails (ping, curl timeouts).</p>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Verify both pods are running and get their IPs and nodes
+oc get pods -n &lt;namespace&gt; -o wide</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check if both pods are on the same node or different nodes
+# Same node -&gt; issue is in the logical switch pipeline
+# Different nodes -&gt; could also be a tunnel issue</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Check if there are NetworkPolicies blocking traffic
+oc get networkpolicy -n &lt;namespace&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 4: Check if the OVN logical switch ports exist and are up
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl find Logical_Switch_Port name=&lt;namespace&gt;_&lt;pod-name&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Look for <code>up: [true]</code>. If the port is down, the pod&#8217;s networking may not have been set up correctly.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 5: Check the OVS port on the node
+oc debug node/&lt;node&gt; -- chroot /host ovs-vsctl list-ports br-int | grep &lt;port-id&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 6: Use ovn-trace to simulate the packet path
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-trace --detailed &lt;source-switch&gt; \
+  'inport == "&lt;source-port&gt;" &amp;&amp; eth.src == &lt;src-mac&gt; &amp;&amp; eth.dst == &lt;gw-mac&gt; &amp;&amp; ip4.src == &lt;src-ip&gt; &amp;&amp; ip4.dst == &lt;dst-ip&gt; &amp;&amp; ip.ttl == 64'</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 7: For cross-node issues, check Geneve tunnel status
+oc debug node/&lt;source-node&gt; -- chroot /host ovs-vsctl find Interface type=geneve | grep -E "name|link_state|remote_ip"</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_service_not_load_balancing_correctly"><a class="anchor" href="#_service_not_load_balancing_correctly"></a>Service Not Load Balancing Correctly</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> Traffic to a Service always goes to the same backend, or some backends never receive traffic.</p>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Verify the Service and Endpoints
+oc get svc &lt;service-name&gt; -n &lt;namespace&gt;
+oc get endpoints &lt;service-name&gt; -n &lt;namespace&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check the OVN Load Balancer
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lb-list | grep &lt;service-clusterip&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Verify that all backend pod IPs appear in the load balancer VIP mapping. If a backend is missing, check if the pod is healthy and if its endpoint is registered.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Check which routers/switches the LB is attached to
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl ls-lb-list &lt;switch-name&gt;
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lr-lb-list ovn_cluster_router</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_networkpolicy_not_being_enforced"><a class="anchor" href="#_networkpolicy_not_being_enforced"></a>NetworkPolicy Not Being Enforced</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> Traffic that should be blocked by a NetworkPolicy is getting through (or vice versa).</p>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Verify the NetworkPolicy is applied
+oc get networkpolicy -n &lt;namespace&gt; -o yaml</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check the corresponding OVN ACLs
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl acl-list &lt;switch-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Check address sets - ensure the correct pod IPs are included
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl list Address_Set | grep -A 5 &lt;namespace&gt;</code></pre>
+</div>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>A common mistake is creating a NetworkPolicy with an empty <code>podSelector: {}</code> (matches all pods in the namespace) but forgetting that this makes the default behavior <strong>deny all</strong> for the selected pods. Any pod in the namespace will only be able to receive traffic that matches an explicit ingress rule in the policy.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 4: Use ovn-trace to verify the ACLs are working as expected
+# Trace from a source that should be allowed
+# Trace from a source that should be denied
+# Compare the ACL decisions in the trace output</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_egressip_not_working"><a class="anchor" href="#_egressip_not_working"></a>EgressIP Not Working</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> Outbound traffic is not using the configured EgressIP; it is still using the node&#8217;s IP.</p>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Check the EgressIP resource status
+oc get egressip &lt;name&gt; -o yaml</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Look for <code>status.items</code> - each EgressIP should have an assigned node. If no node is assigned, check node labels.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Verify node labels
+oc get nodes -l k8s.ovn.org/egress-assignable</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If no nodes have this label, the EgressIP cannot be assigned.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Check the NAT rules on the assigned node's gateway router
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-nbctl lr-nat-list GR_&lt;assigned-node&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 4: Verify the EgressIP is configured on the node's interface
+oc debug node/&lt;assigned-node&gt; -- chroot /host ip addr show br-ex | grep &lt;egress-ip&gt;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_node_network_issues"><a class="anchor" href="#_node_network_issues"></a>Node Network Issues</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> All pods on a specific node lose connectivity.</p>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Check if the ovnkube-node pod is running
+oc get pods -n openshift-ovn-kubernetes -o wide | grep &lt;node-name&gt;</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check ovnkube-node pod logs
+oc logs -n openshift-ovn-kubernetes ovnkube-node-&lt;id&gt; -c ovnkube-controller --tail=50</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3: Check if OVS is running
+oc debug node/&lt;node-name&gt; -- chroot /host systemctl status ovs-vswitchd</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 4: Check if ovn-controller is running and connected
+oc debug node/&lt;node-name&gt; -- chroot /host ovs-appctl -t ovn-controller connection-status</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 5: Check the node's chassis registration in the SB DB
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c sbdb -- ovn-sbctl show | grep -A 5 &lt;node-name&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If the chassis is missing, the node is not connected to the OVN SB DB.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_database_issues"><a class="anchor" href="#_ovn_database_issues"></a>OVN Database Issues</h3>
+<div class="paragraph">
+<p><strong>Symptoms:</strong> Cluster-wide networking issues, new pods not getting IPs, services not updating.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>In IC mode (OCP 4.14+), each node runs standalone NB/SB databases - there is no Raft cluster. The Raft commands below apply only to pre-4.14 clusters or to RHOSP/RHOSO centralized deployments. For IC mode, check individual node database health using <code>ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound</code> from the respective <code>ovnkube-node</code> pod.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Diagnostic Steps:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 1: Check the OVN database pods
+oc get pods -n openshift-ovn-kubernetes | grep -E "control-plane|ovnkube-node" | head -5</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 2: Check database health on a node (IC mode, OCP 4.14+)
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl \
+  ovsdb-server/get-db-storage-status OVN_Northbound</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Step 3 (pre-4.14 only): Check Raft cluster health
+# These commands return errors in IC mode where standalone DBs are used
+oc exec -n openshift-ovn-kubernetes ovnkube-node-&lt;pod&gt; \
+  -c nbdb -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl \
+  cluster/status OVN_Northbound</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>For pre-4.14 Raft clusters, look for:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>Role:</strong> Should be <code>leader</code> on one pod and <code>follower</code> on others.</p>
+</li>
+<li>
+<p><strong>Entries not yet committed:</strong> Should be 0 or very small.</p>
+</li>
+<li>
+<p><strong>Servers:</strong> All three servers should be listed and active.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p><strong>Pre-4.14 clusters only:</strong> If the Raft cluster loses quorum (2 of 3 members down), the database becomes read-only. No new networking configurations can be applied. Existing pod connectivity continues to work because ovn-controller on each node continues to enforce the last known flows, but no changes can be made until quorum is restored. In IC mode (4.14+), database failure is isolated to a single node.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_collecting_a_must_gather_for_ovn_kubernetes"><a class="anchor" href="#_collecting_a_must_gather_for_ovn_kubernetes"></a>Collecting a must-gather for OVN-Kubernetes</h3>
+<div class="paragraph">
+<p>When you need to escalate an issue or collect diagnostic data for analysis:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Standard must-gather (includes OVN-K data)
+oc adm must-gather
+
+# Network-specific must-gather (more detailed OVN-K diagnostics)
+oc adm must-gather --image=registry.redhat.io/openshift4/network-tools-rhel8</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The must-gather will collect:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>OVN NB and SB database dumps</p>
+</li>
+<li>
+<p>OVS flow dumps from all nodes</p>
+</li>
+<li>
+<p>ovnkube-node and ovnkube-control-plane pod logs</p>
+</li>
+<li>
+<p>Network configuration and status</p>
+</li>
+<li>
+<p>Node network configuration</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_useful_oc_adm_commands_for_network_debugging"><a class="anchor" href="#_useful_oc_adm_commands_for_network_debugging"></a>Useful oc adm Commands for Network Debugging</h3>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Check cluster network operator status
+oc get co network
+
+# Check network operator logs
+oc logs -n openshift-network-operator deployment/network-operator --tail=50
+
+# Check node network configuration (if NMState is installed)
+oc get nncp
+oc get nnce
+
+# Debug a node's network from a privileged pod
+oc debug node/&lt;node-name&gt;
+
+# Check OVN-K pod logs on a specific node
+oc logs -n openshift-ovn-kubernetes ovnkube-node-&lt;id&gt; -c ovnkube-controller --tail=100
+
+# Check if the cluster network operator is degraded
+oc get co network -o jsonpath='{.status.conditions[?(@.type=="Degraded")].status}'</code></pre>
+</div>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_summary"><a class="anchor" href="#_summary"></a>Summary</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This module covered OVN-Kubernetes, the default CNI for OpenShift. Key takeaways:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><strong>OVN-Kubernetes maps Kubernetes concepts to OVN:</strong> Pods become logical switch ports, Services become load balancers, NetworkPolicies become ACLs with address sets, and EgressIPs become NAT rules.</p>
+</li>
+<li>
+<p><strong>The topology consists of</strong> per-node logical switches, a distributed cluster router, a join switch, and per-node gateway routers. This architecture provides distributed routing and local-first packet processing.</p>
+</li>
+<li>
+<p><strong>Packet flows follow predictable paths:</strong> Same-node traffic stays local in OVS, cross-node traffic uses Geneve tunnels, service traffic is handled by OVN load balancers, and external traffic goes through gateway routers with SNAT.</p>
+</li>
+<li>
+<p><strong>Network Policies are efficient</strong> thanks to address sets - pod membership changes update address sets without modifying ACLs.</p>
+</li>
+<li>
+<p><strong>EgressIP provides stable outbound IPs</strong> with automatic failover between eligible nodes.</p>
+</li>
+<li>
+<p><strong>Troubleshooting follows a systematic approach:</strong> Check pod status, verify OVN logical state (NB DB), check physical state (OVS flows, tunnels), and use ovn-trace to simulate packet paths.</p>
+</li>
+<li>
+<p><strong>oc debug node</strong> and <strong>oc exec into OVN-K pods</strong> are your primary tools for inspecting the networking stack without direct node access.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>This module, combined with Module 08 on RHOSO, gives you a complete picture of how OVN is used across the Red Hat portfolio - from OpenStack VM networking to Kubernetes pod networking.</p>
+</div>
+<hr>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Previous</th>
+<th class="tableblock halign-left valign-top">Next</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="08-ovs-ovn-in-rhoso.html" class="xref page">Module 08 - OVS and OVN in RHOSO</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="10-traffic-flows.html" class="xref page">Module 10 - Traffic Flows</a></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="08-ovs-ovn-in-rhoso.html" class="query-params-link">OVS/OVN in RHOSO</a></span>
+  <span class="next"><a href="10-traffic-flows.html" class="query-params-link">Traffic Flows</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>

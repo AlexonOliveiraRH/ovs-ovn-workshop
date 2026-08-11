@@ -1,0 +1,2903 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Module 14: References and Further Reading :: OVS &amp; OVN Deep Dive Workshop</title>
+    <link rel="prev" href="13-limitations.html">
+    <link rel="next" href="ts-01-vm-connectivity.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Mono:wght@400;700&family=Red+Hat+Text:wght@400;700&display=swap">
+    <link rel="stylesheet" href="../_/css/site.css">
+<link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="../_/img/favicon.ico" type="image/x-icon">
+  </head>
+  <body class="article">
+<a class="skip-link" href="#content">Skip to content</a>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs'; mermaid.initialize({"startOnLoad":true});</script><header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="navbar-item navbar-logo">
+        <img src="../_/img/logo-demo-platform.svg" alt="Red Hat Demo Platform" class="navbar-logo-img">
+      </span>
+      <a class="navbar-item site-title" target="_blank" href="..">OVS &amp; OVN Deep Dive Workshop</a>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="modules" data-version="">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <h3 class="title"><a href="index.html" class=" query-params-link">OVS &amp; OVN Deep Dive - From Fundamentals to Troubleshooting</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="index.html">Welcome</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Workshop Guide</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="00-introduction.html">Introduction</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="01-networking-fundamentals.html">Networking Fundamentals</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="02-ovs-architecture.html">OVS Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="03-ovs-hands-on.html">OVS Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="04-ovn-architecture.html">OVN Architecture</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="05-ovn-hands-on.html">OVN Hands-On Lab</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="06-ovs-vs-ovn.html">OVS vs OVN</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="07-ovs-ovn-in-rhosp.html">OVS/OVN in RHOSP</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="08-ovs-ovn-in-rhoso.html">OVS/OVN in RHOSO</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="09-ovn-in-openshift.html">OVN in OpenShift</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="10-traffic-flows.html">Traffic Flows</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="11-management-tooling.html">Management Tooling</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="12-troubleshooting.html">Troubleshooting</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="13-limitations.html">Limitations</a>
+  </li>
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="14-references.html">References</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Troubleshooting Scenarios</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-01-vm-connectivity.html">VM Connectivity</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-02-overlay-issues.html">Overlay Issues</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-03-performance.html">Performance</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-04-ovn-controller.html">OVN Controller</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-05-dhcp-failure.html">DHCP Failure</a>
+  </li>
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="ts-06-floating-ip.html">Floating IP</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+    <button class="nav-item-toggle"></button>
+    <span class="nav-text">Slides</span>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="slides.html">Interactive Slide Deck</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <span class="title">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</span>
+      <ul class="versions">
+        <li class="version is-current">
+          <a href="index.html">default</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>    </div>
+  </aside>
+</div>
+<main class="article" id="content">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="index.html">OVS & OVN Deep Dive - From Fundamentals to Troubleshooting</a></li>
+    <li>Workshop Guide</li>
+    <li><a href="14-references.html">References</a></li>
+  </ul>
+</nav>
+</div>
+  <div class="content">
+<article class="doc">
+<h1 class="page">Module 14: References and Further Reading</h1>
+<div class="sect1">
+<h2 id="_overview"><a class="anchor" href="#_overview"></a>Overview</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>No workshop can cover everything. OVS and OVN are actively developed projects with deep technical surfaces - the kernel datapath alone has hundreds of tunable parameters, and OVN&#8217;s logical flow pipeline grows with every release. This module collects the most important references, learning resources, and community channels so you can continue building expertise long after this workshop ends.</p>
+</div>
+<div class="paragraph">
+<p>The references are organized by type: official documentation first, then man pages you will use daily, conference talks that explain design decisions you will not find in any man page, blog posts that walk through real-world problems, troubleshooting resources for when things break in production, training and certification paths, tools that make your life easier, community contribution guides, and finally a glossary of every term used throughout this workshop.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The upstream documentation for OVS and OVN is the single source of truth. Red Hat product documentation layers enterprise context on top, but when you need to understand how a feature actually works at the code level, upstream docs and man pages are where you go.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_1_official_documentation"><a class="anchor" href="#_1_official_documentation"></a>1. Official Documentation</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_open_vswitch_ovs"><a class="anchor" href="#_open_vswitch_ovs"></a>Open vSwitch (OVS)</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Official Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openvswitch.org/en/latest/" class="bare">https://docs.openvswitch.org/en/latest/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Comprehensive documentation including installation, configuration, and deep dives into internals</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">GitHub Repository</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/openvswitch/ovs" class="bare">https://github.com/openvswitch/ovs</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source code, commit history, and issue tracker</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Design Documents</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openvswitch.org/en/latest/internals/" class="bare">https://docs.openvswitch.org/en/latest/internals/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Architecture documents explaining the design decisions behind OVS</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS Tutorials</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openvswitch.org/en/latest/tutorials/" class="bare">https://docs.openvswitch.org/en/latest/tutorials/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Step-by-step tutorials for learning OVS from scratch</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVSDB RFC (RFC 7047)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://datatracker.ietf.org/doc/html/rfc7047" class="bare">https://datatracker.ietf.org/doc/html/rfc7047</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The IETF standard that defines the OVSDB management protocol</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS DPDK Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openvswitch.org/en/latest/intro/install/dpdk/" class="bare">https://docs.openvswitch.org/en/latest/intro/install/dpdk/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to build and configure OVS with DPDK support</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">FAQ</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openvswitch.org/en/latest/faq/" class="bare">https://docs.openvswitch.org/en/latest/faq/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Frequently asked questions - often the fastest way to find an answer</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The OVS documentation is generated from reStructuredText files inside the <code>Documentation/</code> directory of the OVS repository. If you find an error, you can submit a patch to fix it directly.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>Key documentation pages you will use most often:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>docs.openvswitch.org/en/latest/
+  +-- faq/                          # Start here for common questions
+  +-- howto/                        # How-to guides for specific tasks
+  +-- tutorials/
+  |     +-- ovs-advanced.rst        # The "OVS Advanced Features" tutorial
+  |     +-- ovs-conntrack.rst       # Conntrack integration tutorial
+  +-- ref/                          # Reference pages (man pages in HTML)
+  +-- topics/
+  |     +-- dpdk/                   # DPDK-related topics
+  |     +-- testing.rst             # How to run the OVS test suite
+  +-- internals/
+        +-- contributing/           # How to contribute patches
+        +-- committer-grant-policy  # How committers are chosen</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_open_virtual_network"><a class="anchor" href="#_ovn_open_virtual_network"></a>OVN (Open Virtual Network)</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Official Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/" class="bare">https://docs.ovn.org/en/latest/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN documentation including architecture, tutorials, and reference</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">GitHub Repository</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/ovn-org/ovn" class="bare">https://github.com/ovn-org/ovn</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source code and issue tracker (OVN split from OVS repo in 2020)</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Architecture Document</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/ref/ovn-architecture.7.html" class="bare">https://docs.ovn.org/en/latest/ref/ovn-architecture.7.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The foundational document explaining OVN&#8217;s design</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Sandbox Tutorial</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html" class="bare">https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Hands-on tutorial using the ovn-sandbox script</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN OpenStack Tutorial</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/tutorials/ovn-openstack.html" class="bare">https://docs.ovn.org/en/latest/tutorials/ovn-openstack.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN integrates with OpenStack Neutron</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN RBAC</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/topics/role-based-access-control.html" class="bare">https://docs.ovn.org/en/latest/topics/role-based-access-control.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Role-based access control for OVN databases</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Interconnection</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/tutorials/ovn-interconnection.html" class="bare">https://docs.ovn.org/en/latest/tutorials/ovn-interconnection.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multi-site OVN with OVN-IC</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>OVN was originally developed inside the OVS repository. In 2020, it was split into its own repository at <code>github.com/ovn-org/ovn</code>. When searching for historical commits or design discussions, you may need to check both repositories.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_rhosp_red_hat_openstack_platform"><a class="anchor" href="#_rhosp_red_hat_openstack_platform"></a>RHOSP (Red Hat OpenStack Platform)</h3>
+<div class="paragraph">
+<p>Red Hat OpenStack Platform documentation is versioned. The two most relevant versions for current deployments are 16.2 (Train-based, traditional deployment) and 17.1 (Wallaby-based, with director and framework for adopting RHOSO).</p>
+</div>
+<div class="paragraph">
+<p><strong>RHOSP 17.1 (Current)</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Product Documentation Hub</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network Functions Virtualization Planning and Configuration Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/network_functions_virtualization_planning_and_configuration_guide/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/network_functions_virtualization_planning_and_configuration_guide/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deploying RHOSP with Director</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/deploying_red_hat_openstack_platform_17.1/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/deploying_red_hat_openstack_platform_17.1/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Operations Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/maintaining_red_hat_openstack_platform/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/maintaining_red_hat_openstack_platform/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Configuring OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/ovn-open-virtual-network_config-ovn" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/networking_guide/ovn-open-virtual-network_config-ovn</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>RHOSP 16.2 (Extended Life Cycle)</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Product Documentation Hub</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NFV Planning and Configuration Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/network_functions_virtualization_planning_and_configuration_guide/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/network_functions_virtualization_planning_and_configuration_guide/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deploying an Overcloud with Containerized Red Hat Ceph</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/deploying_an_overcloud_with_containerized_red_hat_ceph/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/deploying_an_overcloud_with_containerized_red_hat_ceph/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migrating to ML2/OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/migrating-ml2ovs-to-ml2ovn_config-ovn" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.2/html/networking_guide/migrating-ml2ovs-to-ml2ovn_config-ovn</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>RHOSP 16.2 uses the Train release of OpenStack. RHOSP 17.1 uses the Wallaby release. The networking guide for each version covers the specific ML2 plugin options available for that release - OVS (ML2/OVS) and OVN (ML2/OVN).</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_rhoso_red_hat_openstack_services_on_openshift"><a class="anchor" href="#_rhoso_red_hat_openstack_services_on_openshift"></a>RHOSO (Red Hat OpenStack Services on OpenShift)</h3>
+<div class="paragraph">
+<p>RHOSO represents the next generation of Red Hat&#8217;s OpenStack offering, running OpenStack control plane services as containers on OpenShift.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Product Documentation Hub</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deployment Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/deploying_red_hat_openstack_services_on_openshift/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/deploying_red_hat_openstack_services_on_openshift/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_networking_services/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_networking_services/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Architecture Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/architecture/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/architecture/</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Data Plane Configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_the_data_plane/" class="bare">https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_the_data_plane/</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>In RHOSO, OVN runs on the data plane nodes (edpm nodes) while the OVN northbound and southbound databases run as pods on the OpenShift control plane. The networking guide covers how to configure both sides.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ocp_red_hat_openshift_container_platform"><a class="anchor" href="#_ocp_red_hat_openshift_container_platform"></a>OCP (Red Hat OpenShift Container Platform)</h3>
+<div class="paragraph">
+<p>OpenShift uses OVN-Kubernetes as its default CNI plugin since version 4.12. The networking documentation covers OVN-Kubernetes configuration, troubleshooting, and advanced features.</p>
+</div>
+<div class="paragraph">
+<p><strong>OpenShift 4.17+</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.17/networking/about-networking.html" class="bare">https://docs.openshift.com/container-platform/4.17/networking/about-networking.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Overview</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html" class="bare">https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Configuration</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-ovn-kubernetes.html" class="bare">https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-ovn-kubernetes.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network Policy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.17/networking/network_policy/about-network-policy.html" class="bare">https://docs.openshift.com/container-platform/4.17/networking/network_policy/about-network-policy.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EgressFirewall</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-egress-firewall-ovn.html" class="bare">https://docs.openshift.com/container-platform/4.17/networking/ovn_kubernetes_network_provider/configuring-egress-firewall-ovn.html</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>OpenShift 4.16</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.16/networking/about-networking.html" class="bare">https://docs.openshift.com/container-platform/4.16/networking/about-networking.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Overview</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html" class="bare">https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migrating from OpenShift SDN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/migrate-from-openshift-sdn.html" class="bare">https://docs.openshift.com/container-platform/4.16/networking/ovn_kubernetes_network_provider/migrate-from-openshift-sdn.html</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>OpenShift 4.15</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.15/networking/about-networking.html" class="bare">https://docs.openshift.com/container-platform/4.15/networking/about-networking.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Overview</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.15/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html" class="bare">https://docs.openshift.com/container-platform/4.15/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>OpenShift 4.14</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Networking Documentation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.14/networking/about-networking.html" class="bare">https://docs.openshift.com/container-platform/4.14/networking/about-networking.html</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Overview</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.openshift.com/container-platform/4.14/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html" class="bare">https://docs.openshift.com/container-platform/4.14/networking/ovn_kubernetes_network_provider/about-ovn-kubernetes.html</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>OpenShift 4.12 introduced OVN-Kubernetes as the default CNI plugin, replacing OpenShift SDN. OpenShift SDN was fully removed in OCP 4.17 - clusters running OCP 4.17+ always use OVN-Kubernetes. If you are working with a cluster on OCP 4.14-4.16 that was upgraded from an earlier version, it may still be running OpenShift SDN and will need to migrate before upgrading to 4.17+.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_red_hat_knowledgebase"><a class="anchor" href="#_red_hat_knowledgebase"></a>Red Hat Knowledgebase</h3>
+<div class="paragraph">
+<p>The Red Hat Knowledgebase (<a href="https://access.redhat.com/search/" class="bare">https://access.redhat.com/search/</a>) is the most important resource for troubleshooting production issues. Here is how to search it effectively:</p>
+</div>
+<div class="paragraph">
+<p><strong>Effective search strategies:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Search by component:
+  "OVN" "ovn-controller" crash
+  "OVS" "ovs-vswitchd" high CPU
+  "neutron" "ML2/OVN" port binding
+
+Search by error message (quote the exact message):
+  "Unreasonably long 123456ms poll interval"
+  "Error: cannot create a+bridge named br-int"
+  "Resource not found"
+
+Search by Red Hat version:
+  RHOSP 17.1 OVN database cluster
+  OpenShift 4.16 OVN-Kubernetes EgressIP
+
+Filter results:
+  - Use "Solutions" type for actionable fixes
+  - Use "Articles" type for explanations and best practices
+  - Filter by product and version for relevance</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>When you open a support case, always search the Knowledgebase first. About 60% of cases have an existing solution. Include the KB article number in your case if you found something relevant but it did not fully resolve the issue.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_2_essential_man_pages"><a class="anchor" href="#_2_essential_man_pages"></a>2. Essential Man Pages</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Man pages are the most reliable reference for command syntax and options. They are maintained alongside the source code and are always accurate for the installed version.</p>
+</div>
+<div class="sect2">
+<h3 id="_ovs_management_commands"><a class="anchor" href="#_ovs_management_commands"></a>OVS Management Commands</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Man Page</th>
+<th class="tableblock halign-left valign-top">Section</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vsctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The primary tool for configuring OVS bridges, ports, and interfaces. Communicates with ovsdb-server to modify the Open_vSwitch database.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-ofctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manage OpenFlow entries in OVS bridges. Use this to dump, add, modify, and delete flow rules. Essential for debugging packet forwarding.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-appctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send commands to running OVS daemons (ovs-vswitchd, ovsdb-server). Use this for runtime debugging, coverage counters, and memory reports.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-dpctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manage OVS datapaths. Inspect and manage kernel datapath flows. Useful for understanding what the kernel fast path is doing.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vswitchd(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVS daemon man page. Documents startup options, logging, and runtime behavior of the switch daemon.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vswitchd.conf.db(5)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>The schema reference.</strong> Describes every table, column, and value in the Open_vSwitch database. This is the definitive reference for what ovs-vsctl can configure.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovsdb_commands"><a class="anchor" href="#_ovsdb_commands"></a>OVSDB Commands</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Man Page</th>
+<th class="tableblock halign-left valign-top">Section</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovsdb-server(1)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVSDB database server daemon. Documents clustering, active-backup configuration, SSL, and all server options.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovsdb-client(1)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Client for querying and monitoring OVSDB servers. Useful for watching database changes in real time with the <code>monitor</code> command.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovsdb-tool(1)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Offline tool for OVSDB database files. Use this to create, compact, query, and convert database files without a running server.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_management_commands"><a class="anchor" href="#_ovn_management_commands"></a>OVN Management Commands</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Man Page</th>
+<th class="tableblock halign-left valign-top">Section</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nbctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manage the OVN Northbound database. Create and configure logical switches, routers, ports, ACLs, NAT rules, and load balancers.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sbctl(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Manage the OVN Southbound database. Inspect chassis registrations, port bindings, MAC bindings, and logical flows. Mostly used for inspection rather than configuration.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-trace(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Trace a packet through OVN logical flows. The single most important debugging tool for OVN - simulates packet processing without sending real traffic.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-detrace(1)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Convert OVS OpenFlow traces into OVN logical flow context. Bridges the gap between physical OpenFlow rules and OVN logical flows.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_daemons"><a class="anchor" href="#_ovn_daemons"></a>OVN Daemons</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Man Page</th>
+<th class="tableblock halign-left valign-top">Section</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-northd(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVN central daemon that translates northbound database contents into southbound database logical flows. Documents all options and the translation process.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-controller(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVN local controller running on each hypervisor. Translates southbound logical flows into OpenFlow rules for the local OVS instance.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-ic(8)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">8</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVN Interconnection Controller for multi-site deployments. Manages route exchange between OVN availability zones.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_database_schemas"><a class="anchor" href="#_ovn_database_schemas"></a>OVN Database Schemas</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Man Page</th>
+<th class="tableblock halign-left valign-top">Section</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-nb(5)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Northbound database schema reference.</strong> Documents every table and column in the NB DB - logical switches, routers, ACLs, NAT, load balancers, etc.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovn-sb(5)</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Southbound database schema reference.</strong> Documents every table and column in the SB DB - chassis, port bindings, logical flows, MAC bindings, etc.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_how_to_access_man_pages"><a class="anchor" href="#_how_to_access_man_pages"></a>How to Access Man Pages</h3>
+<div class="paragraph">
+<p><strong>On a standard RHEL/CentOS system:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># View the man page directly
+man ovs-vsctl
+
+# View a specific section
+man 5 ovs-vswitchd.conf.db
+
+# Search for man pages related to OVS
+man -k ovs
+
+# Search for man pages related to OVN
+man -k ovn</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>In containerized environments (RHOSP, RHOSO):</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># RHOSP 17.1 - access man pages inside the OVS container
+sudo podman exec -it ovs_vswitchd man ovs-vsctl
+
+# RHOSP 17.1 - access man pages inside the OVN container
+sudo podman exec -it ovn_controller man ovn-controller
+
+# RHOSO - access man pages on an edpm node
+ssh edpm-compute-0
+sudo podman exec -it ovn_controller man ovn-controller</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>In OpenShift (OVN-Kubernetes):</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Find the ovnkube-node pod
+oc get pods -n openshift-ovn-kubernetes -l app=ovnkube-node
+
+# Access man pages inside the container
+oc exec -n openshift-ovn-kubernetes &lt;pod-name&gt; -c ovn-controller -- man ovn-controller
+
+# Alternative: use oc debug to get a shell on a node
+oc debug node/&lt;node-name&gt;
+chroot /host
+man ovs-vsctl</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>If man pages are not installed in the container, you can access the same content online at <a href="https://docs.openvswitch.org/en/latest/ref/" class="bare">https://docs.openvswitch.org/en/latest/ref/</a> and <a href="https://docs.ovn.org/en/latest/ref/" class="bare">https://docs.ovn.org/en/latest/ref/</a>. The online versions match the upstream releases, so verify the version matches what is deployed.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_3_conference_talks"><a class="anchor" href="#_3_conference_talks"></a>3. Conference Talks</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Conference talks are invaluable because they explain the <strong>why</strong> behind design decisions, cover real-world deployment experiences, and often reveal tips that never make it into documentation. The following are organized by conference and sorted with the newest first.</p>
+</div>
+<div class="sect2">
+<h3 id="_ovs_conference_ovscon"><a class="anchor" href="#_ovs_conference_ovscon"></a>OVS Conference (OVSCon)</h3>
+<div class="paragraph">
+<p>OVSCon is the annual conference dedicated to Open vSwitch and OVN. Talks are typically recorded and slides are published. Archives are available at <a href="https://www.ovscon.org/" class="bare">https://www.ovscon.org/</a>.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Year</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Speaker(s)</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Scaling Improvements</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Han Zhou, Dumitru Ceara</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN was re-architected to handle 1000+ node clusters. Covers incremental processing, parallel northd, and database optimizations. Essential viewing for large deployments.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes: What&#8217;s New</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Nadia Pinaeva, Surya Seetharaman</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Latest features in OVN-Kubernetes including Admin Network Policy, multi-homing improvements, and performance enhancements.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Debugging OVN: A Practical Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dumitru Ceara</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Step-by-step walkthrough of debugging OVN issues using ovn-trace, ovn-detrace, and database inspection. Directly applicable to support cases.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Interconnection: Connecting Multiple OVN Deployments</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Han Zhou</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deep dive into OVN-IC architecture, route exchange, and multi-site networking. Covers the transit switch model and deployment patterns.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2021</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS Hardware Offload - Current State and Future</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Roi Dayan</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVS flow offload works with SmartNICs and DPUs. Covers TC flower offload, connection tracking offload, and vendor-specific implementations.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2021</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN at Scale: Lessons from Production</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Mark Michelson</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Real-world experience running OVN at scale. Covers database sizing, northd performance, and what breaks first as you add nodes.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2020</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN as a Kubernetes Network Plugin</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tim Rozet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN-Kubernetes was designed and how it maps Kubernetes networking concepts to OVN logical constructs.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2020</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The State of OVS DPDK</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kevin Traynor, Ian Stokes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Performance benchmarks, configuration best practices, and known issues with OVS-DPDK. Covers PMD thread management and memory allocation.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2019</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenFlow Connection Tracking in OVS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Joe Stringer</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The definitive talk on how connection tracking was integrated into OVS. Explains the design, the ct() action, and how zones work.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2019</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN - Gateway High Availability</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maciej Jozefczyk</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How gateway HA works in OVN, including BFD monitoring, chassis priorities, and failover behavior. Critical for understanding north-south traffic resilience.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_openstack_summit_open_infrastructure_summit"><a class="anchor" href="#_openstack_summit_open_infrastructure_summit"></a>OpenStack Summit / Open Infrastructure Summit</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Year</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Speaker(s)</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migrating Large-Scale Deployments from ML2/OVS to ML2/OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Miguel Lavalle, Brian Haley</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Lessons learned from migrating production OpenStack deployments. Covers the migration tool, common pitfalls, rollback procedures, and what to validate.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Performance: From 100 to 1000 Nodes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Daniel Alvarez, Numan Siddique</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Performance improvements that enabled OVN to scale to 1000-node OpenStack deployments. Covers profiling, bottleneck identification, and the fixes applied.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2021</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron OVN - Feature Parity and Beyond</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Brian Haley, Lucas Alvares Gomes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Status of ML2/OVN feature parity with ML2/OVS and new capabilities that OVN enables. Useful for understanding what changed and what is still different.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2020</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Debugging Neutron and OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Terry Wilson, Jakub Libosvar</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to debug networking issues in OpenStack when using OVN. Covers the full debugging workflow from Neutron API to OVN to OVS.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2019</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN: Moving Beyond ML2/OVS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Russell Bryant, Numan Siddique</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The original case for migrating to OVN. Explains what OVN provides that ML2/OVS agents cannot and the architectural advantages.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2019</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NFV with OVN - Running VNFs on OVN-based Networks</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Miguel Lavalle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How network functions virtualization workloads run on OVN, including SR-IOV integration, hardware offload, and performance considerations.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_kubecon_cloudnativecon"><a class="anchor" href="#_kubecon_cloudnativecon"></a>KubeCon / CloudNativeCon</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Year</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Speaker(s)</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deep Dive into OVN-Kubernetes CNI</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Surya Seetharaman, Nadia Pinaeva</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Architecture of OVN-Kubernetes, how it maps K8s resources to OVN objects, and new features in recent releases.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes Network Policy: The Good, The Bad, and The Future</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tim Hockin, Abhishek Raut</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How Network Policy is implemented in OVN-Kubernetes, the Admin Network Policy API, and what is coming next.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Multi-Cluster Networking with OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tomas Sedovic</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to connect multiple Kubernetes clusters using OVN Interconnection. Covers Submariner alternatives and the OVN-IC approach.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Troubleshooting Kubernetes Networking</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Laura Lorenz</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Practical techniques for debugging network issues in Kubernetes clusters running OVN-Kubernetes. Covers tcpdump, ovn-trace, and ovnkube-trace.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2021</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Container Networking Interface (CNI) Deep Dive</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Casey Davenport</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How CNI plugins work, the CNI specification, and how OVN-Kubernetes implements the CNI interface. Foundational talk for understanding the integration layer.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_red_hat_summit"><a class="anchor" href="#_red_hat_summit"></a>Red Hat Summit</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Year</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Speaker(s)</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">What&#8217;s New in OpenShift Networking</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Surya Seetharaman, Doug Smith</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Overview of OVN-Kubernetes features in OpenShift 4.13/4.14, including EgressService, Admin Network Policy, and multi-network support.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2023</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenStack Services on OpenShift - Architecture Deep Dive</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Giulio Fidente, Luigi Toscano</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How RHOSO works, how it integrates with OpenShift, and the networking architecture spanning both platforms.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2022</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migrating OpenStack Networking from ML2/OVS to ML2/OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Jakub Libosvar</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A Red Hat perspective on the migration, including supportability considerations, timing recommendations, and customer experiences.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2021</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Advanced OpenShift Networking with OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ben Pfaff, Dan Williams</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN-Kubernetes provides advanced networking features like EgressIP, EgressFirewall, and NetworkPolicy in OpenShift.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Conference talk recordings are often the best way to understand complex features because the speakers are usually the developers who built them. Check YouTube channels for "OVS Conference", "OpenStack Foundation", and "CNCF" for recordings.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_4_blog_posts_and_technical_articles"><a class="anchor" href="#_4_blog_posts_and_technical_articles"></a>4. Blog Posts and Technical Articles</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_ovs_internals_and_architecture"><a class="anchor" href="#_ovs_internals_and_architecture"></a>OVS Internals and Architecture</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS Deep Dive Series (Parts 1-6)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Arthur Chiao</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">arthurchiao.art</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Comprehensive deep dive into OVS architecture, datapath processing, flow caching, and megaflow implementation. One of the best resources for understanding how OVS processes packets.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVS Flow Cache</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ben Pfaff</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">docs.openvswitch.org</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How the OVS flow cache works, including the microflow cache (EMC), megaflow cache (SMC/dpcls), and the upcall path to userspace. Essential for performance tuning.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Understanding OVS Datapath Flows</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to read and interpret kernel datapath flows, what the fields mean, and how they relate to OpenFlow rules.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS and the Linux Bridge - A Comparison</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Thomas Graf</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">therandomsecurityguy.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">When to use OVS vs. the Linux bridge, and how their forwarding models differ. Useful for explaining the choice to customers.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_deep_dives"><a class="anchor" href="#_ovn_deep_dives"></a>OVN Deep Dives</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN - Scalable Virtual Networking for OpenStack</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Russell Bryant</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">blog.russellbryant.net</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The original blog series introducing OVN architecture and its OpenStack integration. Written by one of the lead developers. Still relevant for understanding the fundamentals.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Logical Flows and OpenFlow Pipeline</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Numan Siddique</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">numans.blog</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Detailed walkthrough of how OVN logical flows are translated to OpenFlow rules. Shows the complete pipeline from NB DB to OVS flows.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Architecture - A Deep Dive</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dumitru Ceara</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Explanation of OVN&#8217;s components, databases, and how they interact. Covers the controller loop and incremental processing engine.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Load Balancer Deep Dive</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Mark Michelson</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN implements load balancing, including DNAT-based load balancing, health checks, and hairpin traffic handling.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Understanding OVN ACLs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Russell Bryant</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">blog.russellbryant.net</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN Access Control Lists work, how they map to security groups in OpenStack, and how they are translated to OpenFlow rules with connection tracking.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_migration_guides_ml2ovs_to_ml2ovn"><a class="anchor" href="#_migration_guides_ml2ovs_to_ml2ovn"></a>Migration Guides (ML2/OVS to ML2/OVN)</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migration from ML2/OVS to ML2/OVN in RHOSP 16.2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">access.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Official Red Hat solution article covering the migration process step by step. Includes pre-checks, the migration command, and post-migration validation.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron ML2/OVS to ML2/OVN Migration: What You Need to Know</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Miguel Lavalle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Detailed explanation of what changes during migration, what features are equivalent, and what behavioral differences to expect.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS to OVN Migration - A Field Report</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Assaf Muller</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">assafmuller.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Real-world migration experiences including issues encountered, how they were resolved, and recommendations for planning.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_performance_tuning"><a class="anchor" href="#_performance_tuning"></a>Performance Tuning</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Tuning OVS for Performance</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">access.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat&#8217;s guide to tuning OVS for high-performance workloads. Covers kernel parameters, flow cache sizing, and CPU affinity.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS-DPDK Performance Tuning Guide</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">docs.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to configure OVS-DPDK for maximum throughput. Covers hugepages, CPU pinning, PMD thread configuration, and NIC queue configuration.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN Performance at Scale</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dumitru Ceara</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to configure OVN for large deployments. Covers database compaction, northd parallelization, and monitoring for performance issues.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Network Performance Tuning for OpenStack</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">access.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">End-to-end guide covering BIOS settings, kernel parameters, OVS configuration, and guest optimization for maximum network performance.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_dpdk_with_ovs"><a class="anchor" href="#_dpdk_with_ovs"></a>DPDK with OVS</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Getting Started with OVS-DPDK</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Introduction to OVS-DPDK, including when to use it, how to configure it, and baseline performance expectations.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS-DPDK: PMD Thread Management</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kevin Traynor</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deep dive into Poll Mode Driver threads, how to configure them, how to monitor their utilization, and how to troubleshoot performance issues.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DPDK and vhost-user: How It Works</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Maxime Coquelin</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How the vhost-user protocol connects VMs to OVS-DPDK. Covers the shared memory architecture and the control plane protocol.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_ovn_kubernetes_articles"><a class="anchor" href="#_ovn_kubernetes_articles"></a>OVN-Kubernetes Articles</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">Author</th>
+<th class="tableblock halign-left valign-top">Source</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes Architecture</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How OVN-Kubernetes translates Kubernetes resources into OVN logical constructs. Covers pods, services, network policies, and egress resources.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Debugging OVN-Kubernetes with ovnkube-trace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Surya Seetharaman</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">developers.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How to use the ovnkube-trace tool to trace packets through the OVN-Kubernetes logical network. Includes practical examples.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">EgressIP in OVN-Kubernetes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Nadia Pinaeva</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">cloud.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How EgressIP works in OVN-Kubernetes, how to configure it, and how it differs from the OpenShift SDN implementation.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NetworkPolicy Deep Dive in OVN-Kubernetes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Surya Seetharaman</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">cloud.redhat.com</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">How Kubernetes NetworkPolicy objects are translated to OVN ACLs and how to troubleshoot policy issues.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Blog posts are point-in-time snapshots. Always verify information against the documentation for the specific version you are running. A blog post from 2020 may describe behavior that has since changed.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_5_troubleshooting_resources"><a class="anchor" href="#_5_troubleshooting_resources"></a>5. Troubleshooting Resources</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_red_hat_knowledgebase_2"><a class="anchor" href="#_red_hat_knowledgebase_2"></a>Red Hat Knowledgebase</h3>
+<div class="paragraph">
+<p>The Knowledgebase at <a href="https://access.redhat.com/" class="bare">https://access.redhat.com/</a> is where you find solutions, articles, and errata for Red Hat products. Here is how to get the most out of it.</p>
+</div>
+<div class="paragraph">
+<p><strong>Navigating the Knowledgebase:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1. Start with the search bar at the top
+2. Use the filters on the left:
+   - Product: "Red Hat OpenStack Platform" or "Red Hat OpenShift Container Platform"
+   - Version: Select the specific version
+   - Content Type: "Solutions" for actionable fixes, "Articles" for background
+   - Status: "Verified" solutions have been confirmed by Red Hat
+3. Read the "Environment" section first - it tells you if the solution applies to your setup
+4. Check the "Resolution" section for the fix
+5. Check the "Root Cause" section to understand why the issue occurred</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Key Knowledgebase solution articles for OVS/OVN:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Topic</th>
+<th class="tableblock halign-left valign-top">Search Query</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVS crash</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ovs-vswitchd crash RHOSP</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Solutions for OVS daemon crashes, including core dump analysis and known bugs</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN database issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVN northbound database raft</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Solutions for OVN database cluster issues, split-brain, and leader election problems</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Port binding failures</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVN port binding failed</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Why ports fail to bind and how to diagnose the binding process</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Metadata service</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVN metadata agent 169.254.169.254</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Issues with the OVN metadata agent not responding</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Performance issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVS high CPU ovs-vswitchd</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Diagnosing high CPU usage in OVS daemons, including flow revalidation storms</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DPDK issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVS DPDK hugepages PMD</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Problems with DPDK initialization, hugepage allocation, and PMD configuration</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Migration issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>ML2/OVS ML2/OVN migration</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Issues encountered during migration from ML2/OVS to ML2/OVN</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenShift networking</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>OVN-Kubernetes pod connectivity</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Pod networking issues in OpenShift with OVN-Kubernetes</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-warning" title="Warning"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When searching the Knowledgebase, do not rely solely on the title. Two solutions can have similar titles but apply to completely different versions or scenarios. Always read the "Environment" section to confirm applicability.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_bugzilla_jira"><a class="anchor" href="#_bugzilla_jira"></a>Bugzilla / JIRA</h3>
+<div class="paragraph">
+<p><strong>Red Hat Bugzilla (<a href="https://bugzilla.redhat.com/" class="bare">https://bugzilla.redhat.com/</a>):</strong></p>
+</div>
+<div class="paragraph">
+<p>Red Hat Bugzilla tracks bugs for Red Hat products. You can search it even without a Red Hat account.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Effective Bugzilla searches:
+
+Product: "Red Hat OpenStack" or "Red Hat OpenShift Container Platform"
+Component: "python-networking-ovn", "openvswitch", "ovn", "ovn-kubernetes"
+Status: Leave open to see both resolved and unresolved bugs
+Keywords: Use the error message or symptom
+
+Example search URL:
+https://bugzilla.redhat.com/buglist.cgi?product=Red%20Hat%20OpenStack&amp;component=openvswitch&amp;query_format=advanced
+
+Tips:
+- Look at CLOSED/ERRATA bugs - these have been fixed and the errata tells you which build contains the fix
+- Check the "Fixed In Version" field to know when a fix is available
+- Read the comments - they often contain workarounds even before the fix is released</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>JIRA (<a href="https://issues.redhat.com/" class="bare">https://issues.redhat.com/</a>):</strong></p>
+</div>
+<div class="paragraph">
+<p>Some newer Red Hat projects use JIRA instead of Bugzilla.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Useful JIRA queries:
+
+Project: OCPBUGS (OpenShift bugs)
+Component: Networking / ovn-kubernetes
+Text search: Use the error message or symptom
+
+Example:
+  project = OCPBUGS AND component = Networking AND text ~ "EgressIP"</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>When filing a bug, always include: the product and version, steps to reproduce, expected behavior, actual behavior, relevant logs (sosreport or must-gather), and any workaround you have found.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_community_channels"><a class="anchor" href="#_community_channels"></a>Community Channels</h3>
+<div class="paragraph">
+<p><strong>Mailing Lists:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Mailing List</th>
+<th class="tableblock halign-left valign-top">URL</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovs-discuss</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://mail.openvswitch.org/mailman/listinfo/ovs-discuss" class="bare">https://mail.openvswitch.org/mailman/listinfo/ovs-discuss</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">General discussion about OVS usage, configuration, and troubleshooting</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovs-dev</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://mail.openvswitch.org/mailman/listinfo/ovs-dev" class="bare">https://mail.openvswitch.org/mailman/listinfo/ovs-dev</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Development discussion, patch reviews, and design proposals</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-discuss (via ovs-discuss)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://mail.openvswitch.org/mailman/listinfo/ovs-discuss" class="bare">https://mail.openvswitch.org/mailman/listinfo/ovs-discuss</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN usage and troubleshooting questions (shared with ovs-discuss)</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>IRC / Matrix Channels:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Channel</th>
+<th class="tableblock halign-left valign-top">Network</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">#openvswitch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">irc.libera.chat / Matrix</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">General OVS and OVN discussion. Developers and users are active here.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">#openstack-neutron</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OFTC / Matrix</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OpenStack Neutron discussion, including OVN integration</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">#ovn-kubernetes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Kubernetes Slack</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes specific discussion</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Mailing list etiquette:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1. Search the archives first - your question may already be answered
+2. Use a descriptive subject line
+3. Include: OVS/OVN version, OS version, relevant configuration, and the exact error message
+4. For patches, use git-send-email (see the Contributing section)
+5. Reply inline, not top-posting
+6. Be patient - maintainers may be in different time zones</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_upstream_bug_trackers"><a class="anchor" href="#_upstream_bug_trackers"></a>Upstream Bug Trackers</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Project</th>
+<th class="tableblock halign-left valign-top">Bug Tracker</th>
+<th class="tableblock halign-left valign-top">URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Open vSwitch</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">GitHub Issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/openvswitch/ovs/issues" class="bare">https://github.com/openvswitch/ovs/issues</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">GitHub Issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/ovn-org/ovn/issues" class="bare">https://github.com/ovn-org/ovn/issues</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">GitHub Issues</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/ovn-org/ovn-kubernetes/issues" class="bare">https://github.com/ovn-org/ovn-kubernetes/issues</a></p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Neutron (ML2/OVN)</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Launchpad</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://bugs.launchpad.net/neutron" class="bare">https://bugs.launchpad.net/neutron</a></p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>When you find a bug in a Red Hat product, always file it through Red Hat Bugzilla or JIRA first, even if it turns out to be an upstream issue. The Red Hat engineering team will engage upstream if needed and ensure the fix is backported to the product.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_6_training_and_certification"><a class="anchor" href="#_6_training_and_certification"></a>6. Training and Certification</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_red_hat_official_training_courses"><a class="anchor" href="#_red_hat_official_training_courses"></a>Red Hat Official Training Courses</h3>
+<div class="paragraph">
+<p>Red Hat offers instructor-led and self-paced courses that cover networking concepts relevant to OVS and OVN. The following courses are the most relevant.</p>
+</div>
+<div class="paragraph">
+<p><strong>OpenStack Track:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Course Code</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CL110</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat OpenStack Administration I: Core Operations for Domain Operators</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Foundational OpenStack concepts including basic Neutron networking, creating networks and routers, and managing security groups. Good starting point if you are new to OpenStack.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CL210</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat OpenStack Administration II: Infrastructure Configuration for Cloud Administrators</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Deeper dive into OpenStack infrastructure including network configuration with OVN, Neutron agents, and advanced networking features. Covers ML2/OVN configuration in RHOSP.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">CL310</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat OpenStack Administration III: Networking and NFV</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Advanced networking topics including SR-IOV, DPDK, NFV workloads, and complex network architectures. This is where you learn about high-performance networking with OVS-DPDK and OVN.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>Course availability and content change over time. Check <a href="https://www.redhat.com/en/services/training-and-certification" class="bare">https://www.redhat.com/en/services/training-and-certification</a> for the latest course catalog and availability.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p><strong>OpenShift Track:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Course Code</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DO280</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat OpenShift Administration II: Operating a Production Kubernetes Cluster</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Core OpenShift administration including cluster networking with OVN-Kubernetes, network policies, ingress, and troubleshooting. The primary course for OpenShift administrators.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DO380</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat OpenShift Administration III: Scaling Kubernetes Deployments in the Enterprise</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Advanced OpenShift administration covering multi-cluster networking, advanced OVN-Kubernetes features, performance tuning, and complex networking scenarios.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DO370</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Enterprise Kubernetes Storage with Red Hat OpenShift Data Foundation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">While focused on storage, this course covers network-related topics for storage traffic including OVN network configuration for Ceph and storage network isolation.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Supplementary Courses:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Course Code</th>
+<th class="tableblock halign-left valign-top">Title</th>
+<th class="tableblock halign-left valign-top">What You Will Learn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RH294</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat Enterprise Linux Automation with Ansible</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ansible automation skills that you will use for managing OVS/OVN at scale. Covers playbook development, roles, and collections.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">RH358</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat Services Management and Automation</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Linux networking fundamentals including firewall management, DNS, and DHCP. Useful background for understanding the Linux networking stack under OVS.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_red_hat_certification_path"><a class="anchor" href="#_red_hat_certification_path"></a>Red Hat Certification Path</h3>
+<div class="paragraph">
+<p>The certification path relevant to OVS/OVN expertise:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Foundation:
+  RHCSA (EX200) - Red Hat Certified System Administrator
+    Validates Linux fundamentals - prerequisite for everything else
+
+System Administration:
+  RHCE (EX294) - Red Hat Certified Engineer
+    Validates Ansible automation skills
+
+OpenStack Specialization:
+  Red Hat Certified Specialist in OpenStack Administration (EX210)
+    Validates ability to deploy and manage OpenStack infrastructure
+    Includes networking concepts with OVN
+
+  Red Hat Certified Specialist in Advanced OpenStack Administration (EX310)
+    Validates advanced OpenStack skills including NFV and complex networking
+
+OpenShift Specialization:
+  Red Hat Certified Specialist in OpenShift Administration (EX280)
+    Validates ability to manage OpenShift clusters
+    Includes OVN-Kubernetes networking
+
+  Red Hat Certified OpenShift Administrator (EX380)
+    Validates advanced OpenShift administration
+    Includes advanced networking and multi-cluster management</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Certifications validate your knowledge, but hands-on lab practice is what builds real skill. Use the labs from this workshop, set up your own development environment, and practice the debugging workflows on real clusters.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_self_paced_learning_options"><a class="anchor" href="#_self_paced_learning_options"></a>Self-Paced Learning Options</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Resource</th>
+<th class="tableblock halign-left valign-top">URL</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat Learning Subscription</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://www.redhat.com/en/services/training/learning-subscription" class="bare">https://www.redhat.com/en/services/training/learning-subscription</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Access to all Red Hat training courses, labs, and exams</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat Developer Program</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://developers.redhat.com/" class="bare">https://developers.redhat.com/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Free developer tools, tutorials, and access to Red Hat products for development</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Red Hat Interactive Labs</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://www.redhat.com/en/interactive-labs" class="bare">https://www.redhat.com/en/interactive-labs</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Free browser-based labs for hands-on practice</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Upstream OVN Sandbox</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html" class="bare">https://docs.ovn.org/en/latest/tutorials/ovn-sandbox.html</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Free hands-on OVN environment using the ovn-sandbox script</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Killercoda / Katacoda</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://killercoda.com/" class="bare">https://killercoda.com/</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interactive Kubernetes and OpenShift scenarios, some covering networking</p></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_7_tools_and_utilities"><a class="anchor" href="#_7_tools_and_utilities"></a>7. Tools and Utilities</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_debugging_scripts_and_one_liners"><a class="anchor" href="#_debugging_scripts_and_one_liners"></a>Debugging Scripts and One-Liners</h3>
+<div class="paragraph">
+<p>The following commands and scripts are useful for quick debugging in production. Keep them in your toolkit.</p>
+</div>
+<div class="paragraph">
+<p><strong>OVS Debugging One-Liners:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show all bridges and their ports in a compact format
+sudo ovs-vsctl show | grep -E '(Bridge|Port|Interface|type:)'
+
+# List all OpenFlow rules with packet/byte counters (shows active flows)
+sudo ovs-ofctl dump-flows br-int --no-stats=false | sort -t',' -k1 -n
+
+# Watch for flow table changes in real time
+sudo ovs-ofctl monitor br-int watch:
+
+# Show datapath flows with statistics (kernel fast-path entries)
+sudo ovs-dpctl dump-flows
+
+# Show coverage counters (useful for identifying hot paths)
+sudo ovs-appctl coverage/show
+
+# Show memory usage of ovs-vswitchd
+sudo ovs-appctl memory/show
+
+# Check for unreasonably long poll intervals (performance issue indicator)
+sudo journalctl -u ovs-vswitchd --since "1 hour ago" | grep "Unreasonably long"
+
+# Show connection tracking entries
+sudo ovs-appctl dpctl/dump-conntrack
+
+# Show the number of flows per table
+sudo ovs-ofctl dump-flows br-int | awk -F'table=' '{print $2}' | awk -F',' '{print $1}' | sort -n | uniq -c | sort -rn</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>OVN Debugging One-Liners:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Show OVN cluster status (run on a controller node)
+sudo ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
+sudo ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
+
+# Show all logical switches and their ports
+sudo ovn-nbctl show
+
+# Show all chassis registrations
+sudo ovn-sbctl show
+
+# List port bindings and their chassis assignment
+sudo ovn-sbctl list Port_Binding | grep -E '(logical_port|chassis|type)'
+
+# Show logical flows for a specific logical switch
+sudo ovn-sbctl lflow-list &lt;switch-name&gt;
+
+# Trace a packet through OVN
+sudo ovn-trace &lt;switch-name&gt; 'inport=="&lt;port&gt;" &amp;&amp; eth.src==&lt;mac&gt; &amp;&amp; eth.dst==&lt;mac&gt; &amp;&amp; ip4.src==&lt;src-ip&gt; &amp;&amp; ip4.dst==&lt;dst-ip&gt;'
+
+# Show OVN connection status on a compute node
+sudo ovn-appctl -t ovn-controller connection-status
+
+# Check if ovn-controller is connected to the Southbound DB
+sudo ovs-vsctl get open_vswitch . external_ids:ovn-remote
+
+# Show the OVN version on this node
+sudo ovn-controller --version</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Combined OVS/OVN debugging script:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash">#!/bin/bash
+# quick-diag.sh - Quick OVS/OVN diagnostic script
+# Usage: sudo bash quick-diag.sh
+
+echo "=== OVS Version ==="
+ovs-vsctl --version | head -1
+
+echo ""
+echo "=== OVN Version ==="
+ovn-controller --version 2&gt;/dev/null || echo "OVN controller not installed"
+
+echo ""
+echo "=== OVS Bridges ==="
+ovs-vsctl list-br
+
+echo ""
+echo "=== OVS Daemon Status ==="
+systemctl is-active ovs-vswitchd ovsdb-server 2&gt;/dev/null || \
+  pidof ovs-vswitchd ovsdb-server
+
+echo ""
+echo "=== OVN Controller Status ==="
+ovn-appctl -t ovn-controller connection-status 2&gt;/dev/null || \
+  echo "OVN controller not running"
+
+echo ""
+echo "=== OpenFlow Flow Count per Table ==="
+ovs-ofctl dump-flows br-int 2&gt;/dev/null | \
+  awk -F'table=' '{print $2}' | awk -F',' '{print $1}' | \
+  sort -n | uniq -c | sort -rn
+
+echo ""
+echo "=== Datapath Flow Count ==="
+ovs-dpctl dump-flows 2&gt;/dev/null | wc -l
+
+echo ""
+echo "=== Recent Errors (last 30 min) ==="
+journalctl -u ovs-vswitchd -u ovsdb-server -u ovn-controller \
+  --since "30 min ago" -p err --no-pager 2&gt;/dev/null | tail -20</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_monitoring"><a class="anchor" href="#_monitoring"></a>Monitoring</h3>
+<div class="paragraph">
+<p><strong>Prometheus Exporters:</strong></p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Exporter</th>
+<th class="tableblock halign-left valign-top">Repository</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovs_exporter</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="https://github.com/digitalocean/ovs_exporter" class="bare">https://github.com/digitalocean/ovs_exporter</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Prometheus exporter for OVS metrics. Exposes bridge, port, interface, and flow statistics.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">ovn-kubernetes metrics</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Built into ovnkube-node</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">OVN-Kubernetes exposes Prometheus metrics natively. Available at <code>:29103/metrics</code> on each node.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Custom OVS/OVN metrics</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">N/A</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">You can build custom exporters using <code>ovs-vsctl</code>, <code>ovs-ofctl</code>, and <code>ovn-sbctl</code> commands wrapped in a script.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Key metrics to monitor:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>OVS Metrics:
+  - ovs_vswitchd CPU and memory usage
+  - Flow count per bridge (ovs-ofctl dump-flows | wc -l)
+  - Datapath flow count (ovs-dpctl dump-flows | wc -l)
+  - Interface RX/TX errors and drops
+  - Coverage counters (flow_mod, packet_in, upcall)
+  - Poll loop duration (watch for "Unreasonably long" messages)
+
+OVN Metrics:
+  - Database size (NB DB and SB DB file size)
+  - Cluster status (leader, followers, connectivity)
+  - Port binding count and unbound ports
+  - Logical flow count
+  - ovn-controller connection status
+  - northd loop duration
+
+OVN-Kubernetes Metrics (OpenShift):
+  - ovnkube_controller_pod_creation_latency_seconds
+  - ovnkube_controller_sync_duration_seconds
+  - ovnkube_node_cni_request_duration_seconds
+  - ovnkube_controller_network_programming_duration_seconds</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Grafana Dashboards:</strong></p>
+</div>
+<div class="paragraph">
+<p>Pre-built Grafana dashboards are available for OVS and OVN monitoring:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>- OVS Overview Dashboard: Bridge count, flow counts, port statistics, error rates
+- OVN Cluster Dashboard: DB size, cluster health, leader status, replication lag
+- OVN-Kubernetes Dashboard: Pod networking latency, CNI request duration, sync times
+
+In OpenShift, the built-in monitoring stack (Prometheus + Grafana) collects OVN-Kubernetes
+metrics automatically. You can create dashboards in the OpenShift console under
+Observe -&gt; Dashboards.</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ansible_collections"><a class="anchor" href="#_ansible_collections"></a>Ansible Collections</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Collection</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>openstack.cloud</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ansible modules for managing OpenStack resources including networks, subnets, routers, and security groups. Use for automating Neutron/OVN operations via the OpenStack API.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>community.general</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Includes the <code>openvswitch_bridge</code>, <code>openvswitch_port</code>, and <code>openvswitch_db</code> modules for managing OVS directly via Ansible.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>osp.edpm</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ansible collection for managing RHOSO data plane nodes (edpm). Includes roles for configuring OVS and OVN on compute nodes.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>redhat.openstack_operations</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Operational tasks for Red Hat OpenStack including health checks, log collection, and diagnostic tasks.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p><strong>Example: Using Ansible to check OVS bridge configuration across all compute nodes:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a simple playbook to check OVS on all computes
+ansible computes -m shell -a "ovs-vsctl show" -b
+
+# Or using the openvswitch module
+ansible computes -m openvswitch_db \
+  -a "table=Open_vSwitch record=. col=ovs_version" -b</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_sosreport_plugins"><a class="anchor" href="#_sosreport_plugins"></a>sosreport Plugins</h3>
+<div class="paragraph">
+<p>The <code>sos</code> tool (formerly <code>sosreport</code>) collects diagnostic information for Red Hat support cases. It includes plugins specifically for OVS and OVN.</p>
+</div>
+<div class="paragraph">
+<p><strong>What the OVS plugin collects:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Plugin: openvswitch
+  - ovs-vsctl show
+  - ovs-vsctl list-br (and details for each bridge)
+  - ovs-ofctl dump-flows (for each bridge)
+  - ovs-dpctl dump-flows
+  - ovs-appctl coverage/show
+  - ovs-appctl memory/show
+  - ovsdb-client dump
+  - OVS configuration files (/etc/openvswitch/, /etc/sysconfig/openvswitch)
+  - OVS log files (/var/log/openvswitch/)
+  - Systemd unit status</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What the OVN plugin collects:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Plugin: ovn_central, ovn_host
+  - ovn-nbctl show
+  - ovn-sbctl show
+  - ovn-nbctl list (for key tables)
+  - ovn-sbctl list (for key tables)
+  - ovn-sbctl lflow-list
+  - OVN database cluster status
+  - OVN configuration files
+  - OVN log files (/var/log/ovn/)
+  - Systemd unit status</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Running sosreport with specific plugins:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Collect only OVS and OVN data (faster than full sosreport)
+sudo sos report -o openvswitch,ovn_central,ovn_host
+
+# Collect with networking plugins as well
+sudo sos report -o openvswitch,ovn_central,ovn_host,networking
+
+# In a containerized environment (RHOSP)
+sudo sos report -o openvswitch,ovn_central,ovn_host,container_log</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Always attach a sosreport when opening a Red Hat support case for OVS/OVN issues. The support engineer will need this data to diagnose the problem, and providing it upfront can significantly reduce time to resolution.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_must_gather_openshift"><a class="anchor" href="#_must_gather_openshift"></a>must-gather (OpenShift)</h3>
+<div class="paragraph">
+<p>The <code>must-gather</code> tool collects diagnostic information from an OpenShift cluster. The networking must-gather collects OVN-Kubernetes specific data.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Collect general cluster diagnostics
+oc adm must-gather
+
+# Collect networking-specific diagnostics (includes OVN data)
+oc adm must-gather --image=registry.redhat.io/openshift4/ose-must-gather-rhel9:latest \
+  -- /usr/bin/gather_network_logs
+
+# Collect both general and networking data
+oc adm must-gather \
+  --image=registry.redhat.io/openshift4/ose-must-gather-rhel9:latest \
+  -- /usr/bin/gather_network_logs &amp;
+oc adm must-gather &amp;
+wait</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>What the networking must-gather collects:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>- OVN NB and SB database dumps
+- OVN-Kubernetes pod logs (ovnkube-controller, ovnkube-node, ovn-controller)
+- OVS bridge configuration and flows from every node
+- iptables/nftables rules
+- Network configuration (ip addr, ip route, ip rule)
+- NetworkPolicy, EgressFirewall, EgressIP resources
+- Cluster network configuration
+- Node network status</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_ovn_kubernetes_tools"><a class="anchor" href="#_ovn_kubernetes_tools"></a>OVN-Kubernetes Tools</h3>
+<div class="paragraph">
+<p><strong>ovnkube-trace:</strong></p>
+</div>
+<div class="paragraph">
+<p><code>ovnkube-trace</code> is a tool that traces packets through the OVN-Kubernetes logical network. It is the Kubernetes-aware equivalent of <code>ovn-trace</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Install ovnkube-trace (from the network-tools image or build from source)
+# https://github.com/ovn-org/ovn-kubernetes/tree/master/go-controller/cmd/ovnkube-trace
+
+# Trace traffic between two pods
+ovnkube-trace \
+  --src pod-a \
+  --src-namespace default \
+  --dst pod-b \
+  --dst-namespace default \
+  --dst-port 8080 \
+  --tcp
+
+# Trace traffic from a pod to an external destination
+ovnkube-trace \
+  --src pod-a \
+  --src-namespace default \
+  --dst-ip 8.8.8.8 \
+  --dst-port 443 \
+  --tcp</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>network-tools image:</strong></p>
+</div>
+<div class="paragraph">
+<p>The <code>network-tools</code> container image provides a set of networking tools for debugging inside an OpenShift cluster.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Run a network-tools pod on a specific node for debugging
+oc debug node/&lt;node-name&gt; --image=registry.redhat.io/openshift4/network-tools-rhel9
+
+# Inside the debug pod, you have access to:
+# - tcpdump, nmap, netcat, curl
+# - ovs-vsctl, ovs-ofctl, ovs-appctl
+# - ovn-nbctl, ovn-sbctl, ovn-trace
+# - ip, ss, conntrack</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>The <code>network-tools</code> image is maintained by Red Hat specifically for OpenShift networking troubleshooting. It includes versions of OVS and OVN tools that match what is deployed on the cluster nodes.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_8_community_and_contribution"><a class="anchor" href="#_8_community_and_contribution"></a>8. Community and Contribution</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_how_to_contribute_to_ovs_upstream"><a class="anchor" href="#_how_to_contribute_to_ovs_upstream"></a>How to Contribute to OVS Upstream</h3>
+<div class="paragraph">
+<p>Contributing to OVS is done via email using <code>git send-email</code>. The project does not use GitHub pull requests for code contributions (though issues are tracked on GitHub).</p>
+</div>
+<div class="paragraph">
+<p><strong>Setting up your environment:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Clone the repository
+git clone https://github.com/openvswitch/ovs.git
+cd ovs
+
+# Configure git for sending patches
+git config sendemail.to ovs-dev@openvswitch.org
+git config sendemail.smtpserver smtp.example.com
+git config sendemail.smtpserverport 587
+git config sendemail.smtpencryption tls
+git config sendemail.smtpuser you@example.com
+
+# Build OVS from source
+./boot.sh
+./configure
+make -j$(nproc)</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Submitting a patch:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Create a branch for your change
+git checkout -b fix-something
+
+# Make your changes and commit
+git add &lt;files&gt;
+git commit -s   # -s adds Signed-off-by
+
+# Send the patch to the mailing list
+git send-email --to=ovs-dev@openvswitch.org HEAD~1
+
+# For a patch series
+git send-email --to=ovs-dev@openvswitch.org --cover-letter HEAD~3</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p><strong>Patch formatting requirements:</strong></p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1. Subject line: Start with the component name followed by a colon
+   Example: "ofproto: Fix flow deletion with wildcards"
+   Example: "ovn-controller: Handle missing chassis gracefully"
+
+2. Commit message body:
+   - Explain what the patch does and why
+   - Reference any related bugs or discussions
+   - Keep lines under 72 characters
+
+3. Sign-off: Every patch must include a Signed-off-by line
+   Signed-off-by: Your Name &lt;your.email@example.com&gt;
+
+4. Testing: Mention what tests you ran
+   - make check (unit tests)
+   - make check-system-userspace (system tests in userspace)
+
+5. Updates: When submitting a revised patch, include version information
+   Subject: [PATCH v2] ofproto: Fix flow deletion with wildcards
+   Add a changelog below the "---" line in the commit message</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_to_contribute_to_ovn_upstream"><a class="anchor" href="#_how_to_contribute_to_ovn_upstream"></a>How to Contribute to OVN Upstream</h3>
+<div class="paragraph">
+<p>OVN follows the same contribution process as OVS since it was originally part of the same project.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-bash hljs" data-lang="bash"># Clone OVN
+git clone https://github.com/ovn-org/ovn.git
+cd ovn
+
+# OVN depends on OVS - you need the OVS source tree
+git clone https://github.com/openvswitch/ovs.git
+
+# Build OVN
+cd ovn
+./boot.sh
+./configure --with-ovs-source=../ovs
+make -j$(nproc)
+
+# Run the test suite
+make check TESTSUITEFLAGS="-j$(nproc)"
+
+# Send patches to the mailing list
+git send-email --to=ovs-dev@openvswitch.org HEAD~1</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>OVN patches go to the same <code>ovs-dev@openvswitch.org</code> mailing list as OVS patches. Prefix your patch subjects with <code>ovn-</code> to distinguish them from OVS patches.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_code_review_process"><a class="anchor" href="#_code_review_process"></a>Code Review Process</h3>
+<div class="listingblock">
+<div class="content">
+<pre>1. Submit your patch to the mailing list
+2. Automated CI will test your patch (results posted to the mailing list)
+3. Community members review your patch:
+   - Reviewed-by: Reviewer approves the patch
+   - Acked-by: Reviewer acknowledges the patch is correct
+   - Nacked-by: Reviewer objects to the patch (must be addressed)
+   - Comment: Reviewer has questions or suggestions
+4. Address review comments by sending a revised patch (v2, v3, etc.)
+5. A committer merges the patch when it has sufficient reviews
+
+Typical review cycle: 1-2 weeks for straightforward patches.
+Complex patches may take multiple revision cycles.</pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_how_to_report_bugs_effectively"><a class="anchor" href="#_how_to_report_bugs_effectively"></a>How to Report Bugs Effectively</h3>
+<div class="paragraph">
+<p>Whether reporting upstream or to Red Hat, an effective bug report dramatically speeds up resolution.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>A good bug report includes:
+
+1. Environment:
+   - OVS version (ovs-vsctl --version)
+   - OVN version (ovn-controller --version)
+   - OS version (cat /etc/redhat-release)
+   - Kernel version (uname -r)
+   - Product version (RHOSP 17.1, OpenShift 4.16, etc.)
+
+2. Problem description:
+   - What you expected to happen
+   - What actually happened
+   - When it started (date/time, after an upgrade, etc.)
+
+3. Steps to reproduce:
+   - Exact commands or API calls
+   - Configuration files (sanitized of credentials)
+   - Network topology
+
+4. Diagnostic data:
+   - sosreport (RHOSP/RHEL) or must-gather (OpenShift)
+   - Relevant log snippets
+   - ovs-vsctl show output
+   - ovn-nbctl show / ovn-sbctl show output
+   - Flow dumps if relevant
+
+5. Impact:
+   - How many systems/tenants are affected
+   - Is there a workaround
+   - Is the issue intermittent or consistent</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The fastest way to get a bug fixed is to provide a minimal reproducer. If you can reduce the issue to a simple test case (for example, "create two VMs on different computes, send traffic between them, observe packet loss"), the developer can reproduce and fix it much faster than working from logs alone.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_9_glossary"><a class="anchor" href="#_9_glossary"></a>9. Glossary</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This glossary defines every essential term used throughout this workshop. Terms are listed alphabetically. Refer back to this section whenever you encounter an unfamiliar term.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Term</th>
+<th class="tableblock halign-left valign-top">Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>ACL (Access Control List)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN construct that filters traffic on logical switch ports. ACLs are applied to ingress or egress traffic and support connection tracking for stateful filtering. In OpenStack, security groups are translated into OVN ACLs.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>BFD (Bidirectional Forwarding Detection)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A lightweight protocol used by OVN to detect link failures between chassis. BFD runs over the Geneve tunnels and enables fast failover of gateway chassis when a link goes down. Operates at sub-second detection intervals.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Bridge</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVS construct that acts as a virtual Ethernet switch. A bridge has ports, processes traffic using OpenFlow rules, and can forward, drop, or modify packets. The most important bridge in OVS/OVN deployments is <code>br-int</code> (the integration bridge).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Chassis</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN term for a physical or virtual host running <code>ovn-controller</code>. Each chassis registers itself in the OVN Southbound database and is identified by a unique name. Chassis can be compute nodes, gateway nodes, or network nodes.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Cluster (OVN/Raft)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A group of three or more OVN database servers (northbound or southbound) running the Raft consensus protocol for high availability. The cluster elects a leader that handles all writes, while followers replicate the data.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Conntrack (Connection Tracking)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A mechanism in the Linux kernel (and OVS) that tracks the state of network connections (new, established, related, invalid). OVN uses conntrack to implement stateful ACLs and NAT. Conntrack zones isolate tracking domains.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Datapath</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The component of OVS that performs the actual packet forwarding. The kernel datapath uses kernel modules for fast forwarding. The userspace datapath (used with DPDK) runs entirely in user space for even higher performance.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DHCP</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Dynamic Host Configuration Protocol. OVN includes a native DHCP responder that handles DHCP requests directly in the logical pipeline without requiring an external DHCP server or agent. Configured via DHCP_Options in the NB DB.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>DPDK (Data Plane Development Kit)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A set of libraries and drivers for fast packet processing in user space, bypassing the kernel network stack. OVS can use DPDK for its datapath, achieving significantly higher throughput and lower latency than the kernel datapath.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Encapsulation</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The process of wrapping a packet inside another packet for transport across a physical network. OVN uses Geneve encapsulation by default to carry logical network traffic between chassis. The encapsulation header carries metadata including the logical datapath and logical port identifiers.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Flow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A set of match criteria and actions that define how a packet should be processed. In OVS, flows are OpenFlow rules installed in bridge flow tables. Flows match on packet headers and specify actions like output, drop, modify, or send to controller.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Gateway Chassis</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A chassis designated to handle north-south traffic (traffic entering or leaving the OVN logical network). Gateway chassis host the logical router gateway ports and perform SNAT/DNAT. Multiple gateway chassis can be configured for high availability.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Geneve (Generic Network Virtualization Encapsulation)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The tunneling protocol used by OVN for overlay traffic between chassis. Geneve is preferred over VXLAN because it supports variable-length metadata in TLV (Type-Length-Value) format, which OVN uses to carry logical flow information. Defined in RFC 8926.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Datapath</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN abstraction representing a logical switch or logical router in the Southbound database. Each logical datapath has a unique tunnel key used in Geneve encapsulation to identify which logical network a packet belongs to.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Flow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A flow rule in the OVN Southbound database that represents processing logic for a logical datapath. Logical flows are generated by <code>ovn-northd</code> and consumed by <code>ovn-controller</code>, which translates them into OpenFlow rules for the local OVS instance.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Port</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A port on an OVN logical switch or logical router. Logical ports are virtual constructs that can be bound to physical ports on chassis. Types include VIF (virtual interface), localnet (connection to a physical network), router (connection to a logical router), and others.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Router</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN abstraction for Layer 3 routing between logical switches. Logical routers support static routes, NAT, load balancing, and gateway functionality. They can be distributed (processing on every chassis) or centralized (processing on a gateway chassis).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Logical Switch</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN abstraction for a Layer 2 broadcast domain. Logical switches connect logical ports and provide switching, DHCP, ARP handling, and ACL enforcement. Each logical switch is isolated from others unless connected through a logical router.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Match</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The criteria portion of a flow rule that determines which packets the flow applies to. Matches can specify values for any packet header field (MAC addresses, IP addresses, TCP/UDP ports, VLAN tags, etc.) and support wildcards and masks.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Megaflow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVS optimization that combines multiple microflows (exact-match flows) into a single wildcard flow in the kernel datapath cache. Megaflows reduce the number of cache entries needed and the frequency of upcalls to the userspace daemon. The megaflow cache is also called the datapath classifier (dpcls).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>NAT (Network Address Translation)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The process of modifying source or destination IP addresses as packets traverse a router. OVN supports both SNAT (source NAT, for outbound traffic) and DNAT (destination NAT, for inbound traffic such as floating IPs).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Northbound Database (NB DB)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVN database that stores the logical network configuration as defined by the cloud management system (OpenStack Neutron, Kubernetes, etc.). Contains tables for logical switches, routers, ports, ACLs, NAT rules, and load balancers. This is the "desired state" database.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OpenFlow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The protocol used to program the forwarding behavior of OVS bridges. OpenFlow defines match-action rules organized in numbered tables. OVS supports OpenFlow versions up to 1.5. OVN generates OpenFlow rules automatically; you rarely need to write them manually.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVN Controller</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The local daemon (<code>ovn-controller</code>) running on each chassis (hypervisor/node). It connects to the OVN Southbound database, receives logical flows, translates them into OpenFlow rules, and installs them in the local OVS instance. It also manages tunnel endpoints and port bindings.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVN Northd</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The central daemon (<code>ovn-northd</code>) that translates the high-level logical network configuration from the Northbound database into low-level logical flows in the Southbound database. It runs the "compilation" step of OVN&#8217;s pipeline.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVS (Open vSwitch)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A production-quality, multilayer virtual switch. OVS provides the data plane for OVN and is used to forward packets using OpenFlow rules. It supports kernel and userspace (DPDK) datapaths, VLAN tagging, tunneling, QoS, and connection tracking.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>OVSDB</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The database protocol and server used by OVS and OVN to store configuration and state. OVSDB is defined in RFC 7047 and supports transactions, monitoring, and clustering (via Raft). The OVS database (<code>conf.db</code>) and OVN databases (NB DB, SB DB) all use OVSDB.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Physical Flow</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OpenFlow rule installed in the local OVS instance on a specific chassis. Physical flows are the result of <code>ovn-controller</code> translating logical flows into concrete forwarding rules that reference physical ports, tunnel endpoints, and real MAC/IP addresses.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Pipeline (Ingress/Egress)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The ordered sequence of logical flow tables that a packet traverses in OVN. The ingress pipeline processes packets entering a logical port; the egress pipeline processes packets leaving a logical port. Each pipeline consists of numbered tables with specific functions (ACL, LB, routing, etc.).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>PMD (Poll Mode Driver)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A DPDK concept where dedicated CPU cores continuously poll network interfaces for packets, eliminating interrupt overhead. In OVS-DPDK, PMD threads are pinned to specific CPU cores and are responsible for packet processing in the userspace datapath.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port Binding</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The process by which an OVN logical port is associated with a specific chassis. When a VM or container starts, <code>ovn-controller</code> on that chassis claims the port binding in the Southbound database, telling other chassis where to send traffic for that port.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Port Security</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVN feature that restricts traffic on a logical port to only the configured MAC and IP addresses. Prevents MAC spoofing and IP spoofing. In OpenStack, port security is enabled by default and enforced through OVN logical flows.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Raft</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A distributed consensus protocol used by OVSDB for database clustering. Raft ensures that all database replicas agree on the same data, tolerates the failure of a minority of nodes, and automatically elects a new leader when the current leader fails. OVN uses Raft for both the NB DB and SB DB clusters.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>SNAT/DNAT</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Source NAT and Destination NAT. SNAT modifies the source IP address of outbound packets (used for tenant network egress to external networks). DNAT modifies the destination IP address of inbound packets (used for floating IPs and load balancing). Both are implemented in OVN using conntrack.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Southbound Database (SB DB)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The OVN database that stores the runtime state of the logical network. Contains logical flows (generated by <code>ovn-northd</code>), chassis registrations, port bindings, MAC bindings, and other state. This is the "compiled state" database that <code>ovn-controller</code> reads.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Table (OpenFlow)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A numbered stage in the OpenFlow pipeline of an OVS bridge. Each table contains flow rules. Packets enter at table 0 and can be sent to subsequent tables using the <code>resubmit</code> action. OVN uses specific table numbers for specific functions (e.g., table 0 for ingress port classification).</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Tunnel</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A network path that encapsulates packets for transport across an underlay network. OVN creates Geneve tunnels between chassis automatically. Each tunnel carries traffic for all logical networks, using metadata in the Geneve header to demultiplex packets to the correct logical datapath and port.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Userspace Datapath</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">An OVS datapath that processes packets entirely in user space instead of the kernel. Used with DPDK for high-performance networking. The userspace datapath bypasses the kernel network stack and accesses NICs directly through DPDK poll mode drivers.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>VXLAN (Virtual Extensible LAN)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A tunneling protocol that encapsulates Layer 2 Ethernet frames in UDP packets. OVN supports VXLAN for communication with hardware VTEPs (physical switches) but prefers Geneve for chassis-to-chassis traffic because VXLAN&#8217;s 24-bit VNI cannot carry the metadata that OVN needs.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><strong>Zone (Conntrack)</strong></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">A conntrack zone is a namespace that isolates connection tracking state. OVN assigns different zones to different logical datapaths so that connection tracking state for one logical network does not interfere with another. Zones are identified by numeric IDs and are managed by <code>ovn-controller</code>.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>Understanding these terms is essential for reading OVN documentation, interpreting OVS/OVN command output, and communicating effectively with the development team and Red Hat support. When in doubt, refer back to this glossary.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_summary"><a class="anchor" href="#_summary"></a>Summary</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This reference module is designed to be a living document. As OVS and OVN evolve, new resources will become available and some links will change. Here is a priority order for how to use these references:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>For daily operations:
+  1. Man pages (always accurate for your installed version)
+  2. Red Hat Knowledgebase (production-tested solutions)
+  3. Debugging scripts and tools from Section 7
+
+For learning:
+  1. Official documentation (start with architecture docs)
+  2. Conference talks (for design rationale and deep dives)
+  3. Blog posts (for practical walkthroughs)
+  4. Training courses (for structured learning)
+
+For troubleshooting:
+  1. Man pages (exact command syntax)
+  2. Red Hat Knowledgebase (known issues and solutions)
+  3. sosreport / must-gather (collecting diagnostic data)
+  4. Community channels (when you are stuck)
+
+For contributing:
+  1. Contributing guide in the repository
+  2. Mailing list archives (to understand conventions)
+  3. Existing patches (to see the expected format)</pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<div class="title">Key Concept</div>
+<div class="paragraph">
+<p>The best engineers are not the ones who memorize everything - they are the ones who know where to find the answer quickly. Bookmark this module and use it as your starting point.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<hr>
+<div class="paragraph">
+<p><strong>End of Module 14</strong></p>
+</div>
+<div class="paragraph">
+<p><a href="index.html" class="xref page">Back to Workshop Index</a> | <a href="13-limitations.html" class="xref page">Previous: Module 13</a></p>
+</div>
+</div>
+</div>
+<nav class="pagination">
+  <span class="prev"><a href="13-limitations.html" class="query-params-link">Limitations</a></span>
+  <span class="next"><a href="ts-01-vm-connectivity.html" class="query-params-link">VM Connectivity</a></span>
+</nav>
+</article>
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>  </div>
+</main>
+</div>
+<footer class="footer">
+  <a href="https://demo.redhat.com" target="_blank" class="poweredBy"><p>Powered by</p><div class="labInfo_poweredBy" style="display: block; width: 260px;"><svg class="labInfo_poweredByLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1508.5 178.739"><g fill="#111"><path d="M316.6 63.2v-56H342a21.279 21.279 0 0 1 7.8 1.3 18.111 18.111 0 0 1 5.9 3.5 15.577 15.577 0 0 1 5 11.8 15.051 15.051 0 0 1-3.1 9.5 16.836 16.836 0 0 1-8.4 5.8l12.5 24.1h-9.3l-11.6-23H325v23Zm24.7-48.6H325v18.7h16.3q5.25 0 8.1-2.7a8.7 8.7 0 0 0 2.8-6.6 8.7 8.7 0 0 0-2.8-6.6c-1.8-1.9-4.5-2.8-8.1-2.8ZM364.1 42.8a20.674 20.674 0 0 1 1.6-8.2 20.288 20.288 0 0 1 4.3-6.7 19.92 19.92 0 0 1 6.5-4.5 19.718 19.718 0 0 1 8-1.6 18.463 18.463 0 0 1 7.8 1.6 18.677 18.677 0 0 1 6.2 4.5 20.927 20.927 0 0 1 4.1 6.8 23.2 23.2 0 0 1 1.5 8.4v2.3H372a13.822 13.822 0 0 0 4.6 8.4 13.6 13.6 0 0 0 9.1 3.3 15.553 15.553 0 0 0 5.7-1 12.858 12.858 0 0 0 4.6-2.6l5.1 5a25.983 25.983 0 0 1-7.4 4.1 24.69 24.69 0 0 1-8.4 1.3 21.306 21.306 0 0 1-8.4-1.6 22.763 22.763 0 0 1-6.8-4.4 20.788 20.788 0 0 1-4.5-6.7 23.2 23.2 0 0 1-1.5-8.4Zm20.2-14.2a11.527 11.527 0 0 0-8 3 13.046 13.046 0 0 0-4.2 7.8h24.2a13.091 13.091 0 0 0-4.2-7.8 11.106 11.106 0 0 0-7.8-3ZM443.1 63.2v-3.8a19.448 19.448 0 0 1-5.8 3.3 18.924 18.924 0 0 1-6.7 1.2 19.824 19.824 0 0 1-14.6-6.1 22.268 22.268 0 0 1-4.4-6.7 21.812 21.812 0 0 1 0-16.4A20.534 20.534 0 0 1 416 28a19.335 19.335 0 0 1 6.6-4.5 20.334 20.334 0 0 1 8.2-1.6 20.7 20.7 0 0 1 6.6 1 19.415 19.415 0 0 1 5.7 3V7.2l8-1.8v57.8Zm-25.2-20.4a13.718 13.718 0 0 0 4 10.1 13.45 13.45 0 0 0 9.8 4.1 14.956 14.956 0 0 0 6.4-1.3 15.954 15.954 0 0 0 4.9-3.6V33.6a14.988 14.988 0 0 0-4.9-3.5 15.271 15.271 0 0 0-6.4-1.3 13.423 13.423 0 0 0-9.9 4 13.806 13.806 0 0 0-3.9 10ZM478.1 63.2v-56h8.4v24h29.8v-24h8.4v56h-8.4V38.8h-29.8v24.4ZM547.2 64a16.483 16.483 0 0 1-10.8-3.5 11.037 11.037 0 0 1-4.2-8.9 10.375 10.375 0 0 1 4.7-9.2 20.76 20.76 0 0 1 11.8-3.2 27.841 27.841 0 0 1 5.8.6 27.374 27.374 0 0 1 5.3 1.6v-4.3a8.143 8.143 0 0 0-2.6-6.5 11.452 11.452 0 0 0-7.4-2.2 20.788 20.788 0 0 0-6 .9 34.616 34.616 0 0 0-6.6 2.6l-3-6a54.169 54.169 0 0 1 8.4-3.1 33.18 33.18 0 0 1 8.3-1.1c5.2 0 9.3 1.3 12.2 3.8s4.4 6.1 4.4 10.8v27h-7.8v-3.5a19.441 19.441 0 0 1-5.8 3.2 23.54 23.54 0 0 1-6.7 1Zm-7.3-12.6a5.646 5.646 0 0 0 2.6 4.8 11.193 11.193 0 0 0 6.6 1.8 16.256 16.256 0 0 0 5.9-1 14.449 14.449 0 0 0 4.9-2.9V47a19.778 19.778 0 0 0-4.8-1.8 24.933 24.933 0 0 0-5.7-.6 11.859 11.859 0 0 0-6.8 1.8 5.728 5.728 0 0 0-2.7 5ZM580.6 53.2v-24H572v-6.7h8.6V12.1l7.9-1.9v12.3h12v6.7h-12v22.1a5.94 5.94 0 0 0 1.4 4.4c.9.9 2.5 1.3 4.6 1.3a23.637 23.637 0 0 0 3-.2 10.857 10.857 0 0 0 2.8-.8v6.7a19.28 19.28 0 0 1-3.8.9 27.484 27.484 0 0 1-3.8.3c-3.9 0-7-.9-9-2.8-2-1.7-3.1-4.4-3.1-7.9Z"></path></g><path d="M127 90.2c12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4L149.8 37c-1.7-7.1-3.2-10.3-15.7-16.6-9.7-5-30.8-13.1-37.1-13.1-5.8 0-7.5 7.5-14.4 7.5-6.7 0-11.6-5.6-17.9-5.6-6 0-9.9 4.1-12.9 12.5 0 0-8.4 23.7-9.5 27.2a4.216 4.216 0 0 0-.3 1.9c0 9.2 36.3 39.4 85 39.4Zm32.5-11.4c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3C21.8 58.8 0 61.8 0 81c0 31.5 74.6 70.3 133.7 70.3 45.3 0 56.7-20.5 56.7-36.6-.1-12.8-11-27.3-30.9-35.9Z" fill="#e00"></path><path d="M159.5 78.8c1.7 8.2 1.7 9.1 1.7 10.1 0 14-15.7 21.8-36.4 21.8-46.8 0-87.7-27.4-87.7-45.5a17.535 17.535 0 0 1 1.5-7.3l3.7-9.1a4.877 4.877 0 0 0-.3 2c0 9.2 36.3 39.4 85 39.4 12.5 0 30.6-2.6 30.6-17.5a12.678 12.678 0 0 0-.3-3.4Z"></path><path d="M253.5 158.7a2.22 2.22 0 0 1-2.2-2.2V2.2a2.2 2.2 0 0 1 4.4 0v154.2a2.242 2.242 0 0 1-2.2 2.3Z" fill="#111"></path><text data-name="Demo Platform" transform="translate(1186 149)" fill="#111" font-size="82" font-family="'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif" font-weight="700"><tspan x="-877.892" y="0">Demo Platform</tspan></text></svg></div></div>
+</footer>
+<script defer src="../_/js/vendor/clipboard.js"></script>
+<script defer src="../_/js/site.js"></script>
+<script defer src="../_/js/vendor/highlight.js"></script>
+  </body>
+</html>
