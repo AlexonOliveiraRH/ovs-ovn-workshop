@@ -5,8 +5,8 @@ The interactive slide deck provides a visual overview of the workshop content, d
 == Access the Slides
 
 ++++
-<p><a href="../../../slides/index.html" target="_blank">Open slide deck in a new tab</a></p>
-<iframe src="../../../slides/index.html" width="100%" height="600" frameborder="0" style="border: 1px solid #ccc; border-radius: 4px;"></iframe>
+<p><a href="../../slides/index.html" target="_blank">Open slide deck in a new tab</a></p>
+<iframe src="../../slides/index.html" width="100%" height="600" frameborder="0" style="border: 1px solid #ccc; border-radius: 4px;"></iframe>
 ++++
 
 [NOTE]
