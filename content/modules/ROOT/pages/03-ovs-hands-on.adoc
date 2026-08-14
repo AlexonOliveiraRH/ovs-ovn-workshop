@@ -40,6 +40,23 @@ All commands in this lab assume you are running as root or using `sudo`. The lab
 ====
 
 
+[IMPORTANT]
+.Persistence across reboots
+====
+If you reboot or power off the lab machine, *some* components survive and others do not:
+
+* *Survives reboot:* OVS bridges and port configurations (stored in the OVSDB at `/etc/openvswitch/conf.db`). After reboot, `ovs-vsctl show` will still list your bridges and ports.
+
+* *Does NOT survive reboot:* Network namespaces (`ip netns add` stores them in `/var/run/netns/`, which is tmpfs - RAM-backed), veth pairs (kernel objects in memory), IP addresses assigned with `ip addr add`, and OpenFlow rules added with `ovs-ofctl`.
+
+After reboot, OVS will "remember" that br0 has a port called `veth-vm1`, but the veth interface no longer exists, so the port will be in an error state. You will need to recreate the namespaces, veth pairs, and IP assignments.
+
+*In production, this is not a problem* because VMs and containers are managed by orchestrators (libvirt/Nova for VMs, CRI-O/containerd for pods) that automatically recreate the virtual interfaces when VMs or pods start. Physical interface IPs are configured through NetworkManager, which is persistent. OVN recreates tunnel ports automatically through the ovn-controller daemon.
+
+A restore script is provided in `labs/standalone/restore-lab.sh` to recreate the full lab state up to Exercise 7. See the <<lab-restore>> section at the end of this page.
+====
+
+
 === Required Packages
 
 Install these packages before starting:
@@ -3781,6 +3798,50 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
 If you want to stop OVS entirely, run `sudo systemctl stop openvswitch`. If you want to remove OVS from the system, run `sudo dnf remove openvswitch`.
 ====
 
+
+'''
+
+[[lab-restore]]
+== Restoring the Lab After a Reboot
+
+After a reboot or power cycle, network namespaces, veth pairs, and IP addresses are lost (see the <<_persistence_across_reboots,Persistence across reboots>> note in Prerequisites). OVS bridges survive in OVSDB but their ports will be in an error state because the underlying interfaces no longer exist.
+
+A restore script is provided that tears down any stale state and recreates everything from scratch up to Exercise 7 (Port Mirroring):
+
+[source,bash]
+----
+sudo bash labs/standalone/restore-lab.sh
+----
+
+Expected output:
+
+----
+=== Restoring OVS Hands-On Lab ===
+
+[1/8] Cleaning stale OVS configuration...
+[2/8] Creating br0 bridge...
+[3/8] Creating vm1 and vm2 namespaces...
+[4/8] Creating vm3 and vm4 namespaces...
+[5/8] Setting NORMAL flow on br0...
+[6/8] Creating br1 bridge with vm5 and vm6...
+[7/8] Creating Geneve tunnel between br0 and br1...
+[8/8] Verifying lab state...
+
+=== Lab Restored ===
+  Bridges: br0 (vm1-vm4 + geneve0), br1 (vm5-vm6 + geneve1)
+  Tests: 20 passed, 0 failed
+  Ready for: Exercise 7 (Port Mirroring)
+----
+
+The script performs these steps:
+
+. Deletes any existing bridges, namespaces, and veth pairs (clean slate)
+. Recreates br0 with vm1-vm4 (Exercises 2-4)
+. Sets the NORMAL flow on br0 (Exercise 5)
+. Recreates br1 with vm5-vm6 and the Geneve tunnel (Exercise 6)
+. Runs connectivity tests to verify everything works
+
+After the script completes, you can resume the lab from Exercise 7.
 
 '''
 
