@@ -1947,28 +1947,55 @@ PING 10.0.0.5 (10.0.0.5) 56(84) bytes of data.
 rtt min/avg/max/mdev = 0.165/0.241/0.450/0.119 ms
 ----
 
-=== Step 5: Observe encapsulated traffic with tcpdump
+=== Step 5: Observe tunnel traffic
 
-[source,bash]
-----
-# In a separate terminal (or use & to background), capture VXLAN traffic
-# VXLAN uses UDP port 4789
-sudo tcpdump -i br0 -n -c 5 udp port 4789
-----
+In a multi-host deployment, you would use `tcpdump` on the physical interface to see encapsulated VXLAN packets (UDP port 4789) with double headers - the outer tunnel header and the inner original frame. In our single-host lab, the kernel delivers tunnel packets internally without putting them on a network interface, so `tcpdump -i br0 udp port 4789` would capture nothing.
 
-Then in another terminal, generate traffic:
+Instead, we can verify the tunnel is working by examining the kernel datapath flows:
 
 [source,bash]
 ----
 # Generate traffic through the tunnel
 sudo ip netns exec vm1 ping -c 3 10.0.0.5
+
+# Examine what the kernel datapath is doing with tunnel traffic
+sudo ovs-dpctl dump-flows | grep "tun_id"
 ----
 
-Expected tcpdump output:
+Expected output:
+
+----
+recirc_id(0),tunnel(tun_id=0x3e8,src=172.16.0.1,dst=172.16.0.2,flags(+key)),in_port(9),eth(...),eth_type(0x0806), packets:3, bytes:126, used:0.5s, actions:7,8,6
+recirc_id(0),in_port(2),eth(...),eth_type(0x0800), packets:3, bytes:294, used:0.5s, actions:set(tunnel(tun_id=0x3e8,dst=172.16.0.2,ttl=64,tp_dst=4789,flags(df|key))),9
+----
+
+Reading these flows:
+
+* `tun_id=0x3e8` is VNI 1000 in hexadecimal (the VXLAN key we configured)
+* `tp_dst=4789` is the VXLAN UDP destination port
+* `in_port(2)` is the source VM's veth, and `in_port(9)` is the kernel tunnel port (`vxlan_sys_4789`)
+* The first flow receives traffic *from* the tunnel and delivers it to the destination bridge ports
+* The second flow takes traffic *from* a VM and sends it *into* the tunnel with encapsulation headers
+
+[NOTE]
+.Key Concept
+====
+In a real multi-host environment, `tcpdump` on the physical NIC would show the double headers - an outer header (`172.16.0.1 > 172.16.0.2`, UDP 4789) wrapping an inner header (`10.0.0.1 > 10.0.0.5`, ICMP). The VNI identifies which virtual network the traffic belongs to. This is the fundamental principle of overlay networking - original packets are "wrapped" inside tunnel headers so they can traverse the physical network. In our single-host lab, `ovs-dpctl dump-flows` gives us the same information by showing the tunnel metadata (tun_id, src, dst, tp_dst) that would appear in those headers.
+====
+
+*Reference: tcpdump in a multi-host environment*
+
+In a real deployment with separate hosts, you would capture encapsulated traffic on the physical NIC or tunnel interface. The command and expected output would look like this:
+
+[source,bash]
+----
+# On the source host, capture VXLAN-encapsulated packets
+sudo tcpdump -i eth0 -n -c 5 udp port 4789
+----
 
 ----
 tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
-listening on br0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
 10:30:01.123456 IP 172.16.0.1.54321 > 172.16.0.2.4789: VXLAN, flags [I] (0x08), vni 1000
 IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12345, seq 1, length 64
 10:30:01.123789 IP 172.16.0.2.54321 > 172.16.0.1.4789: VXLAN, flags [I] (0x08), vni 1000
@@ -1980,12 +2007,7 @@ IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12345, seq 2, length 64
 5 packets captured
 ----
 
-
-[NOTE]
-.Key Concept
-====
-Notice the double headers in the tcpdump output. The outer header shows `172.16.0.1 > 172.16.0.2` on UDP port 4789 (the VXLAN tunnel), and the inner header shows `10.0.0.1 > 10.0.0.5` (the actual VM traffic). The VNI (1000) identifies which virtual network this traffic belongs to. This is the fundamental principle of overlay networking - original packets are "wrapped" inside tunnel headers so they can traverse the physical network.
-====
+Each line shows two layers: the outer tunnel header (`172.16.0.1 > 172.16.0.2`, UDP 4789, VNI 1000) and the inner original frame (`10.0.0.1 > 10.0.0.5`, ICMP). For Geneve tunnels, replace `udp port 4789` with `udp port 6081`.
 
 
 === Step 6: Replace with Geneve tunnel and compare
