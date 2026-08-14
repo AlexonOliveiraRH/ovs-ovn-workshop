@@ -75,7 +75,7 @@ The lab progressively builds the following topology across all exercises:
   .0.1  .0.2  .0.3  .0.4                     .1.1      .1.2
    /24   /24   /24   /24                      /24       /24
                        |                        |
-                   vxlan0/geneve0 <===========> vxlan0/geneve0
+                   vxlan0/geneve0 <===========> vxlan1/geneve1
                    (tunnel port)                (tunnel port)
 
     Exercise 7: mirror0 port on br0 captures traffic
@@ -1854,7 +1854,7 @@ sudo ovs-vsctl add-port br0 vxlan0 -- set interface vxlan0 \
     options:key=1000
 
 # Add a VXLAN tunnel port on br1 pointing to br0's tunnel IP
-sudo ovs-vsctl add-port br1 vxlan0 -- set interface vxlan0 \
+sudo ovs-vsctl add-port br1 vxlan1 -- set interface vxlan1 \
     type=vxlan \
     options:remote_ip=172.16.0.1 \
     options:key=1000
@@ -1879,8 +1879,8 @@ Expected output:
 ----
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
     Bridge br1
-        Port vxlan0
-            Interface vxlan0
+        Port vxlan1
+            Interface vxlan1
                 type: vxlan
                 options: {key="1000", remote_ip="172.16.0.1"}
         Port veth-vm6
@@ -1990,7 +1990,7 @@ Notice the double headers in the tcpdump output. The outer header shows `172.16.
 ----
 # Remove the VXLAN tunnel ports
 sudo ovs-vsctl del-port br0 vxlan0
-sudo ovs-vsctl del-port br1 vxlan0
+sudo ovs-vsctl del-port br1 vxlan1
 
 # Add Geneve tunnel ports
 sudo ovs-vsctl add-port br0 geneve0 -- set interface geneve0 \
@@ -1998,7 +1998,7 @@ sudo ovs-vsctl add-port br0 geneve0 -- set interface geneve0 \
     options:remote_ip=172.16.0.2 \
     options:key=2000
 
-sudo ovs-vsctl add-port br1 geneve0 -- set interface geneve0 \
+sudo ovs-vsctl add-port br1 geneve1 -- set interface geneve1 \
     type=geneve \
     options:remote_ip=172.16.0.1 \
     options:key=2000
@@ -2057,8 +2057,8 @@ Expected output:
 ----
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
     Bridge br1
-        Port geneve0
-            Interface geneve0
+        Port geneve1
+            Interface geneve1
                 type: geneve
                 options: {key="2000", remote_ip="172.16.0.1"}
         Port veth-vm6
@@ -3659,8 +3659,8 @@ sudo ip link del eth-b 2>/dev/null
 # Remove tunnel ports
 sudo ovs-vsctl del-port br0 geneve0 2>/dev/null
 sudo ovs-vsctl del-port br0 vxlan0 2>/dev/null
-sudo ovs-vsctl del-port br1 geneve0 2>/dev/null
-sudo ovs-vsctl del-port br1 vxlan0 2>/dev/null
+sudo ovs-vsctl del-port br1 geneve1 2>/dev/null
+sudo ovs-vsctl del-port br1 vxlan1 2>/dev/null
 
 # Remove VM ports from bridges
 sudo ovs-vsctl del-port br0 veth-vm1 2>/dev/null
