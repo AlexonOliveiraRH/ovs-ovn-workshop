@@ -2050,25 +2050,19 @@ PING 10.0.0.5 (10.0.0.5) 56(84) bytes of data.
 rtt min/avg/max/mdev = 0.175/0.297/0.420/0.123 ms
 ----
 
+As with VXLAN in Step 5, `tcpdump -i br0 udp port 6081` will not capture Geneve traffic in our single-host lab because the kernel delivers tunnel packets internally. Use the datapath flows instead:
+
 [source,bash]
 ----
-# Capture Geneve traffic (UDP port 6081)
-sudo tcpdump -i br0 -n -c 4 udp port 6081
+# Verify Geneve tunnel in the datapath
+sudo ovs-dpctl dump-flows | grep "tun_id"
 ----
 
-Expected tcpdump output:
-
-----
-10:35:01.123456 IP 172.16.0.1.54321 > 172.16.0.2.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12346, seq 1, length 64
-10:35:01.123789 IP 172.16.0.2.54321 > 172.16.0.1.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12346, seq 1, length 64
-10:35:02.124456 IP 172.16.0.1.54321 > 172.16.0.2.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.1 > 10.0.0.5: ICMP echo request, id 12346, seq 2, length 64
-10:35:02.124789 IP 172.16.0.2.54321 > 172.16.0.1.6081: Geneve, Flags [none], vni 0x7d0: IP 10.0.0.5 > 10.0.0.1: ICMP echo reply, id 12346, seq 2, length 64
-----
-
+The output is similar to the VXLAN flows from Step 5, but now with `tun_id=0x7d0` (2000 in hex) and `tp_dst=6081` (Geneve port) instead of `tp_dst=4789` (VXLAN port).
 
 [NOTE]
 ====
-The VNI `0x7d0` is the hex representation of 2000 (the key we specified).
+The VNI `0x7d0` is the hex representation of 2000 (the key we specified). In a multi-host environment, you would capture Geneve traffic with `sudo tcpdump -i eth0 -n udp port 6081` and see the same double-header structure as VXLAN, but with Geneve encapsulation and the ability to carry TLV metadata options that VXLAN does not support.
 ====
 
 
