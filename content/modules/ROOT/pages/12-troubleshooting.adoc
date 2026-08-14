@@ -102,6 +102,88 @@ Use top-down when one thing is broken. Use bottom-up when many things are broken
 ====
 
 
+=== Worked Example: Layer-by-Layer Tunnel Investigation
+
+This example demonstrates the top-down methodology applied to a real tunnel connectivity failure. A VM (or pod) on one OVS bridge cannot reach a VM on another bridge connected via a VXLAN tunnel. The ping fails with "Destination Host Unreachable".
+
+*Step 1 - Underlay connectivity:*
+
+[source,bash]
+----
+# Are the tunnel endpoint IPs configured and reachable?
+ip addr show br0 | grep "inet "    # expect 172.16.0.1
+ip addr show br1 | grep "inet "    # expect 172.16.0.2
+ping -c 1 172.16.0.2               # expect success
+----
+
+Result: both IPs exist, ping works. The underlay is healthy - the problem is above this layer.
+
+*Step 2 - OpenFlow forwarding:*
+
+[source,bash]
+----
+# Are the bridges forwarding traffic normally?
+ovs-ofctl dump-flows br0
+ovs-ofctl dump-flows br1
+----
+
+Result: both bridges have `actions=NORMAL` (standard MAC learning). No flows are blocking traffic.
+
+*Step 3 - Does traffic reach the destination bridge?*
+
+[source,bash]
+----
+# Capture on the destination bridge while pinging
+tcpdump -i br1 -n -c 5 &
+ip netns exec vm1 ping -c 2 10.0.0.5
+----
+
+Result: *zero packets captured on br1*. This is the critical finding - the packet leaves the source but never arrives at the destination bridge. The break is in the tunnel itself.
+
+*Step 4 - What does the kernel datapath actually do?*
+
+[source,bash]
+----
+# Examine the kernel-level cached flows
+ovs-dpctl dump-flows
+----
+
+Result:
+
+----
+tunnel(src=172.16.0.2,dst=172.16.0.2),in_port(9) -> actions:1,2,3,4,5
+----
+
+Three pieces of evidence in one line:
+
+* `src=172.16.0.2,dst=172.16.0.2` - source and destination are the same IP, which means the kernel short-circuited the packet delivery instead of sending it through the network
+* `in_port(9)` - port 9 is `vxlan_sys_4789`, the shared kernel tunnel port used by all VXLAN tunnels on this host
+* `actions:1,2,3,4,5` - these are br0's ports, not br1's. The decapsulated packet was delivered to the wrong bridge
+
+*Root cause:* without `local_ip` set on each tunnel port, OVS could not distinguish which bridge should receive the decapsulated packet when both bridges share the same datapath and the same UDP port.
+
+*Fix:* add `local_ip` to each tunnel port so the datapath can match on the destination IP to select the correct bridge.
+
+[IMPORTANT]
+.Lab Environment vs Production
+====
+This specific bug - needing `local_ip` to disambiguate tunnel ports - occurs only when multiple OVS bridges with tunnels share the same host and the same datapath. In production with OVN-Kubernetes or ML2/OVN, each compute node typically has a single `br-int` with a single Geneve tunnel per remote chassis, so this exact scenario does not arise.
+
+However, the *investigation technique* is directly applicable to production environments. In a real multi-host deployment, you would use the same layer-by-layer approach when tunnel traffic fails between compute nodes:
+
+* *Step 1* becomes: can the compute nodes reach each other's encap IPs? (`ovn-sbctl show` lists the registered encap IPs per chassis - verify they are correct and reachable)
+* *Step 2* becomes: does br-int have the expected OpenFlow rules? (`ovs-ofctl dump-flows br-int` - look for tunnel output actions)
+* *Step 3* becomes: does traffic arrive at the remote host? (`tcpdump -i <physical-nic> udp port 6081` on the destination compute node)
+* *Step 4* becomes: what does the datapath do with arriving tunnel packets? (`ovs-dpctl dump-flows` or `ovs-appctl dpctl/dump-flows` - check if the decapsulated packet is forwarded to the correct port or dropped)
+
+Common production scenarios where this analysis is essential:
+
+* A compute node registered the wrong IP as its Geneve encap address in the OVN Southbound DB (check with `ovn-sbctl show` and compare against the actual tunnel endpoint interface)
+* Firewall or security group on the underlay blocks UDP 6081 (Geneve) or 4789 (VXLAN) between compute nodes
+* MTU mismatch on the underlay causes large encapsulated packets to be silently dropped while small packets (like ARP) pass through
+* After node maintenance, ovn-controller reconnects but the chassis encap IP changed (DHCP lease renewal, bond failover) and stale tunnel endpoints remain in the Southbound DB
+====
+
 === Comprehensive Troubleshooting Checklist
 
 Use this checklist to ensure you do not skip any step during an investigation. Not every step applies to every problem, but reviewing the list helps you avoid blind spots.
