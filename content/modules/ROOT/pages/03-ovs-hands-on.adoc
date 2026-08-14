@@ -14,7 +14,7 @@ This lab requires a single virtual machine (or physical machine) running RHEL 9 
 |Requirement
 
 |OS
-|RHEL 9.x or Fedora 38+
+|RHEL 9.x or Fedora 38+ (tested on Fedora 44 with OVS 3.6.2)
 
 |CPU
 |2+ vCPUs
@@ -101,7 +101,8 @@ Expected output:
 ----
 ...
 Installed:
-  openvswitch-3.3.0-x.el9.x86_64
+  openvswitch-3.x.x-x.el9.x86_64   (RHEL 9)
+  openvswitch-3.6.2-1.fc44.x86_64   (Fedora 44)
   ...
 Complete!
 ----
@@ -109,7 +110,7 @@ Complete!
 
 [NOTE]
 ====
-On RHEL 9, the package is available from the Fast Datapath repository. If not enabled, run `sudo subscription-manager repos --enable fast-datapath-for-rhel-9-x86_64-rpms` first. On Fedora, `openvswitch` is available in the standard repositories.
+On RHEL 9, the package is available from the Fast Datapath repository. If not enabled, run `sudo subscription-manager repos --enable fast-datapath-for-rhel-9-x86_64-rpms` first. On Fedora, `openvswitch` is available in the standard repositories. The OVS version will differ between distributions - the expected outputs in this lab use placeholder values, but all commands work identically regardless of the specific OVS version.
 ====
 
 
@@ -190,7 +191,7 @@ ovs-vswitchd --version
 Expected output:
 
 ----
-ovs-vswitchd (Open vSwitch) 3.3.0
+ovs-vswitchd (Open vSwitch) 3.x.x
 ----
 
 [source,bash]
@@ -202,7 +203,7 @@ ovsdb-server --version
 Expected output:
 
 ----
-ovsdb-server (Open vSwitch) 3.3.0
+ovsdb-server (Open vSwitch) 3.x.x
 ----
 
 === Step 5: Verify the kernel module
@@ -216,12 +217,17 @@ lsmod | grep openvswitch
 Expected output:
 
 ----
-openvswitch           196608  0
-nf_conntrack          196608  1 openvswitch
-nf_nat                 49152  1 openvswitch
-nf_defrag_ipv6         24576  1 openvswitch
-libcrc32c              16384  2 openvswitch,nf_conntrack
+openvswitch           266240  0
+nf_conntrack          221184  5 nf_nat,...,openvswitch,...
+nf_nat                 65536  2 openvswitch,...
+...
 ----
+
+
+[NOTE]
+====
+The exact list of dependent kernel modules varies between distributions and kernel versions. The key thing to confirm is that the `openvswitch` module is loaded (first line). The number next to the module name is the memory size, and the `0` means no other module currently depends on it.
+====
 
 
 [NOTE]
@@ -243,7 +249,7 @@ Expected output:
 
 ----
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 The UUID at the top is the unique identifier for this OVS instance. Since we have not created any bridges yet, the output is minimal.
@@ -261,19 +267,20 @@ _uuid               : a1b2c3d4-e5f6-7890-abcd-ef1234567890
 bridges             : []
 cur_cfg             : 1
 datapath_types      : [netdev, system]
-db_version          : "8.5.0"
+db_version          : "8.x.0"
 dpdk_initialized    : false
-external_ids        : {hostname=lab-host, system-id="a1b2c3d4-..."}
+external_ids        : {hostname=lab-host, rundir="/var/run/openvswitch",
+                       system-id="a1b2c3d4-..."}
 iface_types         : [erspan, geneve, gre, internal, ip6erspan, ip6gre,
-                       ip6tnl, lisp, patch, stt, system, tap, vxlan]
+                       patch, system, tap, vxlan, ...]
 manager_options     : []
 next_cfg            : 1
 other_config        : {}
-ovs_version         : "3.3.0"
+ovs_version         : "3.x.x"
 ssl                 : []
 statistics          : {}
-system_type         : ""
-system_version      : ""
+system_type         : "fedora"
+system_version      : "44"
 ----
 
 
@@ -315,14 +322,14 @@ active
 active
 
 === OVS Version ===
-ovs-vswitchd (Open vSwitch) 3.3.0
+ovs-vswitchd (Open vSwitch) 3.x.x
 
 === Kernel Module ===
-openvswitch           196608  0
+openvswitch           266240  0
 
 === Database Status ===
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 === What just happened?
@@ -339,7 +346,7 @@ These three components work together: `ovsdb-server` stores configuration, `ovs-
 
 * Run `sudo ovs-vsctl --version` to see the version of the CLI tool itself
 * Explore the systemd unit files: `systemctl cat openvswitch`, `systemctl cat ovsdb-server`, `systemctl cat ovs-vswitchd`
-* Check the OVS log file: `sudo journalctl -u ovs-vswitchd --since "5 minutes ago"`
+* Check the OVS log file: `sudo tail -20 /var/log/openvswitch/ovs-vswitchd.log` (on RHEL 9, you can also use `sudo journalctl -u ovs-vswitchd --since "5 minutes ago"`)
 * Try `sudo ovsdb-client list-dbs` to see which databases are loaded (you should see `Open_vSwitch`)
 
 '''
@@ -372,7 +379,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port br0
             Interface br0
                 type: internal
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 
@@ -427,7 +434,7 @@ sudo ovs-ofctl dump-flows br0
 Expected output:
 
 ----
- cookie=0x0, duration=45.123s, table=0, n_packets=0, n_bytes=0, priority=0 actions=NORMAL
+ cookie=0x0, duration=45.123s, table=0, n_packets=0, n_bytes=0, idle_age=45, priority=0 actions=NORMAL
 ----
 
 
@@ -521,7 +528,8 @@ system@ovs-system:
   lookups: hit:0 missed:0 lost:0
   flows: 0
   masks: hit:0 total:0 hit/pkt:0.00
-  cache: hit:0 hit-rate:0.00%
+  caches:
+    masks-cache: size:256
   port 0: ovs-system (internal)
   port 1: br0 (internal)
 ----
@@ -714,7 +722,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port br0
             Interface br0
                 type: internal
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 === Step 5: Assign IPs inside the namespaces
@@ -979,7 +987,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port br0
             Interface br0
                 type: internal
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 
@@ -1617,9 +1625,9 @@ sudo ovs-ofctl dump-flows br0 --no-stats
 Expected output:
 
 ----
- table=0, priority=100,arp actions=resubmit(,1)
- table=0, priority=100,ip actions=resubmit(,1)
- table=0, priority=0 actions=drop
+ priority=100,arp actions=resubmit(,1)
+ priority=100,ip actions=resubmit(,1)
+ priority=0 actions=drop
  table=1, priority=100,ip,nw_dst=10.0.0.1 actions=output:1
  table=1, priority=100,ip,nw_dst=10.0.0.2 actions=output:2
  table=1, priority=100,ip,nw_dst=10.0.0.3 actions=output:3
@@ -1910,7 +1918,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port br0
             Interface br0
                 type: internal
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 === Step 4: Test connectivity through the tunnel
@@ -2106,7 +2114,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port br0
             Interface br0
                 type: internal
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 === Step 8: Tunnel comparison
@@ -2191,7 +2199,7 @@ Expected output:
 
 ----
 === Tunnel port on br0 ===
-options             : {key="2000", remote_ip="172.16.0.2"}
+options             : {key="2000", local_ip="172.16.0.1", remote_ip="172.16.0.2"}
 type                : geneve
 
 === Cross-tunnel connectivity ===
@@ -2205,7 +2213,7 @@ You built an overlay network that connects two OVS bridges through encapsulated 
 
 . *VXLAN tunnel* - Encapsulated L2 frames in UDP packets on port 4789, allowing VMs on different bridges (simulating different hosts) to communicate as if they were on the same Layer 2 segment.
 . *Geneve tunnel* - A more modern protocol that does the same thing but with extensible metadata support.
-. *tcpdump* showed you the double-header structure: outer headers carry the tunnel, inner headers carry the original VM traffic.
+. *Datapath flows* showed you the tunnel metadata (tun_id, src/dst IPs, UDP port) that corresponds to the double-header structure in a real multi-host deployment: outer headers carry the tunnel, inner headers carry the original VM traffic.
 
 This is exactly how cloud networks work. In OpenStack or OpenShift, compute nodes might be in different racks or even different data centers, but VMs/pods communicate as if they are on the same network. The overlay tunnel makes the physical network "invisible" to the virtual network.
 
@@ -2308,12 +2316,12 @@ statistics          : {tx_bytes=0, tx_packets=0}
 
 === Step 3: Capture mirrored traffic
 
-In one terminal, start tcpdump in the monitoring namespace:
+In one terminal, start tcpdump in the monitoring namespace. We use `icmp or arp` as a filter to focus on the traffic we care about - without it, you would also see IPv6 Neighbor Discovery and multicast listener reports from the namespace, which are normal but noisy:
 
 [source,bash]
 ----
-# Start capturing on the monitoring port
-sudo ip netns exec monitor tcpdump -i eth0-mirror -n -c 10
+# Start capturing on the monitoring port (filtered to ICMP and ARP)
+sudo ip netns exec monitor tcpdump -i eth0-mirror -n -c 10 "icmp or arp"
 ----
 
 In a second terminal, generate traffic:
@@ -2329,22 +2337,20 @@ Expected tcpdump output in the monitoring namespace:
 ----
 tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
 listening on eth0-mirror, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-10:40:01.100000 ARP, Request who-has 10.0.0.2 tell 10.0.0.1, length 28
-10:40:01.100100 ARP, Reply 10.0.0.2 is-at 5b:7c:9d:1e:3f:4a, length 28
 10:40:01.100200 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 1, length 64
 10:40:01.100300 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 1, length 64
 10:40:02.101000 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 2, length 64
 10:40:02.101100 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 2, length 64
 10:40:03.102000 IP 10.0.0.1 > 10.0.0.2: ICMP echo request, id 54321, seq 3, length 64
 10:40:03.102100 IP 10.0.0.2 > 10.0.0.1: ICMP echo reply, id 54321, seq 3, length 64
-8 packets captured
+6 packets captured
 ----
 
 
 [NOTE]
 .Key Concept
 ====
-Notice that you see BOTH the requests (from vm1) AND the replies (to vm1) because we selected both `select-src-port` and `select-dst-port`. The monitoring namespace sees all traffic involving vm1 without interfering with the actual data flow. In production, this is used for IDS/IPS systems, network forensics, and compliance monitoring.
+Notice that you see BOTH the requests (from vm1) AND the replies (to vm1) because we selected both `select-src-port` and `select-dst-port`. The `icmp or arp` filter keeps the output clean - without it, you would also see IPv6 Neighbor Discovery and multicast listener reports that the namespace generates automatically. The monitoring namespace sees all traffic involving vm1 without interfering with the actual data flow. In production, this is used for IDS/IPS systems, network forensics, and compliance monitoring.
 ====
 
 
@@ -2359,7 +2365,7 @@ sudo ovs-vsctl list mirror mirror0 | grep statistics
 Expected output:
 
 ----
-statistics          : {tx_bytes=784, tx_packets=8}
+statistics          : {tx_bytes=588, tx_packets=6}
 ----
 
 === Step 5: Clean up mirror configuration
@@ -2454,17 +2460,17 @@ Expected output:
 
 ----
 Connecting to host 10.0.0.2, port 5201
-[  5] local 10.0.0.1 port 45678 connected to 10.0.0.2 port 5201
-[ ID] Interval           Transfer     Bitrate         Retr
-[  5]   0.00-1.00   sec  5.50 GBytes  47.2 Gbits/sec    0
-[  5]   1.00-2.00   sec  5.60 GBytes  48.1 Gbits/sec    0
-[  5]   2.00-3.00   sec  5.55 GBytes  47.7 Gbits/sec    0
-[  5]   3.00-4.00   sec  5.58 GBytes  47.9 Gbits/sec    0
-[  5]   4.00-5.00   sec  5.57 GBytes  47.8 Gbits/sec    0
+[  5] local 10.0.0.1 port 41518 connected to 10.0.0.2 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec  9.22 GBytes  79.1 Gbits/sec    0    663 KBytes
+[  5]   1.00-2.00   sec  8.79 GBytes  75.6 Gbits/sec    0   1.24 MBytes
+[  5]   2.00-3.00   sec  9.00 GBytes  77.2 Gbits/sec    0   1.66 MBytes
+[  5]   3.00-4.00   sec  9.23 GBytes  79.3 Gbits/sec    0   1.74 MBytes
+[  5]   4.00-5.00   sec  9.37 GBytes  80.5 Gbits/sec    0   1.74 MBytes
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate         Retr
-[  5]   0.00-5.00   sec  27.8 GBytes  47.7 Gbits/sec    0             sender
-[  5]   0.00-5.00   sec  27.8 GBytes  47.7 Gbits/sec                  receiver
+[  5]   0.00-5.00   sec  45.9 GBytes  78.8 Gbits/sec    0             sender
+[  5]   0.00-5.00   sec  45.9 GBytes  78.8 Gbits/sec                  receiver
 
 iperf Done.
 ----
@@ -2472,7 +2478,7 @@ iperf Done.
 
 [NOTE]
 ====
-Without rate limiting, traffic between veth pairs on the same host is extremely fast (tens of Gbits/sec) because the packets never touch a physical NIC. Your actual numbers will vary depending on your CPU and memory speed.
+Without rate limiting, traffic between veth pairs on the same host is extremely fast (tens of Gbits/sec) because the packets never touch a physical NIC. Your actual numbers will vary significantly depending on your CPU, memory speed, and host load - anywhere from 20 Gbits/sec to over 100 Gbits/sec is normal.
 ====
 
 
@@ -2520,20 +2526,27 @@ Expected output:
 
 ----
 Connecting to host 10.0.0.2, port 5201
-[  5] local 10.0.0.1 port 45679 connected to 10.0.0.2 port 5201
-[ ID] Interval           Transfer     Bitrate         Retr
-[  5]   0.00-1.00   sec   128 KBytes  1.05 Mbits/sec    0
-[  5]   1.00-2.00   sec   124 KBytes  1.01 Mbits/sec    0
-[  5]   2.00-3.00   sec   122 KBytes   999 Kbits/sec    0
-[  5]   3.00-4.00   sec   124 KBytes  1.01 Mbits/sec    0
-[  5]   4.00-5.00   sec   122 KBytes   999 Kbits/sec    0
+[  5] local 10.0.0.1 port 55624 connected to 10.0.0.2 port 5201
+[ ID] Interval           Transfer     Bitrate         Retr  Cwnd
+[  5]   0.00-1.00   sec   128 KBytes  1.05 Mbits/sec   32   2.83 KBytes
+[  5]   1.00-2.00   sec  0.00 Bytes  0.00 bits/sec    15   2.83 KBytes
+[  5]   2.00-3.00   sec   128 KBytes  1.05 Mbits/sec   15   2.83 KBytes
+[  5]   3.00-4.00   sec  0.00 Bytes  0.00 bits/sec    15   2.83 KBytes
+[  5]   4.00-5.00   sec   128 KBytes  1.05 Mbits/sec   15   2.83 KBytes
 - - - - - - - - - - - - - - - - - - - - - - - - -
 [ ID] Interval           Transfer     Bitrate         Retr
-[  5]   0.00-5.00   sec   620 KBytes  1.01 Mbits/sec    0             sender
-[  5]   0.00-5.00   sec   620 KBytes  1.01 Mbits/sec                  receiver
+[  5]   0.00-5.00   sec   384 KBytes   629 Kbits/sec   92            sender
+[  5]   0.00-5.00   sec   256 KBytes   419 Kbits/sec                  receiver
 
 iperf Done.
 ----
+
+
+[NOTE]
+====
+Notice the high number of retransmits (Retr column). Because policing *drops* excess packets, TCP detects the loss and retransmits. Some intervals show 0 Bytes transferred because TCP's congestion window collapsed. The effective throughput (~629 Kbits/sec) is below the configured 1 Mbps limit because of this interaction between policing and TCP congestion control. With UDP traffic (e.g., `iperf3 -u -b 2M`), you would see the bitrate capped more precisely at 1 Mbps with excess packets silently dropped.
+====
+
 
 === Step 4: Compare the results
 
@@ -2545,20 +2558,20 @@ iperf Done.
 |With Rate Limit (1 Mbps)
 
 |Bitrate
-|~47.7 Gbits/sec
-|~1.01 Mbits/sec
+|~78.8 Gbits/sec
+|~629 Kbits/sec
 
 |Transfer (5 sec)
-|~27.8 GBytes
-|~620 KBytes
+|~45.9 GBytes
+|~384 KBytes
 
 |Retransmits
 |0
-|0
+|92
 
 |Throttle Ratio
 |N/A
-|~47,000x reduction
+|~125,000x reduction
 
 |===
 
@@ -2566,7 +2579,7 @@ iperf Done.
 [NOTE]
 .Key Concept
 ====
-The rate limiter reduced throughput by approximately 47,000 times. This demonstrates how powerful ingress policing is for controlling bandwidth on a per-port basis. In cloud environments, this is used to enforce tenant quotas - if a customer pays for 1 Gbps, you set `ingress_policing_rate=1000000` on their VM's port.
+The rate limiter reduced throughput by over 100,000 times. This demonstrates how powerful ingress policing is for controlling bandwidth on a per-port basis. In cloud environments, this is used to enforce tenant quotas - if a customer pays for 1 Gbps, you set `ingress_policing_rate=1000000` on their VM's port.
 ====
 
 
@@ -2709,7 +2722,7 @@ QoS count: 0
 Queue count: 0
 
 === Unrestricted throughput test ===
-[  5]   0.00-2.00   sec  9.50 GBytes  40.8 Gbits/sec    0             sender
+[  5]   0.00-2.00   sec  18.6 GBytes  80.0 Gbits/sec    0             sender
 ----
 
 === What just happened?
@@ -2792,7 +2805,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
             Interface eth-a
             Interface eth-b
         ...
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 === Step 3: Show bond status
@@ -2812,7 +2825,6 @@ bond may use recirculation: no, Recirc-ID : -1
 bond-hash-basis: 0
 updelay: 0 ms
 downdelay: 0 ms
-next rebalance: 1000 ms
 lacp_status: off
 lacp_fallback_ab: false
 active member mac: aa:11:22:33:44:55(eth-a)
@@ -2869,7 +2881,6 @@ bond may use recirculation: no, Recirc-ID : -1
 bond-hash-basis: 0
 updelay: 0 ms
 downdelay: 0 ms
-next rebalance: 1000 ms
 lacp_status: off
 lacp_fallback_ab: false
 active member mac: bb:11:22:33:44:55(eth-b)
@@ -2970,7 +2981,6 @@ Expected output:
 bond_mode: balance-slb
 bond may use recirculation: no, Recirc-ID : -1
 bond-hash-basis: 0
-updelay: 0 ms
 ----
 
 [source,bash]
@@ -3016,7 +3026,7 @@ bond-hash-basis: 0
 updelay: 0 ms
 downdelay: 0 ms
 next rebalance: 1000 ms
-lacp_status: negotiating
+lacp_status: negotiated
 lacp_fallback_ab: false
 active member mac: bb:11:22:33:44:55(eth-b)
 ----
@@ -3024,7 +3034,7 @@ active member mac: bb:11:22:33:44:55(eth-b)
 
 [NOTE]
 ====
-`lacp_status: negotiating` will show because the peer end (our veth peer) does not speak LACP. In production with a real LACP-capable switch, this would show `lacp_status: configured`.
+The `lacp_status` may show `negotiating` or `negotiated` depending on the OVS version and timing - the peer end (our veth peer) does not speak LACP. In production with a real LACP-capable switch, this would show `lacp_status: configured`.
 ====
 
 
@@ -3250,21 +3260,30 @@ Coverage counters are internal performance metrics that track how often specific
 
 === Step 4: Check OVS logs
 
+OVS writes its logs to `/var/log/openvswitch/`. On RHEL 9, logs may also be forwarded to journald, but the file-based logs are the primary source for troubleshooting.
+
 [source,bash]
 ----
-# View recent OVS logs via journalctl
-sudo journalctl -u ovs-vswitchd --since "10 minutes ago" --no-pager | tail -20
+# View recent OVS daemon logs
+sudo tail -20 /var/log/openvswitch/ovs-vswitchd.log
 ----
 
 Expected output:
 
 ----
-Aug 06 10:00:01 lab-host ovs-vswitchd[12350]: ovs|00001|bridge|INFO|bridge br0: added interface br0 on port 65534
-Aug 06 10:05:00 lab-host ovs-vswitchd[12350]: ovs|00002|bridge|INFO|bridge br0: added interface veth-vm1 on port 1
-Aug 06 10:05:00 lab-host ovs-vswitchd[12350]: ovs|00003|bridge|INFO|bridge br0: added interface veth-vm2 on port 2
-Aug 06 10:15:00 lab-host ovs-vswitchd[12350]: ovs|00004|bridge|INFO|bridge br1: added interface br1 on port 65534
+2026-08-14T17:30:01.123Z|00100|bridge|INFO|bridge br0: added interface br0 on port 65534
+2026-08-14T17:30:05.456Z|00101|bridge|INFO|bridge br0: added interface veth-vm1 on port 1
+2026-08-14T17:30:05.789Z|00102|bridge|INFO|bridge br0: added interface veth-vm2 on port 2
+2026-08-14T17:35:10.012Z|00103|bridge|INFO|bridge br1: added interface br1 on port 65534
 ...
 ----
+
+
+[NOTE]
+====
+On RHEL 9, you can also use `sudo journalctl -u ovs-vswitchd --since "10 minutes ago"` if logs are forwarded to journald. On Fedora, the file-based logs at `/var/log/openvswitch/` are typically the only source. The database daemon logs to `/var/log/openvswitch/ovsdb-server.log`.
+====
+
 
 [source,bash]
 ----
@@ -3276,26 +3295,33 @@ Expected output:
 
 ----
                  console    syslog    file
-                 -------    ------    ----
-backtrace          OFF       INFO      INFO
-bfd                OFF       INFO      INFO
-bond               OFF       INFO      INFO
-bridge             OFF       INFO      INFO
-bundle             OFF       INFO      INFO
-bundles            OFF       INFO      INFO
-cfm                OFF       INFO      INFO
-collectors         OFF       INFO      INFO
-connmgr            OFF       INFO      INFO
-coverage           OFF       INFO      INFO
-ct_dpif            OFF       INFO      INFO
-daemon             OFF       INFO      INFO
-daemon_unix        OFF       INFO      INFO
-dns_resolve        OFF       INFO      INFO
-dpdk               OFF       INFO      INFO
-dpif               OFF       INFO      INFO
-dpif_netdev        OFF       INFO      INFO
-dpif_netlink       OFF       INFO      INFO
+                 -------    ------    ------
+backtrace          OFF        ERR       INFO
+bfd                OFF        ERR       INFO
+bond               OFF        ERR       INFO
+bridge             OFF        ERR       INFO
+bundle             OFF        ERR       INFO
+bundles            OFF        ERR       INFO
+cfm                OFF        ERR       INFO
+collectors         OFF        ERR       INFO
+connmgr            OFF        ERR       INFO
+coverage           OFF        ERR       INFO
+ct_dpif            OFF        ERR       INFO
+daemon             OFF        ERR       INFO
+daemon_unix        OFF        ERR       INFO
+dns_resolve        OFF        ERR       INFO
+dpdk               OFF        ERR       INFO
+dpif               OFF        ERR       INFO
+dpif_netdev        OFF        ERR       INFO
+dpif_netlink       OFF        ERR       INFO
 ----
+
+
+[NOTE]
+====
+Each module has three output destinations: `console` (stderr), `syslog` (system logger), and `file` (the log file in `/var/log/openvswitch/`). The default levels may differ between distributions - Fedora typically defaults syslog to `ERR` while RHEL 9 may default to `INFO`. The `file` column is what you will check most often when troubleshooting.
+====
+
 
 [source,bash]
 ----
@@ -3318,7 +3344,7 @@ sudo ovs-appctl vlog/list | grep bridge
 Expected output:
 
 ----
-bridge             OFF       INFO      DBG
+bridge             OFF        ERR        DBG
 ----
 
 
@@ -3746,7 +3772,7 @@ Expected output after cleanup:
 
 === OVS status ===
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
-    ovs_version: "3.3.0"
+    ovs_version: "3.x.x"
 ----
 
 
