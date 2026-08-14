@@ -413,7 +413,7 @@ A single Linux machine (physical or virtual) is sufficient. You will use network
 
 *For product-specific labs (Modules 07-09, 12-13):*
 
-Access to a deployed RHOSP, RHOSO, and/or OCP environment is required. These labs do not cover installation of the platforms - they assume the environment is already running. Consult the lab setup instructions in `labs/lab-environment/` for details on recommended topologies.
+Access to a deployed RHOSP, RHOSO, and/or OCP environment is required. These labs do not cover installation of the platforms - they assume the environment is already running. Consult the lab scripts in `labs/rhosp/`, `labs/rhoso/`, and `labs/openshift/` for inspection and traffic flow testing utilities.
 
 === Software Requirements
 
