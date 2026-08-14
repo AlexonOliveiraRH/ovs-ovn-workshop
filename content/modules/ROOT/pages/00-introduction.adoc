@@ -465,6 +465,35 @@ ovn-nbctl --version
 For RHOSP, RHOSO, and OCP environments, OVS and OVN are pre-installed and managed by the platform. You do not need to install them manually - you only need access to the nodes where they are running.
 ====
 
+=== Lab Tiers
+
+The workshop includes three tiers of lab resources. Each tier serves a different purpose and targets different modules.
+
+[cols="1,2,2",options="header"]
+|===
+|Tier
+|What it provides
+|Modules
+
+|*In-guide exercises*
+|Self-contained, step-by-step labs using network namespaces on a single Linux machine. No external infrastructure needed.
+|03 (OVS Hands-On), 05 (OVN Hands-On)
+
+|*Standalone automation* (`labs/standalone/`)
+|Scripts to provision multi-VM OVS/OVN topologies on KVM or vSphere for deeper exploration beyond the guided exercises.
+|02-06 (extended practice)
+
+|*Product inspection* (`labs/rhosp/`, `labs/rhoso/`, `labs/openshift/`)
+|Inspection and traffic flow testing utilities for existing product deployments. These are not provisioning tools - they require a running environment.
+|07 (RHOSP), 08 (RHOSO), 09 (OCP), 10 (Traffic Flows), 12 (Troubleshooting)
+
+|===
+
+[NOTE]
+====
+Modules 07-09 assume access to deployed RHOSP, RHOSO, and/or OCP environments. Red Hat engineers can provision lab environments through demo.redhat.com or team-managed infrastructure. Provisioning these platforms is outside the scope of this workshop.
+====
+
 
 '''
 
