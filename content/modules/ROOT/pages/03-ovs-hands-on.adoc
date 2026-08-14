@@ -1851,12 +1851,14 @@ rtt min/avg/max/mdev = 0.028/0.031/0.035/0.003 ms
 sudo ovs-vsctl add-port br0 vxlan0 -- set interface vxlan0 \
     type=vxlan \
     options:remote_ip=172.16.0.2 \
+    options:local_ip=172.16.0.1 \
     options:key=1000
 
 # Add a VXLAN tunnel port on br1 pointing to br0's tunnel IP
 sudo ovs-vsctl add-port br1 vxlan1 -- set interface vxlan1 \
     type=vxlan \
     options:remote_ip=172.16.0.1 \
+    options:local_ip=172.16.0.2 \
     options:key=1000
 ----
 
@@ -1865,6 +1867,8 @@ sudo ovs-vsctl add-port br1 vxlan1 -- set interface vxlan1 \
 .Key Concept
 ====
 VXLAN (Virtual Extensible LAN) encapsulates Layer 2 Ethernet frames inside UDP packets (port 4789). The `key=1000` is the VNI (VXLAN Network Identifier) - equivalent to a VLAN ID but with a much larger range (16 million vs. 4094). This allows you to extend Layer 2 networks across different physical hosts. Think of VXLAN as putting an envelope (UDP header) around a letter (Ethernet frame) so it can travel through the postal system (IP network) to reach another mailbox (remote host).
+
+We specify `local_ip` on each tunnel port because both bridges share the same host and the same OVS datapath. Without it, OVS cannot determine which bridge should receive a decapsulated packet - both tunnel endpoints listen on the same UDP port. In a real multi-host deployment, `local_ip` is optional because each host has only one tunnel endpoint.
 ====
 
 
@@ -1882,7 +1886,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port vxlan1
             Interface vxlan1
                 type: vxlan
-                options: {key="1000", remote_ip="172.16.0.1"}
+                options: {key="1000", local_ip="172.16.0.2", remote_ip="172.16.0.1"}
         Port veth-vm6
             Interface veth-vm6
         Port br1
@@ -1902,7 +1906,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port vxlan0
             Interface vxlan0
                 type: vxlan
-                options: {key="1000", remote_ip="172.16.0.2"}
+                options: {key="1000", local_ip="172.16.0.1", remote_ip="172.16.0.2"}
         Port br0
             Interface br0
                 type: internal
@@ -1996,11 +2000,13 @@ sudo ovs-vsctl del-port br1 vxlan1
 sudo ovs-vsctl add-port br0 geneve0 -- set interface geneve0 \
     type=geneve \
     options:remote_ip=172.16.0.2 \
+    options:local_ip=172.16.0.1 \
     options:key=2000
 
 sudo ovs-vsctl add-port br1 geneve1 -- set interface geneve1 \
     type=geneve \
     options:remote_ip=172.16.0.1 \
+    options:local_ip=172.16.0.2 \
     options:key=2000
 ----
 
@@ -2060,7 +2066,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port geneve1
             Interface geneve1
                 type: geneve
-                options: {key="2000", remote_ip="172.16.0.1"}
+                options: {key="2000", local_ip="172.16.0.2", remote_ip="172.16.0.1"}
         Port veth-vm6
             Interface veth-vm6
         Port br1
@@ -2080,7 +2086,7 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
         Port geneve0
             Interface geneve0
                 type: geneve
-                options: {key="2000", remote_ip="172.16.0.2"}
+                options: {key="2000", local_ip="172.16.0.1", remote_ip="172.16.0.2"}
         Port br0
             Interface br0
                 type: internal
