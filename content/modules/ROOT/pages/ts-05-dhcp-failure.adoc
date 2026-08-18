@@ -647,7 +647,12 @@ issues.
 
 [NOTE]
 ====
-OVN supports two address modes for logical switch ports: - *Static:* `"fa:16:3e:xx:xx:xx 192.168.x.x"` - MAC and IP are specified explicitly - *Dynamic:* `"fa:16:3e:xx:xx:xx dynamic"` - MAC is fixed, IP is assigned by OVN's built-in IPAM  Both modes work with DHCP, but the DHCP options must still be correctly configured.
+OVN supports two address modes for logical switch ports:
+
+* *Static:* `"fa:16:3e:xx:xx:xx 192.168.x.x"` - MAC and IP are specified explicitly
+* *Dynamic:* `"fa:16:3e:xx:xx:xx dynamic"` - MAC is fixed, IP is assigned by OVN's built-in IPAM
+
+Both modes work with DHCP, but the DHCP options must still be correctly configured.
 ====
 
 
@@ -734,7 +739,10 @@ resulted in incomplete DHCP options in the OVN Northbound DB:
 [NOTE]
 .Key Concept
 ====
-The difference between traditional DHCP (dnsmasq) and OVN native DHCP is important here:  - *dnsmasq (traditional):* Acts as a full DHCP server. Can provide default values for missing options. If DNS is not configured, dnsmasq can still send a valid Offer without the DNS option.  - *OVN native DHCP:* Constructs the DHCP response from explicitly configured options in the NB DB. In some versions, missing options that the VM's DHCP client requested via Option 55 (Parameter Request List) can cause the response construction to fail, especially if the client's request includes DNS as a required parameter.
+The difference between traditional DHCP (dnsmasq) and OVN native DHCP is important here:
+
+* *dnsmasq (traditional):* Acts as a full DHCP server. Can provide default values for missing options. If DNS is not configured, dnsmasq can still send a valid Offer without the DNS option.
+* *OVN native DHCP:* Constructs the DHCP response from explicitly configured options in the NB DB. In some versions, missing options that the VM's DHCP client requested via Option 55 (Parameter Request List) can cause the response construction to fail, especially if the client's request includes DNS as a required parameter.
 ====
 
 

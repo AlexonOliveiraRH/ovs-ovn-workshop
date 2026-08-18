@@ -214,7 +214,12 @@ being heavily loaded means the fast path is not working efficiently.
 [NOTE]
 .Key Concept
 ====
-OVS processes packets in two paths: - *Fast path (kernel datapath):* Packets matching an existing datapath flow are handled entirely in the kernel, achieving line-rate performance. - *Slow path (userspace):* Packets that don't match any datapath flow generate an "upcall" to `ovs-vswitchd` in userspace. The daemon looks up the correct action in the OpenFlow tables, installs a new datapath flow for future packets, and handles the current packet. This is orders of magnitude slower than the fast path.  When most packets take the slow path, performance degrades severely because every packet requires a context switch to userspace and back.
+OVS processes packets in two paths:
+
+* *Fast path (kernel datapath):* Packets matching an existing datapath flow are handled entirely in the kernel, achieving line-rate performance.
+* *Slow path (userspace):* Packets that don't match any datapath flow generate an "upcall" to `ovs-vswitchd` in userspace. The daemon looks up the correct action in the OpenFlow tables, installs a new datapath flow for future packets, and handles the current packet. This is orders of magnitude slower than the fast path.
+
+When most packets take the slow path, performance degrades severely because every packet requires a context switch to userspace and back.
 ====
 
 

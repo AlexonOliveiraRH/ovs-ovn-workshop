@@ -91,7 +91,14 @@ Understanding the floating IP architecture is essential for troubleshooting this
 
 [quote]
 ____
-*Key Concept: Distributed vs. Centralized NAT in OVN*  OVN implements two types of NAT for routers:  - *SNAT (Source NAT / outbound):* Distributed across all compute nodes. Each compute node performs SNAT locally for VMs it hosts. Traffic exits through the local Geneve tunnel to the gateway chassis. Return traffic for established SNAT connections follows conntrack entries and can arrive at any gateway.  - *DNAT (Destination NAT / floating IP inbound):* Centralized on the gateway chassis. Inbound traffic to a floating IP must arrive at the gateway chassis, which performs DNAT (translating 10.20.30.100 to 192.168.100.50) and forwards the packet to the correct compute node via the Geneve overlay.  This asymmetry is why outbound SNAT can work while inbound DNAT fails - they use different paths.
+*Key Concept: Distributed vs. Centralized NAT in OVN*
+
+OVN implements two types of NAT for routers:
+
+* *SNAT (Source NAT / outbound):* Distributed across all compute nodes. Each compute node performs SNAT locally for VMs it hosts. Traffic exits through the local Geneve tunnel to the gateway chassis. Return traffic for established SNAT connections follows conntrack entries and can arrive at any gateway.
+* *DNAT (Destination NAT / floating IP inbound):* Centralized on the gateway chassis. Inbound traffic to a floating IP must arrive at the gateway chassis, which performs DNAT (translating 10.20.30.100 to 192.168.100.50) and forwards the packet to the correct compute node via the Geneve overlay.
+
+This asymmetry is why outbound SNAT can work while inbound DNAT fails - they use different paths.
 ____
 
 
@@ -250,7 +257,10 @@ snat             10.20.30.5         192.168.100.0/24
 [NOTE]
 .Key Concept
 ====
-The `dnat_and_snat` type means this NAT rule handles both directions: - *Inbound (DNAT):* Packets destined for 10.20.30.100 are translated to 192.168.100.50 - *Outbound (SNAT):* Packets from 192.168.100.50 are translated to 10.20.30.100 (overriding the subnet-wide SNAT to 10.20.30.5)
+The `dnat_and_snat` type means this NAT rule handles both directions:
+
+* *Inbound (DNAT):* Packets destined for 10.20.30.100 are translated to 192.168.100.50
+* *Outbound (SNAT):* Packets from 192.168.100.50 are translated to 10.20.30.100 (overriding the subnet-wide SNAT to 10.20.30.5)
 ====
 
 
@@ -550,7 +560,14 @@ Verify with tcpdump (if we had captured at the time):
 [NOTE]
 .Key Concept
 ====
-Gratuitous ARP (GARP) is an ARP Reply packet sent without a corresponding ARP Request. It announces "I am now at this MAC address" to all devices on the L2 network. However, not all network devices honor GARP:  - Some switches/routers have GARP filtering enabled for security - Some routers have static ARP entries that GARP cannot override - GARP may be lost if the network is congested at the moment of failover - Some enterprise routers have long ARP cache timeouts and ignore GARP  When GARP fails to update the upstream router, inbound traffic continues to flow to the old gateway's MAC address, causing a black hole.
+Gratuitous ARP (GARP) is an ARP Reply packet sent without a corresponding ARP Request. It announces "I am now at this MAC address" to all devices on the L2 network. However, not all network devices honor GARP:
+
+* Some switches/routers have GARP filtering enabled for security
+* Some routers have static ARP entries that GARP cannot override
+* GARP may be lost if the network is congested at the moment of failover
+* Some enterprise routers have long ARP cache timeouts and ignore GARP
+
+When GARP fails to update the upstream router, inbound traffic continues to flow to the old gateway's MAC address, causing a black hole.
 ====
 
 

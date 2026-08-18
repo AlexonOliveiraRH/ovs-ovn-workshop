@@ -256,7 +256,13 @@ ovn-controller considers the server's certificate invalid.
 [NOTE]
 .Key Concept
 ====
-OVN-Kubernetes uses mutual TLS (mTLS) for all communications between ovn-controller (on worker nodes) and the Southbound DB (on control plane nodes). Both sides present certificates, and both sides validate the other's certificate. TLS certificate validation checks several things: - Is the certificate signed by a trusted CA? - Is the certificate within its validity period (not expired, not "not yet valid")? - Does the certificate's subject match the expected identity?  If the system clock is wrong, a perfectly valid certificate may appear expired (clock too far in the future) or not yet valid (clock too far in the past).
+OVN-Kubernetes uses mutual TLS (mTLS) for all communications between ovn-controller (on worker nodes) and the Southbound DB (on control plane nodes). Both sides present certificates, and both sides validate the other's certificate. TLS certificate validation checks several things:
+
+* Is the certificate signed by a trusted CA?
+* Is the certificate within its validity period (not expired, not "not yet valid")?
+* Does the certificate's subject match the expected identity?
+
+If the system clock is wrong, a perfectly valid certificate may appear expired (clock too far in the future) or not yet valid (clock too far in the past).
 ====
 
 

@@ -53,7 +53,7 @@ After reboot, OVS will "remember" that br0 has a port called `veth-vm1`, but the
 
 *In production, this is not a problem* because VMs and containers are managed by orchestrators (libvirt/Nova for VMs, CRI-O/containerd for pods) that automatically recreate the virtual interfaces when VMs or pods start. Physical interface IPs are configured through NetworkManager, which is persistent. OVN recreates tunnel ports automatically through the ovn-controller daemon.
 
-A restore script is provided in `labs/standalone/restore-lab.sh` to recreate the full lab state up to Exercise 7. See the <<lab-restore>> section at the end of this page.
+A restore script is provided in `labs/standalone/restore-lab.sh` to recreate the lab state up to any exercise (e.g., `sudo bash labs/standalone/restore-lab.sh 5` restores up to Exercise 5). See the <<lab-restore>> section at the end of this page.
 ====
 
 
@@ -1331,7 +1331,15 @@ Expected output:
 [NOTE]
 .Key Concept
 ====
-Each OpenFlow rule has several fields: - *cookie* - A label used by controllers to identify their flows (0x0 = not set) - *duration* - How long the rule has been installed - *table* - Which flow table (0-254) the rule belongs to - *n_packets/n_bytes* - How many packets/bytes have matched this rule - *priority* - Higher priority rules are checked first (0-65535) - *match fields* - What the rule matches on (empty here = match all) - *actions* - What to do with matching packets (NORMAL = standard switching)
+Each OpenFlow rule has several fields:
+
+* *cookie* - A label used by controllers to identify their flows (0x0 = not set)
+* *duration* - How long the rule has been installed
+* *table* - Which flow table (0-254) the rule belongs to
+* *n_packets/n_bytes* - How many packets/bytes have matched this rule
+* *priority* - Higher priority rules are checked first (0-65535)
+* *match fields* - What the rule matches on (empty here = match all)
+* *actions* - What to do with matching packets (NORMAL = standard switching)
 ====
 
 
@@ -3271,7 +3279,14 @@ unixctl_received           0.2/sec     0.0/sec     0.0/sec   total: 5
 [NOTE]
 .Key Concept
 ====
-Coverage counters are internal performance metrics that track how often specific events occur inside OVS. Key counters to watch: - `mac_learning_learned` - How many new MACs have been learned - `flow_mod` - How many flow table modifications have occurred - `dpif_execute` - How many packets went through the slow path (userspace) - `netlink_received` - Communication between kernel and userspace  If `dpif_execute` is very high, it means too many packets are hitting the slow path, which could indicate a performance problem.
+Coverage counters are internal performance metrics that track how often specific events occur inside OVS. Key counters to watch:
+
+* `mac_learning_learned` - How many new MACs have been learned
+* `flow_mod` - How many flow table modifications have occurred
+* `dpif_execute` - How many packets went through the slow path (userspace)
+* `netlink_received` - Communication between kernel and userspace
+
+If `dpif_execute` is very high, it means too many packets are hitting the slow path, which could indicate a performance problem.
 ====
 
 
@@ -3409,7 +3424,14 @@ OFPST_PORT reply (xid=0x4): 7 ports
 [NOTE]
 .Key Concept
 ====
-Port statistics show you the exact traffic counters for each port on the bridge. Key fields: - *rx pkts/bytes* - Packets/bytes received on this port (from VM to switch) - *tx pkts/bytes* - Packets/bytes transmitted on this port (from switch to VM) - *drop* - Packets dropped (non-zero values indicate problems) - *errs* - Errors detected (non-zero values indicate link or driver issues)  These counters are cumulative since the bridge was created. If you see a high drop count on a port, it could indicate QoS policing, OpenFlow drop rules, or a buffer overflow.
+Port statistics show you the exact traffic counters for each port on the bridge. Key fields:
+
+* *rx pkts/bytes* - Packets/bytes received on this port (from VM to switch)
+* *tx pkts/bytes* - Packets/bytes transmitted on this port (from switch to VM)
+* *drop* - Packets dropped (non-zero values indicate problems)
+* *errs* - Errors detected (non-zero values indicate link or driver issues)
+
+These counters are cumulative since the bridge was created. If you see a high drop count on a port, it could indicate QoS policing, OpenFlow drop rules, or a buffer overflow.
 ====
 
 
@@ -3687,6 +3709,7 @@ You learned the essential debugging and monitoring toolkit for OVS:
 . *Port statistics* - Traffic counters per port for identifying where packets are going (or being dropped).
 
 In a production support scenario, when a customer reports "VM A cannot reach VM B", your debugging workflow would be:
+
 . Check `fdb/show` - Is the destination MAC known?
 . Use `ofproto/trace` - Does the flow pipeline forward the packet correctly?
 . Check `dump-ports` - Are packets being received/transmitted on the right ports?
@@ -3806,42 +3829,69 @@ If you want to stop OVS entirely, run `sudo systemctl stop openvswitch`. If you 
 
 After a reboot or power cycle, network namespaces, veth pairs, and IP addresses are lost (see the <<_persistence_across_reboots,Persistence across reboots>> note in Prerequisites). OVS bridges survive in OVSDB but their ports will be in an error state because the underlying interfaces no longer exist.
 
-A restore script is provided that tears down any stale state and recreates everything from scratch up to Exercise 7 (Port Mirroring):
+A restore script is provided that tears down any stale state and recreates everything from scratch up to the exercise you specify. Pass the exercise number as an argument:
 
 [source,bash]
 ----
+# Restore up to Exercise 6 (default - full topology)
 sudo bash labs/standalone/restore-lab.sh
+
+# Restore up to a specific exercise
+sudo bash labs/standalone/restore-lab.sh 3    # br0 + vm1 + vm2
+sudo bash labs/standalone/restore-lab.sh 5    # br0 + vm1-vm4 + NORMAL flow
+sudo bash labs/standalone/restore-lab.sh 8    # full topology (exercises 7-10 share the same base)
 ----
 
-Expected output:
+Each exercise builds on the previous ones. The script always starts from a clean slate and rebuilds incrementally:
+
+[cols="1,3,2",options="header"]
+|===
+|Exercise
+|What gets created
+|Topology after restore
+
+|2
+|br0 bridge
+|br0 (empty)
+
+|3
+|vm1 and vm2 on br0
+|br0 (vm1, vm2)
+
+|4
+|vm3 and vm4 on br0
+|br0 (vm1-vm4)
+
+|5
+|NORMAL flow on br0
+|br0 (vm1-vm4, NORMAL flow)
+
+|6-10
+|br1 with vm5/vm6 + Geneve tunnel
+|br0 (vm1-vm4 + geneve0), br1 (vm5-vm6 + geneve1)
+|===
+
+Exercises 7-10 all start from the same state (end of Exercise 6). Each of those exercises does its own setup and cleanup within the exercise itself.
+
+Expected output (example with default, Exercise 6):
 
 ----
-=== Restoring OVS Hands-On Lab ===
+=== Restoring OVS Hands-On Lab (up to Exercise 6) ===
 
-[1/8] Cleaning stale OVS configuration...
-[2/8] Creating br0 bridge...
-[3/8] Creating vm1 and vm2 namespaces...
-[4/8] Creating vm3 and vm4 namespaces...
-[5/8] Setting NORMAL flow on br0...
-[6/8] Creating br1 bridge with vm5 and vm6...
-[7/8] Creating Geneve tunnel between br0 and br1...
-[8/8] Verifying lab state...
+[cleanup] Removing stale OVS configuration...
+[exercise 2] Creating br0 bridge...
+[exercise 3] Creating vm1 and vm2...
+[exercise 4] Creating vm3 and vm4...
+[exercise 5] Setting NORMAL flow on br0...
+[exercise 6] Creating br1 with vm5/vm6 and Geneve tunnel...
 
-=== Lab Restored ===
-  Bridges: br0 (vm1-vm4 + geneve0), br1 (vm5-vm6 + geneve1)
+[verify] Testing connectivity...
+
+=== Lab Restored (up to Exercise 6) ===
+  Topology: br0 (vm1-vm4 + geneve0), br1 (vm5-vm6 + geneve1)
   Tests: 20 passed, 0 failed
-  Ready for: Exercise 7 (Port Mirroring)
+  Ready for: Exercise 6
 ----
-
-The script performs these steps:
-
-. Deletes any existing bridges, namespaces, and veth pairs (clean slate)
-. Recreates br0 with vm1-vm4 (Exercises 2-4)
-. Sets the NORMAL flow on br0 (Exercise 5)
-. Recreates br1 with vm5-vm6 and the Geneve tunnel (Exercise 6)
-. Runs connectivity tests to verify everything works
-
-After the script completes, you can resume the lab from Exercise 7.
 
 '''
 

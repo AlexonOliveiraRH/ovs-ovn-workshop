@@ -247,7 +247,12 @@ sudo ovs-vsctl set open_vswitch . \
 [NOTE]
 .Key Concept
 ====
-These `external_ids` on the `Open_vSwitch` table tell ovn-controller: - `ovn-remote`: Where to find the SB DB (local Unix socket since this node is the central node) - `ovn-encap-type`: Use Geneve encapsulation for tunnels - `ovn-encap-ip`: This node's tunnel endpoint IP - `system-id`: A unique identifier for this chassis
+These `external_ids` on the `Open_vSwitch` table tell ovn-controller:
+
+* `ovn-remote` - Where to find the SB DB (local Unix socket since this node is the central node)
+* `ovn-encap-type` - Use Geneve encapsulation for tunnels
+* `ovn-encap-ip` - This node's tunnel endpoint IP
+* `system-id` - A unique identifier for this chassis
 ====
 
 
@@ -946,7 +951,10 @@ Expected tcpdump output:
 [NOTE]
 .Key Concept
 ====
-You can see two layers of IP headers: - *Outer IP:* 192.168.100.10 -> 192.168.100.11 (the physical tunnel endpoints) - *Inner IP:* 10.0.0.11 -> 10.0.0.13 (the actual VM traffic)
+You can see two layers of IP headers:
+
+* *Outer IP:* 192.168.100.10 -> 192.168.100.11 (the physical tunnel endpoints)
+* *Inner IP:* 10.0.0.11 -> 10.0.0.13 (the actual VM traffic)
 ====
 
 
