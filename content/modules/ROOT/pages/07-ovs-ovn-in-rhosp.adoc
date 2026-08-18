@@ -261,6 +261,7 @@ The `qbr` (quantum bridge) is a Linux bridge used as an intermediary between the
 
 
 Flow path on `br-int`:
+
 . Packet arrives from `qvo-A` on `br-int`.
 . Flow rules match the destination MAC and local VLAN tag.
 . Packet is forwarded to `qvo-B` on `br-int`.

@@ -1406,6 +1406,7 @@ oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed 
 ----
 
 The trace will show:
+
 . The packet enters the logical switch pipeline (ingress ACL, port security)
 . The packet is forwarded to the logical router port
 . The logical router applies DNAT/SNAT (replacing source IP with the floating IP 10.0.0.50)
@@ -1496,6 +1497,7 @@ ovsdbserver-sb-2   1/1   Running   0   3d   172.17.0.32   master-2   <none>   <n
 ----
 
 *Common Causes:*
+
 . VLAN or network misconfiguration on the data plane node (wrong VLAN tag, wrong interface)
 . NAD misconfiguration on the OpenShift side (wrong master interface, wrong VLAN)
 . Firewall rules blocking port 6642 between data plane nodes and OpenShift nodes
@@ -1591,6 +1593,7 @@ sudo ovs-vsctl get Open_vSwitch . external_ids:ovn-encap-ip
 ----
 
 *Common Causes:*
+
 . ovn-controller not running or crashing
 . Cannot connect to SB DB (see Issue 1)
 . Missing `system-id`, `ovn-encap-type`, or `ovn-encap-ip` in external_ids
@@ -1642,6 +1645,7 @@ fatal: [edpm-compute-0]: FAILED! => {
 ----
 
 *Common Causes:*
+
 . Wrong interface names in the OpenStackDataPlaneNodeSet CR
 . Missing physical interfaces on the data plane node
 . Network configuration template errors

@@ -898,6 +898,7 @@ An *SDN controller* is the software that programs the data plane switches. Diffe
 
 
 In OVN deployments, *ovn-controller* is the SDN controller. It runs on every node (hypervisor, compute node, Kubernetes node) and:
+
 . Reads the OVN Southbound Database to get the logical flow rules relevant to its node
 . Translates those logical flows into physical OpenFlow rules
 . Programs those OpenFlow rules into the local OVS instance

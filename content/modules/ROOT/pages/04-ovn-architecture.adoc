@@ -319,6 +319,7 @@ ovn-northd is the *compiler* - it watches the NB DB for changes and translates h
 ovn-controller is the *local agent* on every node (chassis). It bridges the central OVN intelligence (SB DB) and the local OVS instance.
 
 *What ovn-controller does:*
+
 . *Chassis registration* - Registers the node in SB DB with hostname, encapsulation type, tunnel IP
 . *Port binding* - Detects OVS ports with `iface-id` and binds logical ports to this chassis
 . *Reading logical flows* - Reads relevant logical flows from SB DB

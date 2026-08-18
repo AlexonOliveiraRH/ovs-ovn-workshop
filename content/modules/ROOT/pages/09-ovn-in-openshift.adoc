@@ -1547,6 +1547,7 @@ oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
 ----
 
 The output will show every logical flow table the packet passes through:
+
 . Ingress pipeline on the source logical switch (worker-0)
 . The cluster router routing the packet to the destination subnet
 . Egress pipeline on the destination logical switch (worker-1)
@@ -1599,6 +1600,7 @@ oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
 ----
 
 This trace will show:
+
 . The packet going through the node's logical switch.
 . The cluster router forwarding it toward the gateway.
 . The gateway router performing SNAT (replacing the source with the node's external IP).

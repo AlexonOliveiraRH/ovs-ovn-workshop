@@ -327,6 +327,7 @@ Bridge br-int
 === What just happened?
 
 You installed and configured a complete OVN deployment:
+
 . The central node runs the NB DB, SB DB, and ovn-northd
 . Each node runs ovn-controller, which registered itself as a chassis in the SB DB
 . ovn-controller created the integration bridge `br-int` on each node
@@ -1142,6 +1143,7 @@ sudo ovn-trace --summary network1 \
 ----
 
 The trace shows the packet traveling through three datapaths:
+
 . *network1 (ingress + egress):* L2 lookup sends the packet to the router port
 . *router1 (ingress + egress):* IP routing selects the output port, TTL is decremented, MACs are rewritten
 . *network2 (ingress + egress):* L2 lookup delivers the packet to vm4
@@ -1286,6 +1288,7 @@ sudo ovn-trace --summary network1 \
 ----
 
 The trace shows the connection tracking lifecycle:
+
 . `ct_next` performs a conntrack lookup
 . For new connections matching an allow rule, `ct_commit` commits the connection
 . Subsequent packets of the same connection match the established/related rules
