@@ -189,8 +189,8 @@ sudo ss -tlnp | grep -E '6641|6642'
 Expected output:
 
 ----
-LISTEN  0  10  0.0.0.0:6641  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
-LISTEN  0  10  0.0.0.0:6642  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
+LISTEN  0  64  0.0.0.0:6641  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
+LISTEN  0  64  0.0.0.0:6642  0.0.0.0:*  users:(("ovsdb-server",pid=...,fd=...))
 ----
 
 Port 6641 is the NB DB and port 6642 is the SB DB.
@@ -225,6 +225,31 @@ Expected output:
 ptcp:6642
 ptcp:6641
 ----
+
+
+[IMPORTANT]
+====
+If your nodes have a firewall enabled (e.g., `firewalld`), you must open the following ports:
+
+*On the central node* - allow compute nodes to reach the NB and SB databases:
+
+[source,bash]
+----
+sudo firewall-cmd --add-port=6641/tcp --add-port=6642/tcp --permanent
+sudo firewall-cmd --reload
+----
+
+*On all nodes* - allow Geneve tunnel traffic (UDP 6081):
+
+[source,bash]
+----
+sudo firewall-cmd --add-port=6081/udp --permanent
+sudo firewall-cmd --reload
+----
+
+Without these rules, compute nodes cannot register as chassis and cross-node connectivity will fail.
+====
+
 
 === Step 1.6: Start OVN on the central node (as a compute node too)
 
@@ -1208,10 +1233,10 @@ Adding your first ACL changes the behavior. Traffic that was previously allowed 
 [source,bash]
 ----
 # Allow established and related connections (critical for stateful operation)
-sudo ovn-nbctl acl-add network1 to-lport 65535 \
+sudo ovn-nbctl acl-add network1 to-lport 32767 \
     'ct.est && !ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
 
-sudo ovn-nbctl acl-add network1 to-lport 65535 \
+sudo ovn-nbctl acl-add network1 to-lport 32767 \
     '!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
 
 # Allow inbound ICMP
@@ -1404,7 +1429,31 @@ This works because we added a static route on ext-gw back to 10.0.0.0/16. In the
 ====
 
 
-=== Step 8.6: Configure SNAT
+=== Step 8.6: Set a gateway chassis for NAT
+
+NAT operations require a designated gateway chassis - a specific node where NAT processing occurs. Without this, SNAT and DNAT rules will not take effect.
+
+[source,bash]
+----
+# Designate the central node as the gateway chassis for external traffic
+sudo ovn-nbctl lrp-set-gateway-chassis rtr-to-external central 1
+----
+
+[source,bash]
+----
+# Verify the gateway chassis assignment
+sudo ovn-nbctl list Gateway_Chassis
+----
+
+
+[NOTE]
+.Key Concept
+====
+In production, gateway chassis is typically set on dedicated network/gateway nodes that have physical connectivity to the external network. You can configure multiple gateway chassis with different priorities for high availability. OVN uses BFD to detect failures and automatically fails over to the next highest priority gateway.
+====
+
+
+=== Step 8.7: Configure SNAT
 
 [source,bash]
 ----
@@ -1416,7 +1465,7 @@ sudo ovn-nbctl lr-nat-add router1 snat 172.16.0.100 10.0.1.0/24
 sudo ovn-nbctl lr-nat-list router1
 ----
 
-=== Step 8.7: Verify SNAT behavior
+=== Step 8.8: Verify SNAT behavior
 
 [source,bash]
 ----
@@ -1443,7 +1492,7 @@ IP 172.16.0.100 > 172.16.0.1: ICMP echo request, ...
 IP 172.16.0.1 > 172.16.0.100: ICMP echo reply, ...
 ----
 
-=== Step 8.8: Configure DNAT (floating IP)
+=== Step 8.9: Configure DNAT (floating IP)
 
 [source,bash]
 ----
@@ -1454,7 +1503,7 @@ sudo ovn-nbctl lr-nat-add router1 dnat_and_snat 172.16.0.101 10.0.0.11
 sudo ovn-nbctl lr-nat-list router1
 ----
 
-=== Step 8.9: Test DNAT
+=== Step 8.10: Test DNAT
 
 [source,bash]
 ----
@@ -1466,11 +1515,11 @@ Expected output:
 
 ----
 PING 172.16.0.101 (172.16.0.101) 56(84) bytes of data.
-64 bytes from 172.16.0.101: icmp_seq=1 ttl=62 time=0.567 ms
-64 bytes from 172.16.0.101: icmp_seq=2 ttl=62 time=0.345 ms
+64 bytes from 172.16.0.101: icmp_seq=1 ttl=63 time=0.567 ms
+64 bytes from 172.16.0.101: icmp_seq=2 ttl=63 time=0.345 ms
 ----
 
-=== Step 8.10: Verify NAT with tcpdump
+=== Step 8.11: Verify NAT with tcpdump
 
 [source,bash]
 ----
@@ -1483,6 +1532,7 @@ vm1 sees traffic with its real IP (10.0.0.11), not the floating IP. NAT is trans
 
 === What just happened?
 
+. You designated a gateway chassis for NAT processing - without this, NAT rules have no effect
 . SNAT translates outbound source IPs from internal (10.x.x.x) to external (172.16.0.100)
 . DNAT+SNAT (floating IP) translates inbound destination IPs from external (172.16.0.101) to internal (10.0.0.11)
 . NAT is transparent to the workloads
@@ -1557,11 +1607,15 @@ sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
 sudo ovn-nbctl lb-list
 ----
 
-=== Step 9.5: Associate the load balancer with the router
+=== Step 9.5: Associate the load balancer with the router and switches
 
 [source,bash]
 ----
 sudo ovn-nbctl lr-lb-add router1 web-lb
+
+# Also associate with the logical switches for proper DNAT in the datapath
+sudo ovn-nbctl ls-lb-add network1 web-lb
+sudo ovn-nbctl ls-lb-add network2 web-lb
 ----
 
 === Step 9.6: Test load balancing
@@ -1588,14 +1642,14 @@ sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"
 
 [source,bash]
 ----
-# Remove a backend (vm6)
-sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+# Remove a backend (vm6) - use --may-exist to update existing LB
+sudo ovn-nbctl --may-exist lb-add web-lb 10.0.1.100:80 \
     10.0.1.11:8080,10.0.1.12:8080
 
 # Test - traffic only goes to vm4 and vm5
 
 # Add vm6 back
-sudo ovn-nbctl lb-add web-lb 10.0.1.100:80 \
+sudo ovn-nbctl --may-exist lb-add web-lb 10.0.1.100:80 \
     10.0.1.11:8080,10.0.1.12:8080,10.0.1.13:8080
 ----
 
@@ -1670,15 +1724,18 @@ sudo ovn-trace --summary network1 \
 [source,bash]
 ----
 # Trace a packet that should be dropped by ACLs (TCP port 9999)
-sudo ovn-trace --summary network1 \
+# Use --ct new to simulate a new connection so ACLs are properly evaluated
+sudo ovn-trace --ct new --summary network1 \
     'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && tcp.dst == 9999 && ip.ttl == 64'
 ----
+
+Look for `ct_mark.blocked = 1` in the output, which indicates the ACL dropped the packet. Without `--ct`, ovn-trace defaults to allowing traffic through the connection tracking tables, which may hide ACL drops.
 
 
 [NOTE]
 .Key Concept
 ====
-`ovn-trace` is invaluable for debugging. When a packet is not reaching its destination, trace it to find which table drops it. The output tells you the exact table name and flow that made the decision.
+`ovn-trace` is invaluable for debugging. When a packet is not reaching its destination, trace it to find which table drops it. The output tells you the exact table name and flow that made the decision. Use `--ct new` when tracing through ACLs to simulate a new connection.
 ====
 
 
@@ -1689,6 +1746,12 @@ sudo ovn-trace --summary network1 \
 # Map physical OVS flows back to OVN logical flows
 sudo ovs-ofctl dump-flows br-int | sudo ovn-detrace --ovnsb=unix:/run/ovn/ovnsb_db.sock
 ----
+
+
+[NOTE]
+====
+`ovn-detrace` requires the OVS Python bindings (`python3-openvswitch`) with a version matching the installed OVS. If you see a version mismatch error, install the correct Python package: `sudo dnf install python3-openvswitch`.
+====
 
 === Step 10.7: Reading ovn-controller logs
 
@@ -1821,27 +1884,104 @@ When you are done with the lab, clean up the environment:
 
 [source,bash]
 ----
-# Remove network namespaces
-for ns in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+# Remove network namespaces (on central node)
+for ns in vm1 vm2 vm4 vm5 vm6 ext-gw; do
     sudo ip netns del $ns 2>/dev/null
 done
 
+# Remove network namespaces on compute nodes
+# On compute1:
+sudo ip netns del vm3 2>/dev/null
+
 # Remove OVS ports (also removes the OVN port bindings)
-for port in vm1 vm2 vm3 vm4 vm5 vm6 ext-gw; do
+# On central:
+for port in vm1 vm2 vm4 vm5 vm6 ext-gw; do
     sudo ovs-vsctl --if-exists del-port br-int $port
 done
+# On compute1:
+sudo ovs-vsctl --if-exists del-port br-int vm3
 
-# Remove OVN logical configuration
+# Remove OVN logical configuration (from central)
+sudo ovn-nbctl lb-del web-lb
 sudo ovn-nbctl lr-del router1
 sudo ovn-nbctl ls-del network1
 sudo ovn-nbctl ls-del network2
 sudo ovn-nbctl ls-del external
-sudo ovn-nbctl lb-del web-lb
 
 # Verify everything is clean
 sudo ovn-nbctl show
 sudo ovn-sbctl show
 ----
+
+
+[NOTE]
+====
+Remember to also clean up namespaces and OVS ports on your compute nodes. The `ovn-nbctl` commands only need to run on the central node since they modify the centralized databases.
+====
+
+
+[[lab-restore]]
+== Lab Restore
+
+A restore script is provided in `labs/standalone/restore-ovn-lab.sh` to recreate the lab state up to any exercise. This is useful when you need to resume the lab after a reboot or want to skip ahead to a specific exercise.
+
+Configure the script by setting environment variables for your lab nodes:
+
+[source,bash]
+----
+# Set your lab node addresses (adjust to match your environment)
+export CENTRAL=root@central       # or "local" if running on the central node
+export COMPUTE1=root@compute1
+export COMPUTE2=root@compute2
+
+# Restore to a specific exercise (e.g., Exercise 6 for routing)
+bash labs/standalone/restore-ovn-lab.sh 6
+
+# Restore the full lab (all exercises)
+bash labs/standalone/restore-ovn-lab.sh 10
+----
+
+
+[cols="1,1",options="header"]
+|===
+|Exercise
+|State Restored
+
+|2
+|Logical switch (network1) with ports vm1, vm2, vm3
+
+|3
+|Namespaces created, L2 connectivity on central
+
+|4
+|DHCP configured on network1
+
+|5
+|Multi-node: vm3 namespace on compute1
+
+|6
+|Router, network2, vm4/vm5 namespaces, L3 routing
+
+|7
+|ACLs on network1 (ICMP, SSH, HTTP 8080 allowed)
+
+|8
+|External switch, gateway chassis, SNAT, DNAT
+
+|9
+|Load balancer (web-lb) with vm6
+
+|10
+|Full lab (same as 9, ready for debugging exercises)
+
+|===
+
+
+[IMPORTANT]
+====
+The restore script assumes Exercise 1 (package installation, services, and chassis registration) has already been completed. It does not install packages or start services.
+====
+
 
 '''
 
