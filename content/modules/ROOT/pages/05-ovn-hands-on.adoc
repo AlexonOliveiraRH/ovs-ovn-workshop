@@ -49,6 +49,12 @@ The "Tunnel IP" is the IP address used for Geneve tunnel encapsulation between n
 ====
 
 
+[IMPORTANT]
+====
+The IPs shown in this lab (`192.168.122.x` for management, `192.168.100.x` for tunnels) are *examples only*. You must replace them with the actual IPs of your lab machines throughout all exercises. If your machines are on a single network (e.g., `192.168.1.x`), use the same IP for both management and tunnel.
+====
+
+
 === Required Packages
 
 *On the central node:*
@@ -261,12 +267,30 @@ Since the central node also serves as a compute node in this lab, start ovn-cont
 sudo systemctl enable --now ovn-controller
 
 # Configure OVS to point to the local OVN southbound database
+# IMPORTANT: Replace 192.168.100.10 with this node's actual IP address
 sudo ovs-vsctl set open_vswitch . \
     external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \
     external_ids:ovn-encap-type=geneve \
     external_ids:ovn-encap-ip=192.168.100.10 \
     external_ids:system-id=central
 ----
+
+
+[WARNING]
+====
+Replace `192.168.100.10` with the *actual IP address* of your central node. This is the IP that other nodes will use to establish Geneve tunnels to this node. If your lab uses a single network for both management and tunnels, use the management IP.
+
+You can verify or fix the value at any time:
+
+[source,bash]
+----
+# Check current value
+sudo ovs-vsctl get open_vswitch . external_ids:ovn-encap-ip
+
+# Fix if needed
+sudo ovs-vsctl set open_vswitch . external_ids:ovn-encap-ip=<YOUR_ACTUAL_IP>
+----
+====
 
 
 [NOTE]
@@ -276,14 +300,20 @@ These `external_ids` on the `Open_vSwitch` table tell ovn-controller:
 
 * `ovn-remote` - Where to find the SB DB (local Unix socket since this node is the central node)
 * `ovn-encap-type` - Use Geneve encapsulation for tunnels
-* `ovn-encap-ip` - This node's tunnel endpoint IP
+* `ovn-encap-ip` - This node's tunnel endpoint IP (must be reachable by all other nodes)
 * `system-id` - A unique identifier for this chassis
 ====
 
 
 === Step 1.7: Start OVN on compute nodes
 
-Run on each compute node (`compute1`, `compute2`):
+Run on each compute node. You must replace *three values* for each node:
+
+* `ovn-remote` - Replace `192.168.122.10` with your *central node's actual IP*
+* `ovn-encap-ip` - Replace with *this compute node's actual IP*
+* `system-id` - A unique name for this node (`compute1`, `compute2`, etc.)
+
+*On compute1:*
 
 [source,bash]
 ----
@@ -294,15 +324,48 @@ sudo systemctl enable --now openvswitch
 sudo systemctl enable --now ovn-controller
 
 # Configure OVS to connect to the central SB DB
-# Replace 192.168.122.10 with your central node's IP
+# IMPORTANT: Replace the IPs below with your actual lab IPs
 sudo ovs-vsctl set open_vswitch . \
-    external_ids:ovn-remote=tcp:192.168.122.10:6642 \
+    external_ids:ovn-remote=tcp:<CENTRAL_NODE_IP>:6642 \
     external_ids:ovn-encap-type=geneve \
-    external_ids:ovn-encap-ip=192.168.100.11 \
+    external_ids:ovn-encap-ip=<THIS_NODE_IP> \
     external_ids:system-id=compute1
 ----
 
-For `compute2`, use `ovn-encap-ip=192.168.100.12` and `system-id=compute2`.
+*On compute2:*
+
+[source,bash]
+----
+sudo systemctl enable --now openvswitch
+sudo systemctl enable --now ovn-controller
+
+sudo ovs-vsctl set open_vswitch . \
+    external_ids:ovn-remote=tcp:<CENTRAL_NODE_IP>:6642 \
+    external_ids:ovn-encap-type=geneve \
+    external_ids:ovn-encap-ip=<THIS_NODE_IP> \
+    external_ids:system-id=compute2
+----
+
+
+[WARNING]
+====
+If a compute node does not appear in `ovn-sbctl show`, the most common cause is a wrong `ovn-remote` IP. Check and fix with:
+
+[source,bash]
+----
+# Check what IP the compute node is trying to connect to
+sudo ovs-vsctl get open_vswitch . external_ids:ovn-remote
+
+# Fix the remote IP (replace with your central node's actual IP)
+sudo ovs-vsctl set open_vswitch . external_ids:ovn-remote=tcp:<CENTRAL_NODE_IP>:6642
+
+# Fix the encap IP if needed (replace with this node's actual IP)
+sudo ovs-vsctl set open_vswitch . external_ids:ovn-encap-ip=<THIS_NODE_IP>
+
+# Restart ovn-controller to reconnect
+sudo systemctl restart ovn-controller
+----
+====
 
 === Step 1.8: Verify connectivity
 
