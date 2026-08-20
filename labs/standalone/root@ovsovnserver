@@ -7,48 +7,48 @@
 # lab nodes (e.g., your workstation), or directly on the central node.
 #
 # Usage: bash restore-ovn-lab.sh [exercise_number]
-#   exercise_number: 1-10 (default: 10, restores everything)
+#   exercise_number: 2-10 (default: 10, restores everything)
 #
 # Configuration:
 #   Set the following environment variables before running, or edit the
 #   defaults below to match your lab. If running directly on the central
 #   node, set CENTRAL to "local".
 #
-#   CENTRAL      - SSH target for the central node (default: root@central)
-#                  Set to "local" if running this script on the central node
-#   COMPUTE1     - SSH target for compute node 1 (default: root@compute1)
-#   COMPUTE2     - SSH target for compute node 2 (default: root@compute2)
-#   CENTRAL_IP   - Central node's IP for tunnel encapsulation and SB DB access
-#   COMPUTE1_IP  - Compute1's IP for tunnel encapsulation
-#   COMPUTE2_IP  - Compute2's IP for tunnel encapsulation
+#   CENTRAL   - SSH target for the central node (default: root@central)
+#               Set to "local" if running this script on the central node
+#   COMPUTE1  - SSH target for compute node 1 (default: root@compute1)
+#   COMPUTE2  - SSH target for compute node 2 (default: root@compute2)
 #
 # Examples:
-#   # Full restore with all variables
+#   # Using environment variables
 #   CENTRAL=root@10.0.0.1 COMPUTE1=root@10.0.0.2 COMPUTE2=root@10.0.0.3 \
-#   CENTRAL_IP=10.0.0.1 COMPUTE1_IP=10.0.0.2 COMPUTE2_IP=10.0.0.3 \
-#       bash restore-ovn-lab.sh 10
+#       bash restore-ovn-lab.sh 6
 #
 #   # Running directly on the central node
 #   CENTRAL=local COMPUTE1=root@compute1 COMPUTE2=root@compute2 \
-#   CENTRAL_IP=10.0.0.1 COMPUTE1_IP=10.0.0.2 COMPUTE2_IP=10.0.0.3 \
-#       bash restore-ovn-lab.sh 6
+#       bash restore-ovn-lab.sh 10
+#
+# Prerequisites:
+#   - OVN central + host and OVS installed on all nodes (Exercise 1)
+#   - Services running and chassis registered (Exercise 1)
+#   - Firewall ports opened: TCP 6641/6642 on central, UDP 6081 on all nodes
+#   - SSH access (as root) to all nodes from this machine (unless CENTRAL=local)
+#
+# This script does NOT install packages or start services (Exercise 1).
+# It assumes Exercise 1 was already completed successfully.
 
 set -euo pipefail
 
 CENTRAL="${CENTRAL:-root@central}"
 COMPUTE1="${COMPUTE1:-root@compute1}"
 COMPUTE2="${COMPUTE2:-root@compute2}"
-CENTRAL_IP="${CENTRAL_IP:-}"
-COMPUTE1_IP="${COMPUTE1_IP:-}"
-COMPUTE2_IP="${COMPUTE2_IP:-}"
 
 TARGET=${1:-10}
 
-show_usage() {
+if [[ "$TARGET" -lt 2 || "$TARGET" -gt 10 ]]; then
     echo "Usage: $0 [exercise_number]"
-    echo "  exercise_number: 1-10 (default: 10)"
+    echo "  exercise_number: 2-10 (default: 10)"
     echo ""
-    echo "  1  - Start services, configure databases, register chassis"
     echo "  2  - Logical switch and ports (network1, vm1-vm3)"
     echo "  3  - Namespaces and L2 connectivity"
     echo "  4  - DHCP on network1"
@@ -63,28 +63,6 @@ show_usage() {
     echo "  CENTRAL=$CENTRAL"
     echo "  COMPUTE1=$COMPUTE1"
     echo "  COMPUTE2=$COMPUTE2"
-    echo "  CENTRAL_IP=$CENTRAL_IP"
-    echo "  COMPUTE1_IP=$COMPUTE1_IP"
-    echo "  COMPUTE2_IP=$COMPUTE2_IP"
-}
-
-if [[ "$TARGET" -lt 1 || "$TARGET" -gt 10 ]]; then
-    show_usage
-    exit 1
-fi
-
-if [[ "$TARGET" -ge 1 && ( -z "$CENTRAL_IP" || -z "$COMPUTE1_IP" || -z "$COMPUTE2_IP" ) ]]; then
-    echo "ERROR: Exercise 1 (and above) requires node IPs for tunnel configuration."
-    echo ""
-    echo "Set the following environment variables:"
-    echo "  CENTRAL_IP   - Central node's IP (e.g., 192.168.1.10)"
-    echo "  COMPUTE1_IP  - Compute node 1's IP (e.g., 192.168.1.11)"
-    echo "  COMPUTE2_IP  - Compute node 2's IP (e.g., 192.168.1.12)"
-    echo ""
-    echo "Example:"
-    echo "  CENTRAL=$CENTRAL COMPUTE1=$COMPUTE1 COMPUTE2=$COMPUTE2 \\"
-    echo "  CENTRAL_IP=192.168.1.10 COMPUTE1_IP=192.168.1.11 COMPUTE2_IP=192.168.1.12 \\"
-    echo "      $0 $TARGET"
     exit 1
 fi
 
@@ -112,14 +90,14 @@ cleanup() {
             ip netns del "$ns" 2>/dev/null || true
         done
         for port in vm1 vm2 vm4 vm5 vm6 ext-gw; do
-            ovs-vsctl --if-exists del-port br-int "$port" 2>/dev/null || true
+            ovs-vsctl --if-exists del-port br-int "$port"
         done
     '
 
     # Clean namespaces and OVS ports on compute1
     run_compute1 '
         for ns in vm3; do ip netns del "$ns" 2>/dev/null || true; done
-        for port in vm3; do ovs-vsctl --if-exists del-port br-int "$port" 2>/dev/null || true; done
+        for port in vm3; do ovs-vsctl --if-exists del-port br-int "$port"; done
     ' 2>/dev/null || true
 
     # Clean compute2
@@ -127,7 +105,7 @@ cleanup() {
         ip netns list 2>/dev/null | while read ns _; do ip netns del "$ns" 2>/dev/null; done || true
     ' 2>/dev/null || true
 
-    # Remove OVN logical configuration (only if services are running)
+    # Remove OVN logical configuration
     run_central '
         ovn-nbctl lb-del web-lb 2>/dev/null || true
         ovn-nbctl lr-del router1 2>/dev/null || true
@@ -138,76 +116,6 @@ cleanup() {
     '
 
     echo "Cleanup complete."
-}
-
-exercise_1() {
-    echo "--- Exercise 1: Start services and register chassis ---"
-
-    # Central node: start OVS, OVN central, configure DBs, start ovn-controller
-    run_central "
-        systemctl enable --now openvswitch
-        systemctl enable --now ovn-northd
-
-        # Configure databases for remote access
-        ovn-sbctl set-connection ptcp:6642
-        ovn-nbctl set-connection ptcp:6641
-
-        # Open firewall ports if firewalld is active
-        if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6641/tcp --add-port=6642/tcp --permanent 2>/dev/null || true
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
-        fi
-
-        # Start ovn-controller (central is also a compute node)
-        systemctl enable --now ovn-controller
-        ovs-vsctl set open_vswitch . \\
-            external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \\
-            external_ids:ovn-encap-type=geneve \\
-            external_ids:ovn-encap-ip=$CENTRAL_IP \\
-            external_ids:system-id=central
-    "
-
-    # Compute node 1
-    run_compute1 "
-        systemctl enable --now openvswitch
-        systemctl enable --now ovn-controller
-
-        # Open firewall for Geneve
-        if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
-        fi
-
-        ovs-vsctl set open_vswitch . \\
-            external_ids:ovn-remote=tcp:$CENTRAL_IP:6642 \\
-            external_ids:ovn-encap-type=geneve \\
-            external_ids:ovn-encap-ip=$COMPUTE1_IP \\
-            external_ids:system-id=compute1
-    "
-
-    # Compute node 2
-    run_compute2 "
-        systemctl enable --now openvswitch
-        systemctl enable --now ovn-controller
-
-        # Open firewall for Geneve
-        if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
-        fi
-
-        ovs-vsctl set open_vswitch . \\
-            external_ids:ovn-remote=tcp:$CENTRAL_IP:6642 \\
-            external_ids:ovn-encap-type=geneve \\
-            external_ids:ovn-encap-ip=$COMPUTE2_IP \\
-            external_ids:system-id=compute2
-    "
-
-    # Wait for chassis registration
-    sleep 3
-    echo "  Registered chassis:"
-    run_central 'ovn-sbctl show' 2>/dev/null | grep -E "Chassis|hostname|ip:" | sed 's/^/    /'
 }
 
 exercise_2() {
@@ -451,17 +359,9 @@ verify() {
     echo ""
     echo "=== Verification ==="
 
-    if [[ "$TARGET" -ge 1 ]]; then
-        echo "--- Chassis ---"
-        run_central 'ovn-sbctl show' 2>/dev/null | grep -E "Chassis|hostname|ip:" | sed 's/^/  /'
-        echo ""
-    fi
-
-    if [[ "$TARGET" -ge 2 ]]; then
-        echo "--- OVN NB state ---"
-        run_central 'ovn-nbctl show'
-        echo ""
-    fi
+    echo "--- OVN NB state ---"
+    run_central 'ovn-nbctl show'
+    echo ""
 
     echo "--- Namespaces (central) ---"
     run_central 'ip netns list'
@@ -516,15 +416,14 @@ echo " OVN Lab Restore - Target: Exercise $TARGET"
 echo "============================================"
 echo ""
 echo "Nodes:"
-echo "  Central:  $CENTRAL ($CENTRAL_IP)"
-echo "  Compute1: $COMPUTE1 ($COMPUTE1_IP)"
-echo "  Compute2: $COMPUTE2 ($COMPUTE2_IP)"
+echo "  Central:  $CENTRAL"
+echo "  Compute1: $COMPUTE1"
+echo "  Compute2: $COMPUTE2"
 echo ""
 
 cleanup
 
 # Build up state incrementally
-[[ "$TARGET" -ge 1 ]] && exercise_1
 [[ "$TARGET" -ge 2 ]] && exercise_2
 [[ "$TARGET" -ge 3 ]] && exercise_3
 [[ "$TARGET" -ge 4 ]] && exercise_4

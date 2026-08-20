@@ -1988,14 +1988,20 @@ Remember to also clean up namespaces and OVS ports on your compute nodes. The `o
 
 A restore script is provided in `labs/standalone/restore-ovn-lab.sh` to recreate the lab state up to any exercise. This is useful when you need to resume the lab after a reboot or want to skip ahead to a specific exercise.
 
-Configure the script by setting environment variables for your lab nodes:
+Configure the script by setting environment variables for your lab nodes and their IPs:
 
 [source,bash]
 ----
-# Set your lab node addresses (adjust to match your environment)
+# Set your lab node SSH targets and IPs (adjust to match your environment)
 export CENTRAL=root@central       # or "local" if running on the central node
 export COMPUTE1=root@compute1
 export COMPUTE2=root@compute2
+export CENTRAL_IP=192.168.1.10    # Central node's actual IP
+export COMPUTE1_IP=192.168.1.11   # Compute1's actual IP
+export COMPUTE2_IP=192.168.1.12   # Compute2's actual IP
+
+# Restore from Exercise 1 (services, databases, chassis registration)
+bash labs/standalone/restore-ovn-lab.sh 1
 
 # Restore to a specific exercise (e.g., Exercise 6 for routing)
 bash labs/standalone/restore-ovn-lab.sh 6
@@ -2009,6 +2015,9 @@ bash labs/standalone/restore-ovn-lab.sh 10
 |===
 |Exercise
 |State Restored
+
+|1
+|Services started, databases configured, firewall opened, chassis registered
 
 |2
 |Logical switch (network1) with ports vm1, vm2, vm3
@@ -2042,7 +2051,7 @@ bash labs/standalone/restore-ovn-lab.sh 10
 
 [IMPORTANT]
 ====
-The restore script assumes Exercise 1 (package installation, services, and chassis registration) has already been completed. It does not install packages or start services.
+The restore script does not install packages. Ensure `ovn-central`, `ovn-host`, and `openvswitch` are installed on the appropriate nodes before running the script. Exercise 1 handles everything else (starting services, configuring databases, opening firewall ports, and registering chassis).
 ====
 
 
