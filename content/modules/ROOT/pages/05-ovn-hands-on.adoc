@@ -1730,11 +1730,45 @@ You should see requests distributed across the three backends.
 
 === Step 9.7: Verify load balancer flows
 
+OVN implements load balancing using conntrack DNAT in the OVS datapath. You can observe this by dumping conntrack entries while a request is active.
+
+Since the `--send-only` web servers close connections very quickly, conntrack entries expire before you can see them with a manual command. To observe the DNAT in action, run the dump in a tight loop while sending requests:
+
 [source,bash]
 ----
-# See connection tracking entries
-sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"
+# In one terminal: dump conntrack in a loop
+while true; do sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"; done
 ----
+
+[source,bash]
+----
+# In another terminal: send a request
+sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.100:80/
+----
+
+Expected conntrack output (briefly visible):
+
+----
+tcp,orig=(src=10.0.0.11,dst=10.0.1.100,sport=<port>,dport=80),reply=(src=10.0.1.12,dst=10.0.0.11,sport=8080,dport=<port>),zone=...
+----
+
+The key fields to observe:
+
+* `dst=10.0.1.100,dport=80` - the original destination was the VIP
+* `src=10.0.1.12,sport=8080` in the reply - shows the actual backend (e.g., vm5 at 10.0.1.12) and the real port (8080)
+* This DNAT translation happens entirely in the OVS datapath, without any userspace involvement
+
+You can also verify the OVN logical flows that implement the load balancer:
+
+[source,bash]
+----
+sudo ovn-sbctl dump-flows network1 | grep "lb"
+----
+
+[NOTE]
+====
+If `dump-conntrack` returns empty, it means all connections have already completed and their entries expired. This is expected with short-lived HTTP connections. In production with persistent connections (e.g., database pools, long-lived TCP streams), conntrack entries remain visible for much longer.
+====
 
 === Step 9.8: Add and remove backends
 
