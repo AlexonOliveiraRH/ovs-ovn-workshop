@@ -188,7 +188,7 @@ sudo ovs-ofctl dump-flows br-int
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15
 
 # Sort by table number for readability
-sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table
+sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort
 
 # Filter flows by table
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 table=0
@@ -764,18 +764,18 @@ sudo ovs-appctl ofproto/trace br-int "<flow>" 2>&1 | \
 
 [source,bash]
 ----
-sudo ovs-appctl -t ovn-controller connection-status   # SB DB connection
-sudo ovs-appctl -t ovn-controller ct-zone-list         # conntrack zones
-sudo ovs-appctl -t ovn-controller chassis/show         # chassis info
-sudo ovs-appctl -t ovn-controller recompute            # trigger flow recompute
-sudo ovs-appctl -t ovn-controller vlog/set dbg         # debug logging
-sudo ovs-appctl -t ovn-controller vlog/set info        # restore
+sudo ovn-appctl -t ovn-controller connection-status    # SB DB connection
+sudo ovn-appctl -t ovn-controller ct-zone-list         # conntrack zones
+sudo ovn-appctl -t ovn-controller debug/status         # controller status
+sudo ovn-appctl -t ovn-controller inc-engine/recompute # trigger flow recompute
+sudo ovn-appctl -t ovn-controller vlog/set dbg         # debug logging
+sudo ovn-appctl -t ovn-controller vlog/set info        # restore
 ----
 
 
 [NOTE]
 ====
-If `-t ovn-controller` does not work, try the full path: `-t /var/run/ovn/ovn-controller.<pid>.ctl`.
+Use `ovn-appctl` (not `ovs-appctl`) for OVN components. The `ovn-appctl` command looks for control sockets in `/var/run/ovn/`, while `ovs-appctl` looks in `/var/run/openvswitch/`. If `-t ovn-controller` does not work, try the full path: `-t /var/run/ovn/ovn-controller.<pid>.ctl`.
 ====
 
 
@@ -891,8 +891,13 @@ A full conntrack table causes new connections to be dropped. Monitor conntrack c
 
 [source,bash]
 ----
-ls -lh /etc/ovn/*.db
-sudo ovn-sbctl --columns=_uuid list logical_flow | grep -c "_uuid"
+# Database file sizes (path varies by distribution)
+ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
+ls -lh /etc/ovn/*.db 2>/dev/null || \
+echo "OVN databases not found in standard locations"
+
+# Logical flow count
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 ----
 
 '''
@@ -1046,10 +1051,10 @@ sudo ovn-sbctl --columns=_uuid list logical_flow | grep -c "_uuid"
 \|ovn-detrace --ovnsb=<DB>`
 
 |Controller status
-|`sudo ovs-appctl -t ovn-controller connection-status`
+|`sudo ovn-appctl -t ovn-controller connection-status`
 
 |CT zones
-|`sudo ovs-appctl -t ovn-controller ct-zone-list`
+|`sudo ovn-appctl -t ovn-controller ct-zone-list`
 
 |===
 
@@ -1120,7 +1125,7 @@ sudo ovn-sbctl --columns=_uuid list logical_flow | grep -c "_uuid"
 
 *Objective:* Analyze the flow tables on `br-int`.
 
-. Dump all flows with `sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort=table`.
+. Dump all flows with `sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort`.
 . Count flows per table.
 . Identify the highest-priority flow in table 0.
 . Find flows with zero packet counts.

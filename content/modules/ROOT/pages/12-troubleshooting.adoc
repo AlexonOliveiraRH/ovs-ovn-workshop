@@ -537,6 +537,12 @@ This table is your cheat sheet. Print it, bookmark it, keep it visible during in
 |===
 
 
+[NOTE]
+====
+The `conntrack` command-line tool requires the `conntrack-tools` package, which is not installed by default on all distributions. Install it with `sudo dnf install conntrack-tools` (RHEL/Fedora) or `sudo apt install conntrack` (Debian/Ubuntu). Alternatively, use `sudo ovs-appctl dpctl/ct-stats-show` for conntrack statistics through OVS without additional packages.
+====
+
+
 '''
 
 == 3. OVS Troubleshooting

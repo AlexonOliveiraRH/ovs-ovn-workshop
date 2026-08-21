@@ -376,12 +376,17 @@ modinfo openvswitch | grep version
 ----
 
 ----
-# Example output
+# Example output (out-of-tree module, e.g. RHEL/RHOSP)
 filename:       /lib/modules/5.14.0-362.el9.x86_64/kernel/net/openvswitch/openvswitch.ko.xz
 version:        2.17.0
 license:        GPL
 description:    Open vSwitch switching datapath
 ----
+
+[NOTE]
+====
+The in-tree kernel module (used by Fedora and upstream kernels) does not export a `version` field in `modinfo`. The `version` field is only present when using the out-of-tree OVS kernel module shipped with RHEL, RHOSP, or RHOSO. In that case, check the OVS userspace version with `ovs-vswitchd --version`.
+====
 
 *Workarounds:*
 
@@ -814,11 +819,11 @@ Each `ovn-controller` instance on each chassis downloads and processes the logic
 
 [source,bash]
 ----
-# Check logical flow count
-sudo ovn-sbctl count Logical_Flow
+# Count logical flows
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 
 # Check logical flow count per datapath (logical switch/router)
-sudo ovn-sbctl --columns=logical_datapath list Logical_Flow | sort | uniq -c | sort -rn | head -20
+sudo ovn-sbctl --no-headings --columns=logical_datapath list Logical_Flow | sort | uniq -c | sort -rn | head -20
 
 # Check ovn-controller processing time
 sudo ovn-appctl -t ovn-controller stopwatch/show
@@ -2733,7 +2738,7 @@ done
 ----
 # Count logical flows
 echo "Baseline flows:"
-sudo ovn-sbctl count Logical_Flow
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 
 # Record ovn-northd processing time
 sudo ovn-appctl -t ovn-northd stopwatch/show 2>/dev/null || echo "stopwatch not available"
@@ -2750,7 +2755,7 @@ for i in $(seq 1 10); do
 done
 
 echo "After 10 ACLs:"
-sudo ovn-sbctl count Logical_Flow
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 
 # Add 50 more ACLs (60 total)
 for i in $(seq 11 60); do
@@ -2759,7 +2764,7 @@ for i in $(seq 11 60); do
 done
 
 echo "After 60 ACLs:"
-sudo ovn-sbctl count Logical_Flow
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 
 # Add 40 more ACLs (100 total)
 for i in $(seq 61 100); do
@@ -2768,7 +2773,7 @@ for i in $(seq 61 100); do
 done
 
 echo "After 100 ACLs:"
-sudo ovn-sbctl count Logical_Flow
+sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
 ----
 
 . Record the logical flow count at each step. Calculate the flows-per-ACL ratio. Is it linear?
@@ -2878,8 +2883,8 @@ sudo tcpdump -i eth0 '(ip[6:2] & 0x1fff) != 0 or (ip[6] & 0x20) != 0' -c 10
 ----
 # Check database file sizes
 echo "=== Database File Sizes ==="
-ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null || \
 ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
+ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null || \
 echo "OVN databases not found in standard locations"
 
 # Check Raft cluster status (if clustered)
@@ -2916,6 +2921,7 @@ done
 ----
 # Record size before compaction
 echo "=== Before Compaction ==="
+ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
 ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
 
 # Compact databases
@@ -2924,6 +2930,7 @@ sudo ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact 2>/dev/null
 
 # Record size after compaction
 echo "=== After Compaction ==="
+ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
 ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
 ----
 
@@ -2975,6 +2982,11 @@ fi
 '''
 
 === Exercise 4: Conntrack Table Analysis and Tuning
+
+[NOTE]
+====
+Steps 2 and 3 of this exercise use the `conntrack` command-line tool, which requires the `conntrack-tools` package. Install it with `sudo dnf install conntrack-tools`. Step 1 uses `sysctl` and works without additional packages.
+====
 
 *Objective:* Understand conntrack table behavior, measure its impact, and practice tuning for production workloads.
 

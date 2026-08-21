@@ -187,19 +187,18 @@ The output walks you through each table:
 ----
 Flow: tcp,in_port=1,vlan_tci=0x0000,dl_src=00:00:00:00:00:01,
       dl_dst=00:00:00:00:00:02,nw_src=10.0.0.1,nw_dst=10.0.0.2,
-      nw_tos=0,nw_ecn=0,nw_ttl=64,tp_src=12345,tp_dst=80,tcp_flags=0
+      nw_tos=0,nw_ecn=0,nw_ttl=0,nw_frag=no,tp_src=12345,tp_dst=80,tcp_flags=0
 
 bridge("br-test")
 -----------------
  0. priority 0
     NORMAL
-     -> learned that 00:00:00:00:00:01 is on port veth1 in VLAN 0
-     -> forwarding to learned port
+     -> no learned MAC for destination, flooding
 
 Final flow: unchanged
-Megaflow: recirc_id=0,eth,in_port=1,dl_src=00:00:00:00:00:01,
-          dl_dst=00:00:00:00:00:02
-Datapath actions: 2
+Megaflow: recirc_id=0,eth,ip,in_port=1,dl_src=00:00:00:00:00:01,
+          dl_dst=00:00:00:00:00:02,nw_frag=no
+Datapath actions: 2,3
 ----
 
 Reading this output:
@@ -208,10 +207,10 @@ Reading this output:
 . *bridge("br-test")* - which bridge processes the packet.
 . *0. priority 0* - table 0, matched the default flow.
 . *NORMAL* - standard L2 switching logic.
-. *learned that...* - OVS associated the source MAC with the input port.
+. *no learned MAC for destination, flooding* - the destination MAC is not yet in the FDB table, so OVS floods the packet to all other ports. After the real destination replies, OVS learns its MAC and future traces show `forwarding to learned port` with a single datapath action.
 . *Final flow: unchanged* - no header modifications.
 . *Megaflow* - the wildcard cached flow for the kernel datapath.
-. *Datapath actions: 2* - output on kernel datapath port 2.
+. *Datapath actions: 2,3* - output on kernel datapath ports 2 and 3 (all ports except the input port).
 
 === Adding Custom Flows and Tracing Again
 
@@ -870,12 +869,27 @@ sudo ovs-tcpdump -i <port-name> -nn host 10.0.0.1
 sudo ovs-tcpdump -i <port-name> -nn -w /tmp/capture.pcap
 ----
 
+[NOTE]
+====
+`ovs-tcpdump` is a wrapper that creates a temporary mirror port and runs `tcpdump` on it. It is part of the `openvswitch-test` package (Fedora/RHEL) and may not be installed by default. If it is not available, you can capture traffic directly on the interface inside a namespace:
+
+[source,bash]
+----
+sudo ip netns exec <namespace> tcpdump -i <interface> -nn
+----
+
+In OpenStack and RHOSO environments, ports use tap or vhu interfaces attached to `br-int`. You can capture on these interfaces using standard `tcpdump` without `ovs-tcpdump`.
+====
+
 === Filtering Geneve Traffic
 
 [source,bash]
 ----
+# Replace eth0 with your actual physical NIC (e.g., enp1s0, ens3)
 sudo tcpdump -i eth0 -nn port 6081
 sudo tcpdump -i eth0 -nn port 6081 and host 172.16.0.2
+
+# tshark can decode Geneve headers (requires the wireshark-cli package)
 sudo tshark -i eth0 -f "port 6081" -O geneve
 ----
 
@@ -966,10 +980,20 @@ sudo ovs-appctl ofproto/trace <bridge> <flow-specification>
 |`6` (TCP), `17` (UDP), `1` (ICMP)
 
 |`tp_src` / `tp_dst`
-|L4 port
+|L4 port (TCP only in OVS 3.x+)
 |`tp_dst=80`
 
+|`udp_src` / `udp_dst`
+|L4 port (UDP)
+|`udp_dst=53`
+
 |===
+
+
+[NOTE]
+====
+In OVS 3.x and later, `tp_src`/`tp_dst` only work for TCP flows in `ofproto/trace`. For UDP, use `udp_src`/`udp_dst`. Older versions accept `tp_src`/`tp_dst` for both protocols.
+====
 
 
 === Reading the Output
@@ -993,11 +1017,11 @@ sudo ovs-appctl ofproto/trace br-int \
   "in_port=5,arp,dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
    arp_spa=10.0.0.1,arp_tpa=10.0.0.2,arp_op=1"
 
-# DHCP request
+# DHCP request (use udp_src/udp_dst, not tp_src/tp_dst)
 sudo ovs-appctl ofproto/trace br-int \
   "in_port=5,udp,nw_src=0.0.0.0,nw_dst=255.255.255.255,\
    dl_src=fa:16:3e:aa:bb:cc,dl_dst=ff:ff:ff:ff:ff:ff,\
-   tp_src=68,tp_dst=67"
+   udp_src=68,udp_dst=67"
 ----
 
 '''
