@@ -2861,6 +2861,136 @@ ls -la /etc/openvswitch/ovn*.pem 2>/dev/null
 ls -la /etc/ovn/*.pem 2>/dev/null
 ----
 
+==== Stale Chassis Blocking Registration
+
+*Symptoms:*
+
+* ovn-controller reports `connection-status: connected` but the chassis does not appear (or appears with an old name) in `ovn-sbctl show`
+* All ports on the node show `chassis: []` in the SB Port_Binding table
+* `br-int` has very few OpenFlow flows (often under 50, instead of hundreds)
+* All VM/container connectivity on the host is broken
+* `/var/log/ovn/ovn-controller.log` shows repeated warnings like:
++
+----
+'<old-uuid>' already has encap ip '192.168.1.51' and type 'geneve', cannot duplicate on 'central'
+----
+
+*Diagnosis Steps:*
+
+Check for the conflict between the configured system-id and the chassis entries in the SB database:
+
+[source,bash]
+----
+# What system-id does this node want to use?
+sudo ovs-vsctl get Open_vSwitch . external_ids:system-id
+----
+
+----
+central
+----
+
+[source,bash]
+----
+# What chassis entries exist in the SB database?
+sudo ovn-sbctl --columns=name,hostname list Chassis
+----
+
+----
+name                : "7d55c615-28d3-49a2-a8e1-f5f3ae52ce7b"
+hostname            : ovsovnserver.example.local
+
+name                : compute1
+hostname            : compute1.example.local
+----
+
+The node wants to register as `central`, but a stale chassis with UUID `7d55c615-...` already has the same encap IP. OVN refuses to create a second chassis with the same encap IP and type, so ovn-controller silently fails to register.
+
+Check the ovn-controller log to confirm:
+
+[source,bash]
+----
+sudo tail -20 /var/log/ovn/ovn-controller.log | grep "cannot duplicate"
+----
+
+Also verify the flow count to confirm the data plane is not programmed:
+
+[source,bash]
+----
+sudo ovs-ofctl dump-flows br-int | wc -l
+----
+
+A healthy node with several bound ports typically has hundreds of flows. Under 50 usually means ovn-controller is not programming the data plane.
+
+*Common Causes:*
+
+* The node's `system-id` was changed (e.g., from an auto-generated UUID to a human-readable name) while the old chassis entry still exists in the SB database
+* A node was rebuilt or reprovisioned, generating a new `system-id`, but the old chassis entry was never deleted
+* After disaster recovery or database restore, stale chassis entries reference encap IPs now used by different nodes
+* A restore script or automation tool set a `system-id` different from the one the node originally registered with
+
+*Resolution:*
+
+Delete the stale chassis entry and restart ovn-controller:
+
+[source,bash]
+----
+# Delete the stale chassis (use the old name/UUID shown in ovn-sbctl)
+sudo ovn-sbctl chassis-del "7d55c615-28d3-49a2-a8e1-f5f3ae52ce7b"
+
+# Restart ovn-controller to re-register with the correct system-id
+sudo systemctl restart ovn-controller
+----
+
+Verify the fix:
+
+[source,bash]
+----
+# The new chassis should appear
+sudo ovn-sbctl show | grep -A 3 "Chassis"
+
+# Ports should now be bound
+sudo ovn-sbctl --columns=logical_port,chassis find Port_Binding chassis!=[]
+
+# Flow count should increase significantly
+sudo ovs-ofctl dump-flows br-int | wc -l
+----
+
+*Prevention:*
+
+When changing `system-id` on a node, always follow this sequence:
+
+[source,bash]
+----
+# 1. Stop ovn-controller
+sudo systemctl stop ovn-controller
+
+# 2. Delete the old chassis from the SB database
+sudo ovn-sbctl chassis-del <old-system-id>
+
+# 3. Set the new system-id
+sudo ovs-vsctl set Open_vSwitch . external_ids:system-id=<new-name>
+
+# 4. Start ovn-controller
+sudo systemctl start ovn-controller
+----
+
+In automation or restore scripts, always clear stale chassis entries after stopping ovn-controller on all affected nodes and before starting them again with new system-ids.
+
+
+[NOTE]
+.Production Relevance
+====
+This issue is not limited to lab environments. In production, the same problem occurs during:
+
+* *Node reprovisioning* - A compute node is rebuilt but its old chassis entry persists in the SB database
+* *Scale-down and scale-up* - A node is removed from the cluster and later re-added with a different identity
+* *Database restore* - After restoring from backup, chassis entries may reference nodes that have since changed their system-id
+* *Bond failover or DHCP renewal* - If the encap IP changes but the chassis entry is not updated (less common, as ovn-controller typically handles this)
+
+The key diagnostic indicator is the "cannot duplicate" message in ovn-controller's log. If all connectivity on a host is broken but ovn-controller reports `connected`, always check the ovn-controller log for this warning.
+====
+
+
 ==== ovn-controller High CPU
 
 *Symptoms:*

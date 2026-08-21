@@ -427,6 +427,36 @@ You installed and configured a complete OVN deployment:
 * Run `ovn-sbctl list Encap` to see encapsulation details
 * Run `ovs-vsctl list Open_vSwitch` and look at the `external_ids` column
 
+
+[IMPORTANT]
+.Stale Chassis After system-id Changes
+====
+The OVN Southbound database persists chassis entries across reboots. If you change a node's `system-id` (for example, from an auto-generated UUID to a custom name like `central`), the old chassis entry remains in the SB database with the same encap IP. When ovn-controller tries to register the new system-id, OVN rejects it because another chassis already has that encap IP:
+
+----
+'7d55c615-...' already has encap ip '192.168.1.51' and type 'geneve', cannot duplicate on 'central'
+----
+
+This causes ovn-controller to fail silently - it reports `connection-status: connected` but never registers its chassis. As a result, no ports are bound and `br-int` has almost no OpenFlow flows, breaking all connectivity.
+
+*To fix it:* delete the stale chassis entry and restart ovn-controller:
+
+[source,bash]
+----
+# Find the stale chassis (the old name/UUID)
+sudo ovn-sbctl --columns=name,hostname list Chassis
+
+# Delete it
+sudo ovn-sbctl chassis-del <old-system-id>
+
+# Restart ovn-controller so it re-registers with the correct system-id
+sudo systemctl restart ovn-controller
+----
+
+This same scenario occurs in production when reprovisioning compute nodes, during disaster recovery, or when changing `system-id` after a node rebuild. Always check `/var/log/ovn/ovn-controller.log` for "cannot duplicate" warnings if chassis registration appears to succeed but ports remain unbound.
+====
+
+
 '''
 
 == Exercise 2: Creating Your First Logical Switch

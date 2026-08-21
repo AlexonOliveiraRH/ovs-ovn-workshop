@@ -143,65 +143,68 @@ cleanup() {
 exercise_1() {
     echo "--- Exercise 1: Start services and register chassis ---"
 
-    # Central node: start OVS, OVN central, configure DBs, start ovn-controller
+    # Phase 1: Start OVS and OVN central, stop ovn-controller everywhere.
+    # ovn-controller must be stopped before clearing stale chassis entries,
+    # otherwise a running controller re-registers the stale entry immediately.
     run_central "
         systemctl enable --now openvswitch
         systemctl enable --now ovn-northd
-
-        # Configure databases for remote access
         ovn-sbctl set-connection ptcp:6642
         ovn-nbctl set-connection ptcp:6641
-
-        # Open firewall ports if firewalld is active
         if systemctl is-active firewalld >/dev/null 2>&1; then
             firewall-cmd --add-port=6641/tcp --add-port=6642/tcp --permanent 2>/dev/null || true
             firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
             firewall-cmd --reload 2>/dev/null || true
         fi
+        systemctl stop ovn-controller 2>/dev/null || true
+    "
+    run_compute1 "
+        systemctl enable --now openvswitch
+        if systemctl is-active firewalld >/dev/null 2>&1; then
+            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
+            firewall-cmd --reload 2>/dev/null || true
+        fi
+        systemctl stop ovn-controller 2>/dev/null || true
+    "
+    run_compute2 "
+        systemctl enable --now openvswitch
+        if systemctl is-active firewalld >/dev/null 2>&1; then
+            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
+            firewall-cmd --reload 2>/dev/null || true
+        fi
+        systemctl stop ovn-controller 2>/dev/null || true
+    "
 
-        # Start ovn-controller (central is also a compute node)
-        systemctl enable --now ovn-controller
+    # Phase 2: Clear stale chassis, set external_ids, start ovn-controller.
+    # After a reboot, chassis entries from a previous session persist in the
+    # SB database. If the system-id changed, the old entry blocks registration
+    # ("already has encap ip ... cannot duplicate").
+    run_central "
+        for ch in \$(ovn-sbctl --bare --columns=name list chassis 2>/dev/null); do
+            ovn-sbctl chassis-del \"\$ch\" 2>/dev/null || true
+        done
         ovs-vsctl set open_vswitch . \\
             external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \\
             external_ids:ovn-encap-type=geneve \\
             external_ids:ovn-encap-ip=$CENTRAL_IP \\
             external_ids:system-id=central
-    "
-
-    # Compute node 1
-    run_compute1 "
-        systemctl enable --now openvswitch
         systemctl enable --now ovn-controller
-
-        # Open firewall for Geneve
-        if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
-        fi
-
+    "
+    run_compute1 "
         ovs-vsctl set open_vswitch . \\
             external_ids:ovn-remote=tcp:$CENTRAL_IP:6642 \\
             external_ids:ovn-encap-type=geneve \\
             external_ids:ovn-encap-ip=$COMPUTE1_IP \\
             external_ids:system-id=compute1
-    "
-
-    # Compute node 2
-    run_compute2 "
-        systemctl enable --now openvswitch
         systemctl enable --now ovn-controller
-
-        # Open firewall for Geneve
-        if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
-        fi
-
+    "
+    run_compute2 "
         ovs-vsctl set open_vswitch . \\
             external_ids:ovn-remote=tcp:$CENTRAL_IP:6642 \\
             external_ids:ovn-encap-type=geneve \\
             external_ids:ovn-encap-ip=$COMPUTE2_IP \\
             external_ids:system-id=compute2
+        systemctl enable --now ovn-controller
     "
 
     # Wait for chassis registration
