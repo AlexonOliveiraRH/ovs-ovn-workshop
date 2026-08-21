@@ -1670,15 +1670,20 @@ sudo ip netns exec vm6 ip route add default via 10.0.1.1
 [source,bash]
 ----
 # Start simple web servers that return their identity
-sudo ip netns exec vm4 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm4\n" | nc -l -p 8080 -q 1; done' &
+sudo ip netns exec vm4 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm4\n" | nc -l -p 8080 --send-only; done' &
 VM4_LB_PID=$!
 
-sudo ip netns exec vm5 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm5\n" | nc -l -p 8080 -q 1; done' &
+sudo ip netns exec vm5 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm5\n" | nc -l -p 8080 --send-only; done' &
 VM5_LB_PID=$!
 
-sudo ip netns exec vm6 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm6\n" | nc -l -p 8080 -q 1; done' &
+sudo ip netns exec vm6 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm6\n" | nc -l -p 8080 --send-only; done' &
 VM6_LB_PID=$!
 ----
+
+[NOTE]
+====
+On RHEL 9 and Fedora, `nc` is actually `ncat` (from Nmap), which uses `--send-only` to close the connection after sending. If you are on a system with GNU netcat (e.g., Debian/Ubuntu), use `-q 1` instead of `--send-only`.
+====
 
 === Step 9.3: Test direct access to backends
 
