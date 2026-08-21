@@ -2034,11 +2034,16 @@ done
 sudo ovs-vsctl --if-exists del-port br-int vm3
 
 # Remove OVN logical configuration (from central)
-sudo ovn-nbctl lb-del web-lb
-sudo ovn-nbctl lr-del router1
-sudo ovn-nbctl ls-del network1
-sudo ovn-nbctl ls-del network2
-sudo ovn-nbctl ls-del external
+# The commands below ignore errors for objects that may not exist
+# (e.g., if you only completed some exercises)
+sudo ovn-nbctl lb-del web-lb 2>/dev/null || true
+sudo ovn-nbctl lr-del router1 2>/dev/null || true
+sudo ovn-nbctl ls-del network1 2>/dev/null || true
+sudo ovn-nbctl ls-del network2 2>/dev/null || true
+sudo ovn-nbctl ls-del external 2>/dev/null || true
+
+# Flush conntrack state
+sudo ovs-appctl dpctl/flush-conntrack 2>/dev/null || true
 
 # Verify everything is clean
 sudo ovn-nbctl show
