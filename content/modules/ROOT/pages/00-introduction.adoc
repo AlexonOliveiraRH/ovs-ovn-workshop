@@ -91,12 +91,12 @@ Key milestones:
 |OVS with DPDK support gains traction for NFV workloads
 
 |2020
-|OVS repo moves to the OVN GitHub organization after the OVN split
+|OVN splits from OVS and moves to its own repository under the OVN GitHub organization
 
 |===
 
 
-OVS quickly became the de facto standard virtual switch for Linux-based virtualization and cloud platforms. Its support for OpenFlow made it uniquely programmable compared to the native Linux bridge, and its performance characteristics - particularly with kernel datapath acceleration and later DPDK support - made it suitable for production workloads.
+Over time, OVS became the de facto standard virtual switch for Linux-based virtualization and cloud platforms. Adoption was not immediate - the project had to prove its performance and flexibility against significant skepticism before gaining widespread trust. Its support for OpenFlow made it uniquely programmable compared to the native Linux bridge, and its performance characteristics - particularly with kernel datapath acceleration and later DPDK support - made it suitable for production workloads.
 
 
 [NOTE]

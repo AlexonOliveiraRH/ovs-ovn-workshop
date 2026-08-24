@@ -302,19 +302,11 @@ The kernel module `openvswitch.ko` is the high-performance datapath that handles
   | (datapath)    |
   |               |
   |  +---------+  |      Cache hit
-  |  | Exact   +--+----> Execute cached actions
-  |  | Match   |  |      (forward, modify, drop)
-  |  | Cache   |  |
+  |  | Megaflow+--+----> Execute cached actions
+  |  | Cache   |  |      (forward, modify, drop)
   |  +---------+  |
   |       |       |
   |  Cache miss   |
-  |       |       |
-  |  +---------+  |      Cache miss (less specific)
-  |  | Megaflow+--+----> Check megaflow table
-  |  | Cache   |  |
-  |  +---------+  |
-  |       |       |
-  |  Both miss    |
   |       |       |
   +------+-------+
          |
@@ -339,13 +331,16 @@ The kernel module `openvswitch.ko` is the high-performance datapath that handles
 
 *Flow caching - the key to performance:*
 
-The kernel module uses a two-level flow cache:
+The kernel datapath uses a single-level flow cache called the *megaflow cache*:
 
-. *Exact-match cache (EMC / microflows):* A hash table that matches on the exact combination of all packet header fields. If a packet matches, the cached actions are executed immediately with no further lookup. This is the fastest path.
+* *Megaflow cache (datapath flows):* A wildcard flow table that matches on a subset of packet fields. For example, a megaflow might say "all packets from subnet 10.0.0.0/24 going to port 80 - forward to port 3." This reduces the number of cache entries needed because one megaflow can cover thousands of exact matches.
 
-. *Megaflow cache (datapath flows):* A wildcard flow table that matches on a subset of packet fields. For example, a megaflow might say "all packets from subnet 10.0.0.0/24 going to port 80 - forward to port 3." This reduces the number of cache entries needed because one megaflow can cover thousands of exact matches.
+Imagine a library. The megaflow cache is like knowing which shelf the book is on - fast access. A cache miss (going to userspace via a Netlink upcall) is like having to ask the librarian to find the book in the entire library system - it works, but it is slow.
 
-*Why two levels?* Imagine a library. The exact-match cache is like having the book already open on your desk - instant access. The megaflow cache is like knowing which shelf the book is on - fast, but you still need to reach for it. A cache miss (going to userspace) is like having to ask the librarian to find the book in the entire library system - it works, but it is slow.
+[NOTE]
+====
+The kernel datapath originally had a microflow cache (exact-match) but it was replaced by the more efficient megaflow cache, which masks irrelevant bits in the match. The *Exact Match Cache (EMC)* exists only in the *userspace datapath* (DPDK), where it provides a two-level cache: EMC (exact) -> DPCLS/classifier (wildcard). Do not confuse the two datapaths - they have different caching architectures.
+====
 
 [source,bash]
 ----
@@ -502,7 +497,12 @@ When OVN is managing OVS, do not manually add or delete OpenFlow flows with `ovs
 
 `ovs-dpctl` interacts with the kernel datapath module directly. It is most useful for viewing the kernel-level flow cache and understanding what is happening in the fast path.
 
-*Think of it as:* The inspection tool for the engine room - you rarely modify things here, but you look here to understand performance.
+[WARNING]
+====
+`ovs-dpctl` is primarily an inspection tool. Using it to directly modify datapath flows (e.g., `del-flows`, `add-flow`) is not supported for production use and is discouraged by OVS developers. The datapath is managed by `ovs-vswitchd` - any manual changes will be overwritten or can cause unpredictable behavior. Use `ovs-ofctl` to manage OpenFlow rules, or let OVN handle flow programming entirely.
+====
+
+*Think of it as:* The inspection tool for the engine room - you look here to understand performance, but you do not modify things directly.
 
 [source,bash]
 ----
@@ -982,8 +982,7 @@ The kernel fast path is what makes OVS perform at near-wire speed. Understanding
 ----
   Packet #1 (TCP SYN from 10.0.0.1:12345 to 10.0.0.2:80)
   |
-  +-> Kernel EMC: MISS
-  +-> Kernel megaflow: MISS
+  +-> Kernel megaflow cache: MISS
   +-> Upcall to ovs-vswitchd (SLOW PATH)
       |
       +-> Match in OpenFlow tables
@@ -991,19 +990,17 @@ The kernel fast path is what makes OVS perform at near-wire speed. Understanding
       +-> Install megaflow in kernel:
           "ip,nw_src=10.0.0.0/24,nw_dst=10.0.0.2,tcp,tp_dst=80
            -> actions: output:5"
-      +-> Also install EMC entry for exact match
       +-> Forward the original packet
-  
+
   Packet #2 (TCP ACK from 10.0.0.3:54321 to 10.0.0.2:80)
   |
-  +-> Kernel EMC: MISS (different src IP and port)
-  +-> Kernel megaflow: HIT (matches nw_src=10.0.0.0/24, nw_dst=10.0.0.2, tp_dst=80)
+  +-> Kernel megaflow cache: HIT (matches nw_src=10.0.0.0/24, nw_dst=10.0.0.2, tp_dst=80)
   +-> Execute cached actions: output:5 (FAST PATH - no userspace involved)
-  
+
   Packet #3 (TCP ACK from 10.0.0.1:12345 to 10.0.0.2:80, same as #1)
   |
-  +-> Kernel EMC: HIT (exact same 5-tuple)
-  +-> Execute cached actions: output:5 (FASTEST PATH)
+  +-> Kernel megaflow cache: HIT (same wildcard match)
+  +-> Execute cached actions: output:5 (FAST PATH)
 ----
 
 *Performance implications:*
@@ -1015,13 +1012,9 @@ The kernel fast path is what makes OVS perform at near-wire speed. Understanding
 |Latency
 |When It Happens
 
-|EMC hit
-|~1 microsecond
-|Same exact flow seen again
-
 |Megaflow hit
-|~2-5 microseconds
-|Similar flow matching a wildcard rule
+|~1-5 microseconds
+|Flow matching a cached wildcard rule
 
 |Userspace upcall
 |~100+ microseconds
@@ -1040,16 +1033,13 @@ ovs-appctl upcall/show
 
 # View the number of kernel datapath flows
 ovs-dpctl dump-flows | wc -l
-
-# Check if the EMC is enabled
-ovs-appctl dpif-netdev/pmd-stats-show  # (DPDK only)
 ----
 
 
 [NOTE]
 .Key Concept
 ====
-In a healthy OVS deployment, 99%+ of packets should hit the kernel cache (either EMC or megaflow). If you see a high upcall rate, it usually means either the traffic pattern is very diverse (many unique flows), or the megaflow cache is being too specific (creating too many entries instead of wildcarding).
+In a healthy OVS deployment, 99%+ of packets should hit the kernel megaflow cache. If you see a high upcall rate, it usually means either the traffic pattern is very diverse (many unique flows), or the megaflow cache is being too specific (creating too many entries instead of wildcarding). The EMC (Exact Match Cache) is available only in the userspace/DPDK datapath - see the xref:#_ovs_dpdk[OVS-DPDK section] for details.
 ====
 
 
@@ -1663,7 +1653,7 @@ When configuring OVS-DPDK, always ensure that PMD cores, guest vCPUs, and host O
 |Configuration database - stores bridges, ports, interfaces in OVSDB schema
 
 |*Kernel module*
-|Fast-path datapath with two-level flow cache (EMC + megaflow) for line-speed forwarding
+|Fast-path datapath with megaflow cache for line-speed forwarding
 
 |*ovs-vsctl*
 |CLI for bridge/port/interface management (modifies persistent database)
@@ -1681,7 +1671,7 @@ When configuring OVS-DPDK, always ensure that PMD cores, guest vCPUs, and host O
 |Multi-table OpenFlow pipeline: table 0 -> resubmit -> table N, priority-based matching
 
 |*Flow caching*
-|Kernel caches flows in EMC (exact) and megaflow (wildcard) tables for fast-path forwarding
+|Kernel caches flows in megaflow (wildcard) table for fast-path forwarding; EMC (exact-match) exists only in the userspace/DPDK datapath
 
 |*Bridge types*
 |System (standard), internal (host interface), patch (bridge-to-bridge), bond (aggregation)
