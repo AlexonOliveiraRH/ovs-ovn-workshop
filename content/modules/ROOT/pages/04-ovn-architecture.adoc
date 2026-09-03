@@ -82,9 +82,9 @@ OVN was created by the same team behind Open vSwitch. Here is the timeline:
 * *2015:* OVN was first announced and development began in earnest. The initial focus was on L2 virtual networking with basic L3 support.
 * *2016:* OVN reached production-ready status. OpenStack Neutron gained ML2/OVN driver support, allowing OVN to serve as the networking backend for OpenStack.
 * *2017-2018:* OVN matured with features like distributed NAT, load balancing, and improved ACL performance through connection tracking integration. OVN-Kubernetes was developed to bring OVN networking to Kubernetes.
-* *2019:* Red Hat selected OVN as the default networking backend for OpenShift 4.x through the OVN-Kubernetes CNI plugin.
+* *2019:* OVN-Kubernetes was introduced as an optional CNI plugin for OpenShift 4.x, alongside the existing OpenShift SDN.
 * *2020:* The OVN project moved to its own repository (ovn-org/ovn), separating from the OVS repository while maintaining tight integration. Red Hat began transitioning RHOSP from ML2/OVS to ML2/OVN.
-* *2021-present:* OVN became the default and recommended networking backend for both Red Hat OpenStack Platform and Red Hat OpenShift Container Platform. Ongoing development focuses on performance, scalability, and feature parity with traditional networking.
+* *2023:* OVN-Kubernetes became the default CNI for OpenShift starting with OCP 4.12, replacing OpenShift SDN. OVN also became the default and recommended networking backend for Red Hat OpenStack Platform. Ongoing development focuses on performance, scalability, and feature parity with traditional networking.
 
 === Why OVN Was Created
 
