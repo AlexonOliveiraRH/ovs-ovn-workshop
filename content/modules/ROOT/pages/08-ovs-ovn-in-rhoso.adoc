@@ -13,7 +13,7 @@
 
 == What is RHOSO
 
-Red Hat OpenStack Services on OpenShift (RHOSO) represents a fundamental shift in how OpenStack is deployed and managed. Instead of running OpenStack services as traditional systemd services on dedicated controller nodes (as in RHOSP), RHOSO runs the OpenStack control plane as containerized workloads managed by Kubernetes operators on an OpenShift cluster.
+Red Hat OpenStack Services on OpenShift (RHOSO) represents a fundamental shift in how OpenStack is deployed and managed. RHOSP 17.1 already containerizes control-plane services on overcloud controllers; RHOSO 18.0 moves their lifecycle management to Kubernetes operators on OpenShift. This chapter targets *RHOSO 18.0*, with maintenance-release qualifications where support changes.
 
 
 [NOTE]
@@ -334,7 +334,13 @@ The OpenStack Operator uses Custom Resource Definitions (CRDs) to declare the de
 
 == OVN in RHOSO
 
-OVN is the default and only supported networking backend in RHOSO. Unlike RHOSP, which historically supported both ML2/OVS and ML2/OVN, RHOSO standardizes entirely on OVN.
+ML2/OVN is the default virtual networking backend in RHOSO 18.0; ML2/OVS is not the alternative deployment model described here. This does not exclude the documented ML2/SR-IOV mechanism driver for direct-attached workloads. See https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html-single/deploying_a_network_functions_virtualization_environment/index[RHOSO 18.0 NFV deployment].
+
+The OpenStack NB/SB databases and `ovn-northd` in namespace `openstack` are separate from the OCP OVN-Kubernetes databases in `openshift-ovn-kubernetes`. OCP's per-node Interconnect zones do not turn the OpenStack databases into per-compute databases. OpenStack gateway chassis can also run as pods on RHOCP nodes; they are not limited to external compute/networker nodes. See https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/migrate-assembly_adopting_the_data_plane[RHOSO 18.0 gateway placement].
+
+Ordinary OpenStack VM ports use Neutron-managed addressing and OVN native DHCP when enabled; the OVN metadata agent remains a separate component. The RHOSO service pods use OCP's pod IPAM and DNS, covered in Module 09. Do not diagnose an OpenStack guest DHCP issue by querying the OCP pod-network database.
+
+For load balancing, Amphora is the default Octavia provider. The OVN provider was Technology Preview before *18.0.14* and became fully supported in *18.0.14 (FR4)*, subject to its feature matrix. This does not imply Amphora feature parity. See https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html-single/release_notes/index[RHOSO 18.0 release notes] and https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/configuring_load_balancing_as_a_service/plan-lb-service_rhoso-lbaas[Octavia provider support].
 
 === OVN Architecture in RHOSO
 
@@ -358,7 +364,7 @@ The OVN deployment in RHOSO splits across the two domains:
 |Stores the physical-logical bindings (chassis, port bindings, tunnel endpoints)
 
 |ovn-northd
-|Deployment pod
+|Operator-managed pod (https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/pkg/ovnnorthd/statefulset.go[StatefulSet in 18.0 FR4])
 |Translates NB DB entries into SB DB logical flows
 
 |===
@@ -374,7 +380,7 @@ The OVN deployment in RHOSO splits across the two domains:
 |Purpose
 
 |ovn-controller
-|systemd service
+|Podman container managed by the EDPM systemd unit
 |Reads SB DB logical flows and programs OVS accordingly
 
 |OVS (ovs-vswitchd)
@@ -453,7 +459,7 @@ For high availability, the OVN NB and SB databases can run as clustered instance
 [source,bash]
 ----
 # Check OVN DB cluster status
-oc get pods -n openstack | grep ovn
+oc get pods -n openstack | grep -E 'ovn|ovsdbserver'
 ----
 
 ----
@@ -524,15 +530,15 @@ Understanding the differences between RHOSP and RHOSO is critical for engineers 
 |RHOSO 18.0
 
 |OVN NB/SB databases
-|Run on controller nodes as systemd services
+|Containerized on overcloud controllers
 |Run as pods on OpenShift
 
 |ovn-northd
-|Runs on controller nodes as systemd service
+|Runs in an overcloud controller container
 |Runs as pod on OpenShift
 
 |Access to OVN databases
-|SSH to controller, run `ovn-nbctl` directly
+|Use the discovered NB/SB container and its DB socket
 |`oc exec` into pod, then run `ovn-nbctl`
 
 |Configuration files
@@ -544,8 +550,8 @@ Understanding the differences between RHOSP and RHOSO is critical for engineers 
 |`oc logs` for pod logs
 
 |HA mechanism
-|Pacemaker manages OVN DB failover
-|Kubernetes manages pod scheduling and restart
+|Deployment HA management plus OVN DB clustering
+|Operator-managed pods plus OVN DB Raft quorum; scheduling alone does not provide DB HA
 
 |===
 
@@ -559,10 +565,11 @@ Understanding the differences between RHOSP and RHOSO is critical for engineers 
 # SSH to a controller node
 ssh tripleo-admin@controller-0
 
-# Run OVN commands directly
-sudo ovn-nbctl show
-sudo ovn-sbctl show
-sudo ovn-sbctl list Chassis
+# Discover containers, then use the matching local DB socket
+sudo podman ps --format '{{.Names}}'
+sudo podman exec <nb-container> ovn-nbctl show
+sudo podman exec <sb-container> ovn-sbctl show
+sudo podman exec <sb-container> ovn-sbctl list Chassis
 ----
 
 *In RHOSO:*
@@ -605,7 +612,7 @@ In RHOSO, you do not need to SSH into any node to access the OVN control plane. 
 
 |Service deployment
 |Containerized via Paunch/podman on overcloud
-|Direct systemd services on data plane nodes
+|Containerized services managed by EDPM systemd units, alongside host services such as OVS
 
 |ovn-controller config
 |Puppet configures connection to SB DB
@@ -672,11 +679,11 @@ oc get openstackdataplanenodeset openstack-edpm -n openstack -o yaml | \
 |RHOSO
 
 |OVN NB/SB DB logs
-|`journalctl -u ovn-northd` on controller
+|Logs of the NB/SB containers or their mounted log directories
 |`oc logs ovsdbserver-nb-0 -n openstack`
 
 |ovn-northd logs
-|`journalctl -u ovn-northd` on controller
+|Logs of the discovered northd container or its mounted log directory
 |`oc logs ovn-northd-xxx -n openstack`
 
 |Neutron logs
@@ -684,8 +691,8 @@ oc get openstackdataplanenodeset openstack-edpm -n openstack -o yaml | \
 |`oc logs neutron-xxx -n openstack`
 
 |ovn-controller logs
-|`journalctl -u ovn-controller` on compute
-|`journalctl -u ovn-controller` on data plane node
+|Logs of `ovn_controller` or its mounted log directory
+|`journalctl -u edpm_ovn_controller` and container/log-directory inspection
 
 |OVS logs
 |`journalctl -u ovs-vswitchd` on compute
@@ -767,7 +774,14 @@ ovn-controller-ovs-7k4m2                   1/1     Running   0   3d2h
 
 [NOTE]
 ====
-The naming convention may vary slightly between RHOSO versions. The NB DB pods are typically `ovsdbserver-nb-*` and SB DB pods are `ovsdbserver-sb-*`. The `ovn-northd` pod runs the northd daemon that translates NB to SB entries.
+The NB DB pods are typically `ovsdbserver-nb-*` and SB DB pods are `ovsdbserver-sb-*`; discover actual pod and container names before substituting them below. The existing output blocks are retained as supplied examples, not newly collected validation. In the https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/pkg/ovndbcluster/statefulset.go[18.0 FR4 operator], `OVN_RUNDIR=/tmp`: DB client sockets are `/tmp/ovnnb_db.sock` and `/tmp/ovnsb_db.sock`, while administrative sockets end in `.ctl`. The https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/tests/kuttl/common/scripts/check_cluster_status.sh[operator's Raft checks] use `/tmp/ovnnb_db.ctl` or `/tmp/ovnsb_db.ctl`. Verify these paths in the deployed image; they are not OCP's `/var/run/ovn` paths.
+
+[source,bash]
+----
+oc get pods -n openstack -o wide
+oc get pod -n openstack <db-pod> -o jsonpath='{.spec.containers[*].name}'
+oc exec -n openstack <db-pod> -c <db-container> -- ls -l /tmp
+----
 ====
 
 
@@ -1003,9 +1017,12 @@ For data plane node commands, SSH into the compute node first: ```bash ssh root@
 
 ==== Checking ovn-controller Status
 
+For the RHOSO 18.0 EDPM container deployment, inspect the `edpm_ovn_controller` unit and the `ovn_controller` container. The standalone `ovn-controller.service` output retained below is not the expected EDPM unit name. The https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/migrate-assembly_adopting_the_data_plane[RHOSO 18.0 data-plane procedure] identifies `edpm_ovn_controller` and `edpm_ovn_metadata_agent`.
+
 [source,bash]
 ----
-sudo systemctl status ovn-controller
+sudo systemctl status edpm_ovn_controller
+sudo podman ps --format '{{.Names}} {{.Status}}' | grep ovn
 ----
 
 ----
@@ -1042,7 +1059,7 @@ Verify the connection is active:
 
 [source,bash]
 ----
-sudo ovn-appctl -t ovn-controller connection-status
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
 ----
 
 ----
@@ -1226,8 +1243,8 @@ type                : ""
 
 [source,bash]
 ----
-# From the OVN NB DB pod (or ovn-northd pod)
-oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+# From the SB DB container: ovn-trace reads Southbound logical flows
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-trace --db=unix:/tmp/ovnsb_db.sock --detailed \
   neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
   'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:dd:ee:ff && ip4.src == 192.168.1.10 && ip4.dst == 192.168.1.11 && ip.ttl == 64'
 ----
@@ -1337,7 +1354,7 @@ sudo tcpdump -i enp7s0 -nn udp port 6081 -c 5
 
 [source,bash]
 ----
-oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-trace --db=unix:/tmp/ovnsb_db.sock --detailed \
   neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
   'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:77:88:99 && ip4.src == 192.168.1.10 && ip4.dst == 192.168.1.20 && ip.ttl == 64'
 ----
@@ -1347,6 +1364,8 @@ The output will show the packet traversing the logical switch pipeline, being fo
 === Scenario 3: VM to External Network
 
 `vm-a` (192.168.1.10) sends traffic to an external host (8.8.8.8) via a floating IP (10.0.0.50). A logical router handles the NAT.
+
+The diagram assumes *centralized floating-IP NAT*. With `[ovn] enable_distributed_floating_ip=True` and external bridge mappings/connectivity on the compute, floating-IP NAT can occur there instead. Subnet SNAT without a floating IP remains centralized. Check the effective Neutron configuration and the NAT row's `logical_port` and `external_mac` before selecting the capture node. See https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html-single/configuration_reference/index[RHOSO 18.0 configuration reference, ovn.ini].
 
 ----
 edpm-compute-0                    edpm-compute-2 (gateway)
@@ -1394,13 +1413,13 @@ lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_f2e3d4c5-6789-01ab-cdef-222222222222   
 lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_e1f2a3b4-5678-90ab-cdef-111111111111    1
 ----
 
-The first entry (priority 5) is the primary gateway chassis, and the second (priority 1) is the backup.
+The priority-5 chassis is preferred when healthy; verify the active `chassisredirect` binding in the SB DB. The retained NAT example includes `external_mac`, so it alone does not establish that the floating-IP traffic follows the centralized diagram; inspect `logical_port` too.
 
 *Step 3: Trace the full path with ovn-trace.*
 
 [source,bash]
 ----
-oc exec -n openstack ovsdbserver-nb-0 -c ovsdbserver-nb -- ovn-trace --detailed \
+oc exec -n openstack ovsdbserver-sb-0 -c ovsdbserver-sb -- ovn-trace --db=unix:/tmp/ovnsb_db.sock --detailed \
   neutron-e1f2a3b4-5678-90ab-cdef-1234567890ab \
   'inport == "7a8b9c0d-1e2f-3456-7890-abcdef012345" && eth.src == fa:16:3e:aa:bb:cc && eth.dst == fa:16:3e:44:55:66 && ip4.src == 192.168.1.10 && ip4.dst == 8.8.8.8 && ip.ttl == 64'
 ----
@@ -1409,9 +1428,9 @@ The trace will show:
 
 . The packet enters the logical switch pipeline (ingress ACL, port security)
 . The packet is forwarded to the logical router port
-. The logical router applies DNAT/SNAT (replacing source IP with the floating IP 10.0.0.50)
+. The logical router applies SNAT for this outbound direction (replacing source IP with the floating IP 10.0.0.50)
 . The packet exits through the external logical switch
-. The packet is sent to the gateway chassis via `localnet` port to the physical network
+. For the centralized case, the gateway chassis forwards through the `localnet` connection to the provider bridge and physical network. A logical trace does not validate physical delivery.
 
 *Step 4: On the gateway node, verify the traffic on br-ex.*
 
@@ -1445,7 +1464,7 @@ This section covers common problems specific to the RHOSO architecture and how t
 [source,bash]
 ----
 # Step 1: On the data plane node, check connection status
-sudo ovn-appctl -t ovn-controller connection-status
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
 ----
 
 ----
@@ -1506,7 +1525,7 @@ ovsdbserver-sb-2   1/1   Running   0   3d   172.17.0.32   master-2   <none>   <n
 
 [WARNING]
 ====
-If the SB DB pods are rescheduled to different OpenShift nodes, their NAD-assigned IPs may change (depending on IPAM configuration). If ovn-controller on data plane nodes has stale IP addresses in `ovn-remote`, it will fail to connect. In production, use stable IPs via the `whereabouts` IPAM plugin with fixed ranges, or use DNS names.
+If the SB DB pods are rescheduled, compare the operator-published endpoints with `ovn-remote`. A fixed Whereabouts allocation range does not by itself reserve the same IP for a recreated pod. Inspect the NAD network-status annotation and the operator/EDPM configuration; `oc get pods -o wide` alone shows the primary pod IP, not necessarily its NAD address.
 ====
 
 
@@ -1519,10 +1538,10 @@ sudo ovs-vsctl set Open_vSwitch . \
   external_ids:ovn-remote="tcp:172.17.0.30:6642,tcp:172.17.0.31:6642,tcp:172.17.0.32:6642"
 
 # Restart ovn-controller to reconnect
-sudo systemctl restart ovn-controller
+sudo systemctl restart edpm_ovn_controller
 
 # Verify connection
-sudo ovn-appctl -t ovn-controller connection-status
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
 ----
 
 ----
@@ -1551,7 +1570,8 @@ If there is no output, the node is not registered.
 [source,bash]
 ----
 # On the data plane node, check ovn-controller logs
-sudo journalctl -u ovn-controller --since "1 hour ago" | tail -20
+sudo journalctl -u edpm_ovn_controller --since "1 hour ago" | tail -20
+sudo podman logs --since 1h ovn_controller
 ----
 
 ----
@@ -1804,7 +1824,7 @@ This module covered the architecture and operation of OVS and OVN in Red Hat Ope
 
 * *NetworkAttachmentDefinitions* bridge the gap between the OpenShift pod network and the physical networks required by OpenStack services.
 
-* *OVN is the sole networking backend* in RHOSO. The NB/SB databases run as Raft-clustered StatefulSet pods, providing high availability.
+* *ML2/OVN is the default virtual networking backend* in RHOSO 18.0; ML2/SR-IOV has its own supported use cases. OpenStack NB/SB Raft clusters are separate from OCP's per-node databases.
 
 * *Troubleshooting requires working across both domains:* `oc exec` and `oc logs` for control plane components, SSH and `journalctl` for data plane components.
 

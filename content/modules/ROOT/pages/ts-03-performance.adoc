@@ -61,6 +61,11 @@ near 100% of a CPU core.
 
 == Step-by-Step Investigation
 
+[IMPORTANT]
+====
+The supplied transcripts are retained for review; they are not measurements validated by this workshop. This scenario mixes kernel-datapath and userspace-PMD output and does not establish a single causal chain. Confirm the actual datapath, container and software version before using a command. Capacity and throughput numbers below are specific to the supplied examples, not OpenShift limits.
+====
+
 === Step 1: Baseline Performance Test with iperf3
 
 *Why:* We need to quantify the performance degradation and understand the pattern. Testing
@@ -205,10 +210,10 @@ Linux 5.14.0-284.52.1.el9_2.x86_64 (worker-3.ocp.example.com)     04/15/2025    
 02:23:46 PM     0     - 14528   12.00    7.00    0.00  19.00     9  |__revalidator29
 ----
 
-*Finding:* The handler and revalidator threads are consuming significant CPU. Handler
-threads process "upcalls" (packets that miss the datapath cache and need userspace
-processing). Revalidator threads check that cached datapath flows are still valid. Both
-being heavily loaded means the fast path is not working efficiently.
+*Finding:* The supplied sample shows CPU activity in handler and revalidator threads.
+Handlers process datapath upcalls, including misses, while revalidators check cached
+flows. Their CPU usage alone does not prove that caching is broken or inefficient.
+Correlate hit/miss deltas, flow churn and CPU profiles over the same workload interval.
 
 
 [NOTE]
@@ -216,8 +221,8 @@ being heavily loaded means the fast path is not working efficiently.
 ====
 OVS processes packets in two paths:
 
-* *Fast path (kernel datapath):* Packets matching an existing datapath flow are handled entirely in the kernel, achieving line-rate performance.
-* *Slow path (userspace):* Packets that don't match any datapath flow generate an "upcall" to `ovs-vswitchd` in userspace. The daemon looks up the correct action in the OpenFlow tables, installs a new datapath flow for future packets, and handles the current packet. This is orders of magnitude slower than the fast path.
+* *Fast path (kernel datapath):* Packets matching an existing datapath flow can execute its cached actions in the kernel. This avoids a miss upcall, but does not guarantee line-rate throughput; measure the actual pipeline and workload.
+* *Slow path (userspace):* A datapath miss generates an upcall to `ovs-vswitchd` for OpenFlow translation and packet handling. OVS can install a datapath entry for subsequent packets. The extra processing has a workload-dependent cost, not a universal performance multiplier.
 
 When most packets take the slow path, performance degrades severely because every packet requires a context switch to userspace and back.
 ====
@@ -241,8 +246,7 @@ cache. We need to see how many flows exist and how they changed.
 87234
 ----
 
-*Finding:* There are *87,234 OpenFlow flows* in br-int. For a typical OCP cluster, a
-healthy flow count ranges from 2,000 to 5,000 per node. 87,000+ is a *flow explosion*.
+*Finding:* The transcript reports 87,234 output lines, which is not necessarily an exact flow count because `dump-flows` can include a header. Use `ovs-ofctl -O OpenFlow15 dump-aggregate br-int` for `flow_count`. There is no universal healthy range of 2,000-5,000 flows for OCP.
 
 Check flow count on a node that is less affected for comparison:
 
@@ -289,7 +293,7 @@ explosion of flow entries.
 [NOTE]
 .Key Concept
 ====
-OVN translates Kubernetes NetworkPolicies into OVN ACLs, which ovn-controller then compiles into OpenFlow flows in OVS. A NetworkPolicy that selects individual pods (rather than using broad label selectors) generates one ACL per pod per port per direction. For 200 pods with 200 policies, this can generate 200 x 200 = 40,000+ individual ACLs, each becoming multiple OpenFlow rules.
+OVN-Kubernetes translates NetworkPolicies into OVN objects and ovn-controller compiles relevant logical flows into OpenFlow. A fixed pods-times-policies formula cannot be inferred: address sets, port groups, rule sharing and implementation versions affect the result. Inspect the generated objects and compare equivalent policies under the same workload. See https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/networking/network-policy[OpenShift 4.14 network policy guidance].
 ====
 
 
@@ -298,8 +302,7 @@ OVN translates Kubernetes NetworkPolicies into OVN ACLs, which ovn-controller th
 === Step 4: Check Datapath Flows
 
 *Why:* The kernel datapath is where the fast-path processing happens. We need to check
-whether the datapath is able to create efficient wildcard flows (megaflows) or is being
-forced into per-packet (microflow) processing.
+the masks, cache misses and flow population under the observed workload. An exact-match cache entry can serve many packets; it is not per-packet slow-path processing.
 
 [source,bash]
 ----
@@ -311,8 +314,7 @@ forced into per-packet (microflow) processing.
 124567
 ----
 
-*Finding:* 124,567 datapath flows. This is extremely high. A healthy OVS datapath
-typically has 5,000-20,000 flows.
+*Finding:* The transcript lists 124,567 datapath entries. Assess that count against the configured limit, traffic diversity and miss-rate deltas; 5,000-20,000 is not a universal healthy range.
 
 Examine the megaflow masks to understand the wildcarding efficiency:
 
@@ -327,20 +329,17 @@ ufid:a1b2c3d4-e5f6-7890-abcd-ef1234567890, recirc_id(0x45),dp_hash(0/0),skb_prio
 ufid:b2c3d4e5-f6a7-8901-bcde-f12345678901, recirc_id(0x45),dp_hash(0/0),skb_priority(0/0),in_port(3),skb_mark(0/0),ct_state(0x22/0xff),ct_zone(0x8/0xffff),ct_mark(0/0),ct_label(0/0),eth(src=0a:58:0a:80:02:10/ff:ff:ff:ff:ff:ff,dst=0a:58:0a:80:02:93/ff:ff:ff:ff:ff:ff),eth_type(0x0800),ipv4(src=10.128.2.16/255.255.255.255,dst=10.128.2.147/255.255.255.255,proto=6/0xff,tos=0/0,ttl=64/0,frag=no),tcp(src=43212/0xffff,dst=8080/0xffff), packets:567, bytes:56789, used:0.567s, flags:SRP, actions:ct(zone=9),recirc(0x46)
 ----
 
-*Finding:* The datapath flows have *exact match masks* (`/255.255.255.255` for IPs,
-`/0xffff` for ports). This means OVS cannot wildcard - each unique 5-tuple (src IP, dst IP,
-src port, dst port, protocol) creates a separate datapath entry. This is a **microflow
-explosion**.
+*Finding:* The two displayed entries match exact IP addresses and TCP ports but wildcard other fields. They do not prove that all entries use the same masks or that most packets miss the cache. Established packets can hit these entries in the kernel; recirculation can also create multiple entries for one connection.
 
 
 [NOTE]
 .Key Concept
 ====
-OVS uses *megaflows* to optimize the datapath. A megaflow is a wildcarded flow entry that matches many packets at once. For example, a megaflow with mask `src=10.128.2.0/255.255.255.0` would match all packets from the 10.128.2.0/24 subnet in a single entry. When the OpenFlow table has many specific rules (per-IP matches), OVS cannot create wildcarded megaflows and falls back to microflows (exact match per-connection). With microflows, the datapath grows with the number of active connections, quickly overwhelming the system.
+Megaflow masks depend on the fields needed to preserve the result of the full OpenFlow pipeline. More specific rules can reduce sharing, but an exact match on some fields does not mean that caching has stopped. Distinguish the kernel datapath's masked flows from the userspace EMC/SMC/dpcls lookup stages. See https://www.kernel.org/doc/html/latest/networking/openvswitch.html[Linux datapath documentation] and https://docs.openvswitch.org/en/latest/topics/dpdk/bridge/[OVS userspace caches].
 ====
 
 
-Check megaflow mask statistics:
+The original command below is not available in https://github.com/openvswitch/ovs/blob/v3.3.0/lib/dpctl.c[OVS 3.3.0]; its supplied output is retained but must not be treated as validated command output. For kernel mask statistics, run `ovs-appctl dpctl/show -s` and inspect `masks: hit`, `total` and `hit/pkt` where supported.
 
 [source,bash]
 ----
@@ -355,9 +354,7 @@ Mega flow masks:
   Masks/lookup: 12.47
 ----
 
-*Finding:* There are *2,847 unique masks* and the average *masks per lookup is 12.47*.
-In a healthy system, you want masks/lookup to be under 4-5. At 12.47, every packet lookup
-must check an average of 12.47 masks before finding a match, which is extremely slow.
+*Finding:* No mask statistic can be verified from this unsupported command. Recollect with the command above and compare the same workload over time; there is no universal 4-5-lookups threshold.
 
 '''
 
@@ -387,12 +384,7 @@ dropped or severely delayed.
 248901
 ----
 
-*Finding:* The conntrack table is at *248,901 / 262,144* entries - that is **95%
-full**. When the table is nearly full, performance degrades because:
-
-* Hash bucket chains become long, slowing lookups
-* New connections may be dropped if the table fills completely
-* Garbage collection runs more frequently, consuming CPU
+*Finding:* The values correspond to about 95% of the configured conntrack limit. This indicates limited headroom, not proof of current exhaustion or slow lookups. Check `nf_conntrack_buckets`, counter deltas and kernel messages over the failure interval. See https://www.kernel.org/doc/html/latest/networking/nf_conntrack-sysctl.html[Linux conntrack controls].
 
 Get more detailed conntrack statistics:
 
@@ -443,9 +435,7 @@ cpu=2       found=10123456 invalid=19234 ignore=765432 insert=0 insert_failed=60
 ...
 ----
 
-*Finding:* `drop=8234` and `insert_failed=8234` on cpu=0 alone confirm that conntrack
-entries are being dropped because the table is full. The `early_drop` counts show the kernel
-is aggressively expiring entries to make room, which also hurts performance.
+*Finding:* Nonzero cumulative counters show previous drops, insertion failures and early eviction. They do not date those events or, on their own, prove that the table is full now. Compare deltas during the test and correlate them with kernel messages and occupancy.
 
 '''
 
@@ -517,9 +507,7 @@ and egress rules.
 
 === Step 7: Examine the Problematic NetworkPolicies
 
-*Why:* We need to understand why the NetworkPolicies generated so many ACLs. Poorly
-written policies that select individual pods instead of using label selectors are a common
-cause.
+*Why:* Inspect policy redundancy and generated objects before attributing the flow count to a particular selector. The per-instance selectors below are themselves label selectors.
 
 [source,bash]
 ----
@@ -599,13 +587,12 @@ spec:
 
 *Finding:* The NetworkPolicy uses *per-instance selectors* (`instance: api-gw-001`,
 `instance: api-gw-002`, etc.) instead of a single broad label selector (`app: api-gateway`).
-Each individual `from` or `to` rule generates a separate OVN ACL. With 50+ instances per
-policy and 200+ policies, this creates tens of thousands of ACLs.
+The actual ACL count must be measured in the installed implementation; this YAML alone does not establish a one-rule-to-one-ACL relationship.
 
 
 [WARNING]
 ====
-Never write NetworkPolicies that select individual pod instances. Use broad label selectors that match groups of pods. A single rule `from: [{podSelector: {matchLabels: {app: api-gateway}}}]` replaces 50 individual instance rules and generates ONE ACL instead of 50.
+Removing the `instance` constraint can authorize additional current or future pods. Consolidate selectors only when the allowed set and intended isolation remain equivalent; performance tuning must not silently broaden access. Verify both allowed and denied connections after any policy change.
 ====
 
 
@@ -635,21 +622,24 @@ flow_del                                 3234        6432        1198765
 
 *Finding:*
 
-* `rev_revalidate`: *8,234 revalidations in the last 5 seconds* - this is extremely high.
-  Revalidation compares each datapath flow against the OpenFlow table, and with 87,000
-  OpenFlow entries, each comparison is expensive.
+* `rev_revalidate`: the excerpt reports *8,234* in its stated five-second interval.
+  Confirm the counter's availability and meaning in the installed version and compare
+  with a workload baseline. This is not a universal high-water mark; 87,000 OpenFlow
+  entries alone do not establish revalidation cost or a comparison against every entry.
 
-* `upcall_flow_limit_hit`: *567 in the last 5 seconds* - the datapath has hit its flow
-  limit, meaning new flows cannot be installed and packets must take the slow path.
+* `upcall_flow_limit_hit`: the reported events warrant checking the effective flow
+  limit and contemporaneous installation failures. They do not establish that all new
+  flows are currently rejected or that all packets take the slow path.
 
-* `flow_create` and `flow_del` rates are nearly equal (~3,400/5s each) - the datapath is
-  in a constant churn of creating and deleting flows, providing no stable fast-path cache.
+* `flow_create` and `flow_del`: the reported counts suggest turnover during the sampled
+  interval. Correlate this with flow lifetimes and hit/miss deltas; similar creation and
+  deletion rates do not establish that no useful cached flows remain.
 
 
 [NOTE]
 .Key Concept
 ====
-Revalidation is the process where OVS checks that each cached datapath flow is still consistent with the OpenFlow table. When the OpenFlow table is large, each revalidation is costly. When flows are being added and deleted rapidly, the revalidator threads run constantly, consuming CPU and reducing the time available for actual packet processing.
+Revalidation checks whether cached datapath flows remain consistent with the OpenFlow pipeline. Its cost depends on the pipeline, affected flows and workload, not just the number of OpenFlow entries. Profile the installed build before attributing CPU use to expensive revalidation; see the https://github.com/openvswitch/ovs/blob/v3.3.0/ofproto/ofproto-dpif-upcall.c[OVS 3.3 revalidation implementation].
 ====
 
 
@@ -657,8 +647,14 @@ Revalidation is the process where OVS checks that each cached datapath flow is s
 
 === Step 9: Check Megaflow vs Microflow Issues
 
-*Why:* Understanding the megaflow mask distribution tells us how efficiently OVS can
-batch packets. Poor masking means every connection needs its own datapath entry.
+[WARNING]
+====
+The PMD transcript below belongs to a userspace `netdev` datapath, not the kernel datapath described in this scenario. Do not combine it with kernel counters as evidence of the same test. First inspect `ovs-vsctl get Bridge br-int datapath_type`; use `dpctl/show -s` for a system datapath and PMD commands only for an applicable userspace datapath. The interpretation below is conditional on such a userspace deployment.
+====
+
+*Why:* Inspect mask distribution and lookup statistics to investigate cache sharing
+and lookup cost. Masks reflect pipeline dependencies; they do not, by themselves,
+establish batching efficiency or a one-entry-per-connection relationship.
 
 [source,bash]
 ----
@@ -682,14 +678,11 @@ pmd thread numa_id 0 core_id 12:
 *Finding:* Key metrics:
 
 * *avg. subtable lookups per megaflow hit: 12.47* - each packet that hits the megaflow
-  cache requires checking an average of 12.47 subtables. This should be under 5 for good
-  performance.
+  cache required that average in the supplied userspace example; this does not establish a universal threshold.
 
-* *miss with success upcall: 8,901,234* - nearly 9 million packets had to go to userspace
-  because they missed the datapath cache entirely.
+* *miss with success upcall: 8,901,234* - slow-path processing within the userspace datapath; this is not a kernel-to-userspace upcall count.
 
-* *miss with failed upcall: 234,567* - over 234,000 packets were DROPPED because the
-  upcall to userspace failed (backlog full).
+* *miss with failed upcall: 234,567* - failed slow-path processing; the counter does not identify a full kernel upcall backlog as the cause.
 
 * *avg. packets per output batch: 1.23* - nearly every packet is processed individually
   rather than in batches, eliminating any batching efficiency.
@@ -705,8 +698,7 @@ handlers:16 ofproto:20 ports:1 revalidators:8 rules:87234
 buckets[connection]:248901
 ----
 
-*Finding:* The `rules:87234` confirms the massive OpenFlow table. `buckets[connection]`
-at 248,901 matches the conntrack count we found earlier.
+*Finding:* `rules` is a userspace memory counter. `buckets[connection]` must not be interpreted as a kernel conntrack count simply because the supplied values match; use the conntrack interfaces in Step 5.
 
 '''
 
@@ -738,10 +730,7 @@ system@ovs-system:
       0.234: flow=9012 packets=20123
 ----
 
-*Finding:* The datapath is at its flow limit (`current 124567`, `limit 131072`). When
-the flow count reaches the limit, OVS must evict flows to make room for new ones, causing
-the create/delete churn we saw in coverage/show. The dump duration of *45,234ms* means
-it takes over 45 seconds to dump all flows - revalidation cannot keep up.
+*Finding:* 124,567 is below 131,072, so this snapshot does not show the limit being reached. The supplied dump duration is long, but determining its cause requires synchronized samples and version-specific counter semantics. The chain below is the original hypothesis, not a verified causal result.
 
 ----
 Performance degradation chain:
@@ -774,36 +763,13 @@ Performance degradation chain:
 
 == Root Cause
 
-The performance degradation was caused by a cascade of effects triggered by the deployment
-of 200+ overly granular NetworkPolicy objects:
-
-. *NetworkPolicies used per-pod selectors* instead of label-based selectors, causing
-   each policy to generate many individual ACL rules.
-
-. *42,367 OVN ACLs* were created, which ovn-controller compiled into **87,234 OpenFlow
-   flows** in OVS on each node.
-
-. *The large OpenFlow table prevented efficient megaflow creation.* Because the OpenFlow
-   rules matched on specific IP addresses, OVS could not create wildcarded datapath entries.
-   Every unique connection required its own datapath flow (microflow explosion).
-
-. *The datapath flow table reached its limit* (124,567 / 131,072), causing constant
-   flow eviction and recreation (churn).
-
-. *High upcall rate* - most packets took the slow path through userspace because they
-   missed the datapath cache or their cached flow was evicted.
-
-. *The conntrack table was nearly full* (248,901 / 262,144), causing slow hash lookups
-   and dropped new connections.
-
-. *ovs-vswitchd consumed 97% CPU* handling upcalls, leaving no headroom for actual
-   packet forwarding.
+The supplied material suggests a performance regression after policy changes, but does not establish its root cause. Kernel and PMD counters are mixed, the mask-statistics command is unsupported, and a single occupancy snapshot cannot prove cache or conntrack exhaustion. Recollect counters from the same datapath and interval, profile CPU work, and compare policy changes that preserve access semantics. Do not present the original hypothesis as a confirmed OpenShift defect or benchmark.
 
 
 [NOTE]
 .Key Concept
 ====
-The fast path vs slow path distinction is critical for understanding OVS performance:  ```text FAST PATH (kernel): Packet arrives -> Datapath flow lookup -> Match found -> Action executed Latency: ~1 microsecond Throughput: line rate (25 Gbps+)  SLOW PATH (userspace): Packet arrives -> Datapath flow lookup -> No match (MISS) -> Upcall to ovs-vswitchd -> OpenFlow table lookup -> Install datapath flow -> Return packet to kernel -> Execute action Latency: ~100-1000 microseconds Throughput: < 1 Gbps (CPU limited) ```  When the majority of packets take the slow path, performance drops from line-rate to sub-gigabit levels regardless of the physical network speed.
+In a kernel datapath, a cache miss requires userspace translation while a hit can execute cached actions in the kernel. The resulting throughput and latency depend on packet size, pipeline, hardware, offload and workload. No universal latency or throughput multiplier is established by this scenario.
 ====
 
 
@@ -813,7 +779,10 @@ The fast path vs slow path distinction is critical for understanding OVS perform
 
 === Immediate Mitigation: Increase Conntrack Table Size
 
-*Why:* This prevents connection drops while we fix the root cause.
+*Why:* If contemporaneous counters and logs confirm conntrack capacity exhaustion,
+increasing the limit may mitigate insertion failures, subject to available memory and
+product guidance. The supplied occupancy snapshot does not establish exhaustion;
+this change is neither a proven fix nor evidence of the root cause.
 
 [source,bash]
 ----
@@ -861,11 +830,11 @@ Increasing conntrack_max increases memory usage. Each conntrack entry consumes a
 
 '''
 
-=== Optimize NetworkPolicies (Root Cause Fix)
+=== Evaluate NetworkPolicy Consolidation
 
-Replace per-instance selectors with broad label selectors.
+The following change broadens the selector. Apply it only if every pod selected by `app: api-gateway`, including future pods, is intended to receive this access; otherwise retain the narrower constraints.
 
-*Before (bad - generates 50+ ACLs per direction):*
+*Before (per-instance constraints):*
 
 [source,yaml]
 ----
@@ -890,7 +859,7 @@ spec:
   # ... 50 more rules
 ----
 
-*After (good - generates 1 ACL per direction):*
+*After (broader selector; verify access equivalence first):*
 
 [source,yaml]
 ----
@@ -944,23 +913,23 @@ Verify flow count reduction:
 
 === OVS Tuning
 
-If further optimization is needed, tune OVS handler and revalidator threads:
+If further optimization is needed, first inspect effective thread counts and CPU availability. Setting both counts to four would reduce the 16 handlers and eight revalidators shown earlier, not increase them. Product-managed settings require the configuration mechanism documented for that release.
 
 [source,bash]
 ----
-# Increase handler threads (processes upcalls):
+# Inspect effective userspace resource counts:
 oc debug node/worker-3.ocp.example.com -- chroot /host \
-  ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=4
+  ovs-appctl memory/show
 
-# Increase revalidator threads (validates cached flows):
+# Inspect configured overrides:
 oc debug node/worker-3.ocp.example.com -- chroot /host \
-  ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=4
+  ovs-vsctl get Open_vSwitch . other_config
 ----
 
 
 [NOTE]
 ====
-The default handler and revalidator thread counts are calculated based on the number of CPU cores. Increasing them helps with high upcall rates but takes CPU away from other processing. In most cases, fixing the root cause (reducing ACLs) is more effective than tuning threads.
+Thread defaults and effective counts depend on the OVS build and available CPU resources. More threads do not guarantee improvement; compare profiles and throughput under the same workload before tuning. Reducing ACLs is not an established remedy here. Consider policy consolidation only if it preserves access semantics and measurements demonstrate a benefit.
 ====
 
 
@@ -1136,7 +1105,7 @@ top -bn1 | grep ovs-vswitchd
 |wc -l`
 |Count datapath flows
 
-|`ovs-appctl dpctl/dump-mega-stats`
+|`ovs-appctl dpctl/show -s`
 |Megaflow mask statistics
 
 |`ovs-appctl dpctl/ct-stats-show`
@@ -1185,16 +1154,12 @@ top -bn1 | grep ovs-vswitchd
 
 == Key Takeaways
 
-* *NetworkPolicy granularity directly impacts OVS performance.* Per-pod selectors create
-  per-pod ACLs, which create per-pod OpenFlow flows, which prevent efficient megaflow
-  caching. Use broad label selectors wherever possible.
+* *Measure NetworkPolicy impact.* Inspect generated ACLs and flows without assuming a fixed multiplication factor, and preserve isolation when consolidating selectors.
 
 * *Monitor OVS flow count and conntrack table size* as key performance indicators. A
   sudden increase in either after a policy change is a red flag.
 
-* *The fast path / slow path distinction explains most OVS performance issues.* When
-  most packets take the slow path through userspace, throughput drops by 10-100x regardless
-  of physical network speed.
+* *Measure cache hits and misses on the correct datapath.* No universal 10-100x slowdown follows from the fast-path/slow-path distinction.
 
 * *Conntrack table exhaustion causes silent connection drops.* Always size the conntrack
   table appropriately and monitor its utilization.

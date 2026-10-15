@@ -493,8 +493,8 @@
     <li class="fragment"><span class="highlight-red">2013</span> - OVS becomes a Linux Foundation project</li>
     <li class="fragment"><span class="highlight-red">2015</span> - OVN announced as OVS subproject</li>
     <li class="fragment"><span class="highlight-red">2017</span> - Red Hat adopts OVN for OpenStack</li>
-    <li class="fragment"><span class="highlight-red">2019</span> - OVN-Kubernetes becomes OCP default CNI</li>
-    <li class="fragment"><span class="highlight-red">2021</span> - OVN becomes independent project under OVS umbrella</li>
+    <li class="fragment"><span class="highlight-red">2019</span> - OVN development separates into its own repository</li>
+    <li class="fragment"><span class="highlight-red">2023</span> - OVN-Kubernetes becomes default for new OCP 4.12 installations</li>
     <li class="fragment"><span class="highlight-red">2023+</span> - RHOSO uses OVN natively; continued evolution</li>
   </ul>
   <aside class="notes">
@@ -502,7 +502,10 @@
     OVS started at Nicira as a production-quality virtual switch. When OVN was
     created in 2015, the goal was to provide a native virtual networking layer on
     top of OVS, eliminating the need for external controllers for common use cases.
-    Red Hat has been a major contributor to both projects.
+    Red Hat has been a major contributor to both projects. Sources:
+    <a href="https://developers.redhat.com/blog/2019/08/30/the-clean-break-of-open-virtual-network-from-open-vswitch">OVN/OVS split (2019)</a>;
+    <a href="https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/release_notes/ocp-4-12-release-notes">OCP 4.12 release notes</a>.
+    Upgrading an OpenShift SDN cluster does not automatically migrate its network plugin.
   </aside>
 </section>
 
@@ -693,7 +696,7 @@
 | <span style="color:#06c;">Outer Eth</span> | <span style="color:#06c;">Outer IP</span> | <span style="color:#06c;">Outer UDP</span> | <span style="color:#009596;">VXLAN/Geneve Hdr</span> | <span style="color:#EE0000;">Original Frame</span> |
   ^              ^             ^                ^
   Physical       Tunnel        dst:4789(VXLAN)  VNI (24-bit)
-  Network        Endpoints     dst:6081(Geneve) = 16M networks
+  Network        Endpoints     dst:6081(Geneve) = 16M ID values
   </pre>
   <div class="two-col fragment" style="font-size: 0.8em;">
     <div class="box box-red">
@@ -718,10 +721,11 @@
   <aside class="notes">
     Both VXLAN and Geneve encapsulate the original Ethernet frame inside a UDP packet
     with a tunnel header. The VNI (Virtual Network Identifier) is 24 bits, giving
-    about 16 million logical networks. OVN uses Geneve by default because its
-    variable-length TLV options allow OVN to pass metadata like logical ingress port
-    and datapath information through the tunnel. This metadata is essential for OVN's
-    distributed processing model.
+    about 16 million ID values, not a validated deployment scale. In upstream
+    OVN 24.03, Geneve carries 55 bits of identifiers: 24 in the VNI, plus 15-bit
+    ingress and 16-bit egress port IDs in one option (class 0x0102, type 0x80).
+    Its 32-bit value also contains one reserved bit; it does not carry conntrack state.
+    See <a href="https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-architecture.7.xml">OVN 24.03 tunnel encapsulations</a>.
   </aside>
 </section>
 
@@ -1029,7 +1033,7 @@ ovsdb-client restore < backup.db</code></pre>
   <h2>OVS Kernel Module (Datapath)</h2>
   <ul>
     <li>High-performance packet processing in kernel space</li>
-    <li>Exact-match flow cache (megaflow cache)</li>
+    <li>Masked datapath flows (megaflow cache)</li>
     <li>Handles the vast majority of packets (fast path)</li>
     <li>Supports hardware offload on compatible NICs</li>
   </ul>
@@ -1039,8 +1043,8 @@ ovsdb-client restore < backup.db</code></pre>
       <ul>
         <li>Packet matches cached flow</li>
         <li>Process entirely in kernel</li>
-        <li>Microsecond latency</li>
-        <li>Millions of pps</li>
+        <li>Avoids OpenFlow translation on cache hits</li>
+        <li>Measure throughput for the actual workload</li>
       </ul>
     </div>
     <div class="box box-teal">
@@ -1056,9 +1060,11 @@ ovsdb-client restore < backup.db</code></pre>
   <aside class="notes">
     The kernel module is where performance matters. The megaflow cache stores
     wildcarded flow entries that can match ranges of traffic. On a cache hit, the
-    packet is processed in kernel space at near wire speed. Only the first packet
-    of a new flow goes to user space. This two-tier architecture gives OVS both
-    the flexibility of OpenFlow and the performance of kernel-level switching.
+    packet executes cached actions in the kernel. A new connection can hit an
+    existing wildcard flow; later packets can miss after cache changes. The userspace
+    netdev datapath instead has EMC, optional SMC and DPCLS; it is not synonymous
+    with DPDK. See <a href="https://docs.openvswitch.org/en/stable/topics/datapath/">kernel datapath</a>
+    and <a href="https://docs.openvswitch.org/en/stable/topics/dpdk/bridge/">userspace caches</a>.
   </aside>
 </section>
 
@@ -1083,7 +1089,7 @@ ovsdb-client restore < backup.db</code></pre>
     style INSTALL fill:#005f5f,stroke:#009596,color:#fff
     style EXEC fill:#005f5f,stroke:#009596,color:#fff
   </pre>
-  <p class="diagram-label">First packet of a flow takes the slow path; subsequent packets take the fast path</p>
+  <p class="diagram-label">Kernel datapath: cache misses trigger upcalls; cache hits execute cached actions</p>
   <aside class="notes">
     This is the core packet processing flow. When a packet arrives at an OVS port,
     the kernel module checks the megaflow cache. If there is a match, it executes
@@ -1569,7 +1575,7 @@ ovn-sbctl find Port_Binding \
     <li>Translates NB DB logical model into SB DB logical flows</li>
     <li>Runs on the central/control plane node(s)</li>
     <li>Stateless - can be restarted without data loss</li>
-    <li>Supports active-standby HA via OVSDB RAFT clustering</li>
+    <li>Active/standby selection uses an OVSDB lock on the SB DB</li>
     <li>Monitors NB changes and recomputes affected logical flows</li>
   </ul>
   <div class="key-point fragment">
@@ -1580,8 +1586,9 @@ ovn-sbctl find Port_Binding \
     When something changes - a new port is created, an ACL is added - it recomputes
     the affected logical flows and writes them to the SB DB. It is stateless in the
     sense that all its state is derived from the NB DB, so you can restart it safely.
-    In HA setups, multiple instances run but only one is active at a time, using RAFT
-    consensus on the OVSDB cluster for leader election.
+    In HA setups, the active northd holds an OVSDB lock on the SB DB. This is
+    distinct from Raft electing a database server leader. See
+    <a href="https://www.ovn.org/support/dist-docs/ovn-northd.8.html">ovn-northd(8), status</a>.
   </aside>
 </section>
 
@@ -1651,7 +1658,7 @@ ovn-sbctl find Port_Binding \
     <li class="fragment"><strong>ovn-northd</strong>: Compile into ~50 logical flow entries</li>
     <li class="fragment"><strong>SB DB</strong>: Logical flows with match/action in OVN syntax</li>
     <li class="fragment"><strong>ovn-controller</strong>: Translate to ~100+ OpenFlow rules per node</li>
-    <li class="fragment"><strong>Kernel</strong>: Cache exact-match entries for active flows</li>
+    <li class="fragment"><strong>Kernel</strong>: Cache masked datapath flows and actions</li>
   </ol>
   <aside class="notes">
     This is the complete compilation pipeline. Notice how each stage amplifies the
@@ -1672,7 +1679,7 @@ ovn-sbctl find Port_Binding \
         <li>Virtual L2 broadcast domains</li>
         <li>Span multiple physical hosts</li>
         <li>Isolated from each other</li>
-        <li>Support up to 65535 ports</li>
+        <li>OVN 24.03: unicast port IDs 1-32767; larger IDs identify multicast groups</li>
         <li>Connected to routers via router ports</li>
       </ul>
       <pre><code class="language-bash"># Create a logical switch
@@ -1784,7 +1791,7 @@ ovn-nbctl lsp-set-options \
         <li>Handles east-west routing locally</li>
         <li>No hairpinning through central node</li>
         <li>Optimal for inter-subnet VM traffic</li>
-        <li>Cannot perform SNAT (no single egress)</li>
+        <li>Shared-IP SNAT uses a selected gateway chassis</li>
       </ul>
     </div>
     <div class="box box-teal">
@@ -1819,10 +1826,10 @@ ovn-nbctl lsp-set-options \
     <div>
       <ul>
         <li>Applied per logical switch or port group</li>
-        <li>Stateful by default (connection tracking)</li>
+        <li>allow-related enables stateful permission</li>
         <li>Match on L2-L4 fields</li>
-        <li>Actions: allow, allow-related, drop, reject</li>
-        <li>Priority-based evaluation</li>
+        <li>Actions include allow, allow-related, allow-stateless, drop, reject</li>
+        <li>NB ACL priority: 0-32767 (OpenFlow: 0-65535)</li>
       </ul>
       <pre><code class="language-bash"># Allow SSH inbound
 ovn-nbctl acl-add network1 \
@@ -1830,10 +1837,10 @@ ovn-nbctl acl-add network1 \
   'outport == "port1" && tcp.dst == 22' \
   allow-related
 
-# Drop all other inbound
+# Drop other inbound IPv4 (ARP remains available)
 ovn-nbctl acl-add network1 \
   to-lport 900 \
-  'outport == "port1"' \
+  'outport == "port1" &amp;&amp; ip4' \
   drop</code></pre>
     </div>
     <div>
@@ -1858,7 +1865,9 @@ ovn-nbctl acl-add network1 \
     OpenStack, security groups are translated to OVN ACLs. In OpenShift,
     NetworkPolicies are translated to OVN ACLs. When troubleshooting connectivity
     issues, ACLs are one of the first things to check - use ovn-nbctl acl-list
-    to see what rules exist.
+    to see what rules exist. Adding an ACL does not automatically deny unmatched
+    traffic. Check NB_Global.options:default_acl_drop and explicit drop rules.
+    See <a href="https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-nb.xml">OVN 24.03 ACL schema</a>.
   </aside>
 </section>
 
@@ -1871,7 +1880,7 @@ ovn-nbctl acl-add network1 \
       <ul>
         <li>Native DHCP responder</li>
         <li>No external DHCP server needed</li>
-        <li>Configured per logical switch</li>
+        <li>DHCP options associated with logical ports</li>
         <li>Responds locally on each node</li>
       </ul>
       <pre><code class="language-bash">ovn-nbctl set Logical_Switch_Port port1 \
@@ -1941,7 +1950,7 @@ ovn-nbctl lr-nat-add router1 \
   <div class="box box-blue fragment" style="font-size: 0.8em;">
     <h3>ovn-northd HA</h3>
     <ul>
-      <li>Active-passive with RAFT leader as coordinator</li>
+      <li>Active-passive using an OVSDB lock on the SB DB</li>
       <li>Only the active instance processes changes</li>
       <li>Standby instances ready to take over</li>
     </ul>
@@ -1949,7 +1958,7 @@ ovn-nbctl lr-nat-add router1 \
   <aside class="notes">
     OVN provides HA at every level. The databases use RAFT consensus clustering -
     typically 3 nodes, where the cluster continues operating as long as a majority
-    (2 of 3) are healthy. ovn-northd runs in active-standby mode with RAFT-based
+    (2 of 3) are healthy. ovn-northd uses an SB database lock for active-standby
     coordination. Gateway ports have multiple chassis with priorities and BFD-based
     health checking - if the active gateway node fails, traffic automatically moves
     to the next priority chassis. In RHOSP and RHOSO, these HA mechanisms are
@@ -2080,14 +2089,14 @@ ovn-trace --detailed network1 \
   <h2>OVS vs OVN: Comparison</h2>
   <table class="comparison-table" style="font-size: 0.65em;">
     <tr><th>Aspect</th><th>OVS</th><th>OVN</th></tr>
-    <tr><td>Role</td><td>Data plane (virtual switch)</td><td>Control plane + data plane</td></tr>
+    <tr><td>Role</td><td>Data plane (virtual switch)</td><td>Logical control plane using OVS</td></tr>
     <tr><td>Abstraction Level</td><td>Ports, flows, bridges</td><td>Logical networks, routers, ACLs</td></tr>
     <tr><td>Programming</td><td>Manual flows or external controller</td><td>Automatic from CMS intent</td></tr>
     <tr><td>Routing</td><td>Manual flow rules</td><td>Native distributed routing</td></tr>
     <tr><td>Security</td><td>Manual OpenFlow ACLs</td><td>Stateful ACLs with conntrack</td></tr>
     <tr><td>DHCP</td><td>External server needed</td><td>Built-in DHCP responder</td></tr>
     <tr><td>Multi-host</td><td>Tunnel setup + manual flows</td><td>Automatic tunnel mesh + flows</td></tr>
-    <tr><td>Scale</td><td>Per-host only</td><td>Cluster-wide orchestration</td></tr>
+    <tr><td>Scope</td><td>Per-host switch; controllers can coordinate hosts</td><td>Integrated multi-host logical network</td></tr>
     <tr><td>Dependencies</td><td>Standalone</td><td>Requires OVS underneath</td></tr>
   </table>
   <aside class="notes">
@@ -2162,14 +2171,14 @@ ovn-trace --detailed network1 \
     </div>
   </div>
   <div class="key-point fragment">
-    For Red Hat products: <em>always OVN + OVS</em> - this is the supported and strategic direction
+    For Red Hat products: verify the <em>product version and support matrix</em>
   </div>
   <aside class="notes">
-    In the Red Hat ecosystem, the answer is almost always OVN plus OVS. All current
-    Red Hat products - RHOSP, RHOSO, OpenShift - use OVN as the networking backend.
-    Standalone OVS is relevant when integrating with third-party SDN controllers or
-    for specialized NFV use cases. If you are building a new deployment on Red Hat
-    products, you will be using OVN.
+    OVN is the default for new OCP 4.12 installations and for the RHOSP releases
+    discussed here. That is not a claim that every deployment must use it.
+    RHOSP 17 still documents maintenance support for deprecated ML2/OVS; see the
+    <a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.0/html/testing_migration_of_the_networking_service_to_the_ml2ovn_mechanism_driver/planning-your-migration-ovs-to-ovn">RHOSP 17.0 migration guide</a>.
+    Upstream OVS/OVN features do not establish product support.
   </aside>
 </section>
 
@@ -2196,7 +2205,7 @@ ovn-trace --detailed network1 \
       <h3>Benefits</h3>
       <ul>
         <li>Distributed routing (no network node bottleneck)</li>
-        <li>Native DHCP and metadata</li>
+        <li>Native DHCP; dedicated OVN metadata agent</li>
         <li>Simpler architecture</li>
       </ul>
     </div>
@@ -2216,25 +2225,22 @@ ovn-trace --detailed network1 \
   <h2>Performance Considerations</h2>
   <table class="comparison-table" style="font-size: 0.7em;">
     <tr><th>Metric</th><th>OVS (standalone)</th><th>OVN + OVS</th></tr>
-    <tr><td>Throughput</td><td>Near line-rate (kernel path)</td><td>Same (OVS data plane)</td></tr>
-    <tr><td>Latency (same node)</td><td>~microseconds</td><td>~microseconds (same path)</td></tr>
-    <tr><td>Latency (cross-node)</td><td>+tunnel overhead</td><td>+tunnel overhead (same)</td></tr>
+    <tr><td>Throughput</td><td>Depends on actions and workload</td><td>Depends on generated actions and workload</td></tr>
+    <tr><td>Latency (same node)</td><td>Cache, actions, CT if configured</td><td>Cache, ACL/CT/NAT and recirculation</td></tr>
+    <tr><td>Latency (cross-node)</td><td>Tunnel and underlay costs</td><td>Tunnel, metadata and underlay costs</td></tr>
     <tr><td>Flow setup</td><td>Fast (direct programming)</td><td>Compilation delay possible</td></tr>
     <tr><td>Scale limit</td><td>Per-host flow tables</td><td>DB replication + flow count</td></tr>
-    <tr><td>CPU overhead</td><td>Minimal</td><td>ovn-controller + DB sync</td></tr>
+    <tr><td>CPU costs</td><td>Datapath and programmed policy</td><td>Datapath policy + controller/DB processing</td></tr>
   </table>
   <div class="key-point fragment">
-    Data plane performance is identical - OVN only adds control plane overhead for
-    <em>flow compilation</em>, not packet processing
+    The same OVS datapath does not guarantee identical performance: compare
+    <em>equivalent policies and workloads</em>
   </div>
   <aside class="notes">
-    A common misconception is that OVN adds performance overhead. In steady state,
-    the data plane performance is identical because packets still go through the same
-    OVS kernel datapath. OVN only adds overhead during flow compilation and updates -
-    when the network configuration changes, there is a brief period where ovn-northd
-    compiles new logical flows and ovn-controller translates them to OpenFlow. At
-    large scale, the SB DB replication and the number of flows can become bottlenecks,
-    but for most deployments this is not a concern.
+    OVN adds control-plane work and programs actions that also have data-plane costs.
+    OVS itself provides conntrack, NAT and select groups. Compare enabled services,
+    packet sizes, connection rates, cache behavior and hardware before drawing a
+    performance conclusion. See <a href="https://docs.openvswitch.org/en/latest/ref/ovs-actions.7/">OVS action semantics</a>.
   </aside>
 </section>
 
@@ -2348,9 +2354,9 @@ ovn-trace --detailed network1 \
   <p class="diagram-label">Modern architecture - distributed routing, native DHCP</p>
   <aside class="notes">
     The ML2/OVN architecture is significantly simpler. Neutron talks directly to
-    the OVN NB DB. There are no Neutron agents on compute nodes - only ovn-controller.
-    DHCP is handled natively by OVN on each compute node. Routing is distributed -
-    east-west traffic stays local. Only SNAT/floating IP traffic goes to the gateway
+    the OVN NB DB. Compute nodes also run the OVN metadata agent.
+    DHCP is handled by OVN's local packet-in handler. Routing is distributed -
+    east-west routing runs on compute nodes. Centralized SNAT uses gateway
     nodes. The OVN databases run in a RAFT cluster across the controller nodes for HA.
     This architecture scales better and eliminates the network node bottleneck.
   </aside>
@@ -2361,11 +2367,11 @@ ovn-trace --detailed network1 \
   <h2>RHOSP: ML2/OVS vs ML2/OVN</h2>
   <table class="comparison-table" style="font-size: 0.6em;">
     <tr><th>Feature</th><th>ML2/OVS</th><th>ML2/OVN</th></tr>
-    <tr><td>Routing</td><td>Centralized (L3 agent)</td><td>Distributed (OVN)</td></tr>
+    <tr><td>Routing</td><td>Centralized or DVR (L3 agent)</td><td>Distributed plus gateway functions</td></tr>
     <tr><td>DHCP</td><td>neutron-dhcp-agent (namespace)</td><td>Native OVN (per-node)</td></tr>
-    <tr><td>Metadata</td><td>neutron-metadata-agent</td><td>Native OVN metadata</td></tr>
-    <tr><td>Security Groups</td><td>iptables / OVS hybrid</td><td>OVN ACLs (conntrack)</td></tr>
-    <tr><td>Agents per Compute</td><td>neutron-ovs-agent</td><td>ovn-controller only</td></tr>
+    <tr><td>Metadata</td><td>neutron-metadata-agent</td><td>neutron-ovn-metadata-agent / proxy</td></tr>
+    <tr><td>Security Groups</td><td>iptables hybrid or native OVS firewall</td><td>OVN ACLs (conntrack)</td></tr>
+    <tr><td>Agents per Compute</td><td>neutron-openvswitch-agent; others depend on DVR</td><td>ovn-controller + metadata agent</td></tr>
     <tr><td>Network Node</td><td>Required (DHCP, L3, metadata)</td><td>Gateway only (SNAT)</td></tr>
     <tr><td>HA Routers</td><td>VRRP (keepalived)</td><td>Gateway chassis groups</td></tr>
     <tr><td>Status</td><td>Maintenance mode</td><td>Active development</td></tr>
@@ -2375,9 +2381,10 @@ ovn-trace --detailed network1 \
   </div>
   <aside class="notes">
     The comparison makes it clear why the migration is happening. ML2/OVN simplifies
-    the architecture by moving DHCP, metadata, and routing into OVN itself. Fewer
-    agents means fewer things to manage and fewer failure points. Security groups
-    use OVN's native conntrack-based ACLs instead of the complex iptables/OVS hybrid.
+    the architecture by moving ordinary instance DHCP and routing into OVN.
+    Metadata still uses an agent and proxy, as described in the
+    <a href="https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.1/html/networking_guide/assembly_work-with-ovn_rhosp-network">RHOSP 16.1 architecture</a>.
+    ML2/OVS can also use a native conntrack-based firewall.
     The network node role is reduced to just gateway traffic. ML2/OVS is now in
     maintenance mode with no new features being added.
   </aside>
@@ -2478,7 +2485,7 @@ ovn-trace --detailed network1 \
 
 <!-- Slide 6.6: OCP OVN-Kubernetes Architecture -->
 <section>
-  <h2>OCP: OVN-Kubernetes Architecture</h2>
+  <h2>OCP 4.12: OVN-Kubernetes Architecture</h2>
   <pre class="mermaid">
   graph TB
     subgraph "Master/Control Plane Nodes"
@@ -2513,12 +2520,14 @@ ovn-trace --detailed network1 \
     style OVNK_NODE2 fill:#005f5f,stroke:#009596,color:#fff
   </pre>
   <aside class="notes">
-    In OpenShift, OVN-Kubernetes is the default CNI plugin. The ovnkube-master
+    This diagram shows the centralized OCP 4.12 architecture. The ovnkube-master
     component runs on control plane nodes and includes the NB DB, SB DB, and
     ovn-northd. On each worker node, ovnkube-node runs ovn-controller and
     manages the local OVS instance. Pods connect to OVS br-int through veth pairs.
     The architecture is similar to OVN in OpenStack but adapted for Kubernetes
-    concepts like services, network policies, and pod networking.
+    concepts like services, network policies, and pod networking. OCP 4.14 introduced
+    the interconnect multi-zone architecture; do not apply this diagram to every
+    OCP release. See the <a href="https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/release_notes/ocp-4-14-release-notes">OCP 4.14 release notes</a>.
   </aside>
 </section>
 
@@ -2906,7 +2915,7 @@ ovn-trace --detailed network1 \
   <ul style="font-size: 0.8em;">
     <li class="fragment">K8s Service ClusterIP: 10.96.0.100:80</li>
     <li class="fragment">Client sends to ClusterIP - OVN LB intercepts</li>
-    <li class="fragment">DNAT selects a backend pod (round-robin or random)</li>
+    <li class="fragment">Hash-based backend selection followed by conntrack DNAT</li>
     <li class="fragment">Connection tracking ensures session affinity</li>
     <li class="fragment">Return traffic is reverse-NATed transparently</li>
   </ul>
@@ -3238,7 +3247,8 @@ ovs-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound</code></pr
   <aside class="notes">
     This is one of the most common support cases. The VM can communicate locally
     but not externally. The checklist: First, is there a SNAT rule or floating IP?
-    Without NAT, the VM has no way to reach the external network. Second, is a
+    Routed external connectivity can work without NAT if return routes exist.
+    For the NAT scenario shown here, check the translation rule. Second, is a
     gateway chassis assigned? Without it, there is nowhere to perform the NAT.
     Third, is the gateway chassis actually reachable? Check BFD status and tunnel
     connectivity. Fourth, trace the packet to see where it gets dropped. Common
@@ -3314,12 +3324,11 @@ ovn-nbctl list ACL</code></pre>
     </div>
   </div>
   <aside class="notes">
-    Security group issues often involve conntrack. OVN ACLs are stateful - they use
-    connection tracking. If you add a rule to block traffic but there is already an
-    established conntrack entry, the existing connection may continue until it times
-    out. To immediately enforce, you may need to flush the conntrack entry. Also
-    check the priority of ACLs - a higher-priority allow rule may be overriding your
-    new deny rule. Use ovn-trace to see exactly which ACL rule matches.
+    Check the deployed OVN version, ACL action, priority and policy propagation,
+    then correlate the connection tuple and zone. Stateful ACL reevaluation means
+    an existing entry alone does not prove that an old allow policy remains effective
+    until timeout. Avoid a global conntrack flush. A logical trace is a simulation;
+    correlate it with actual flows, counters and traffic.
   </aside>
 </section>
 
@@ -3354,8 +3363,8 @@ ovn-nbctl list ACL</code></pre>
   <h2>MTU: A Frequent Troublemaker</h2>
   <ul>
     <li class="fragment">Standard Ethernet MTU: <strong>1500 bytes</strong></li>
-    <li class="fragment">Geneve encapsulation overhead: <strong>~58 bytes</strong></li>
-    <li class="fragment">Inner MTU must be: <strong>1500 - 58 = 1442 bytes</strong> (or raise outer)</li>
+    <li class="fragment">OVN Geneve example: <strong>58 bytes over IPv4; 78 over IPv6</strong></li>
+    <li class="fragment">With a 1500-byte underlay IP MTU: <strong>1442 / 1422</strong> in that example</li>
   </ul>
   <div class="two-col fragment" style="font-size: 0.8em;">
     <div class="box box-red">
@@ -3370,22 +3379,24 @@ ovn-nbctl list ACL</code></pre>
     <div class="box box-teal">
       <h3>Solutions</h3>
       <ul>
-        <li>Set jumbo frames (9000) on physical</li>
-        <li>Or reduce VM/pod MTU to 1442</li>
+        <li>Size underlay MTU consistently along the path</li>
+        <li>Use the product's overlay MTU setting</li>
         <li>Verify: <code>ip link show</code> on all hops</li>
         <li>Test: <code>ping -M do -s 1400 &lt;dest&gt;</code></li>
       </ul>
     </div>
   </div>
   <aside class="notes">
-    MTU issues are one of the most common and most frustrating networking problems
-    in overlay networks. The Geneve header adds about 58 bytes of overhead. If the
-    physical network MTU is 1500, then the maximum inner packet size is 1442 bytes.
-    Larger packets either get fragmented (adding overhead and reducing performance)
-    or get dropped if DF (Don't Fragment) is set. The classic symptom is that ping
-    works (small packets) but applications fail or hang (large packets). Either
-    increase the physical network MTU to 9000 (jumbo frames) or ensure all VMs and
-    pods have their MTU set to 1442.
+    For untagged inner Ethernet, outer IPv4 without options and OVN's single 8-byte
+    Geneve option, subtract 14 + 20 + 8 + 8 + 8 = 58 bytes from underlay IP MTU.
+    Outer IPv6 adds 20 bytes. Inner VLAN tags, more options, IPsec and other headers
+    change the budget; 58 is not the Geneve base-header length. See
+    <a href="https://www.rfc-editor.org/rfc/rfc8926.html">RFC 8926</a> and
+    <a href="https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-architecture.7.xml">OVN 24.03 encoding</a>.
+    OCP 4.12 documents an overlay MTU 100 bytes below the smallest node MTU, so do not
+    replace the product setting with 1442. See
+    <a href="https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/networking/ovn-kubernetes-network-plugin">OCP 4.12 networking</a>.
+    A small ping alone does not establish the path MTU.
   </aside>
 </section>
 
@@ -3495,7 +3506,7 @@ ovn-nbctl list ACL</code></pre>
   </ul>
   <aside class="notes">
     OVS is powerful but has limitations. Very large flow tables (tens of thousands)
-    can cause slow revalidation cycles. The first packet of a new flow always takes
+    can cause slow revalidation cycles. Packets missing the datapath cache take
     the slow path through userspace. The kernel module must be compatible with the
     running kernel, which can complicate upgrades. OVS-DPDK provides high performance
     but at the cost of significant configuration complexity. Hardware offload is
@@ -3510,17 +3521,19 @@ ovn-nbctl list ACL</code></pre>
   <ul>
     <li class="fragment"><strong>Scale ceiling</strong> - SB DB replication becomes bottleneck at very large scale</li>
     <li class="fragment"><strong>Recomputation time</strong> - large topology changes can cause flow churn</li>
-    <li class="fragment"><strong>No L7 features</strong> - no application-layer inspection or policy</li>
-    <li class="fragment"><strong>Limited load balancing</strong> - L4 only, basic algorithms (no health checks)</li>
+    <li class="fragment"><strong>No L7 load-balancing proxy</strong> - no HTTP content-based backend routing</li>
+    <li class="fragment"><strong>L4 load balancing</strong> - upstream health checks exist; product support varies</li>
     <li class="fragment"><strong>RAFT cluster sensitivity</strong> - requires stable low-latency interconnect</li>
     <li class="fragment"><strong>Debugging complexity</strong> - multiple abstraction layers to trace through</li>
   </ul>
   <aside class="notes">
     OVN's scale ceiling is primarily the Southbound database. In very large
     deployments (thousands of nodes, hundreds of thousands of ports), the SB DB
-    replication and ovn-controller recomputation can become slow. OVN operates at
-    L2-L4 only - if you need L7 policies, you need additional components. The load
-    balancer is basic compared to dedicated solutions. RAFT clustering requires
+    replication and ovn-controller recomputation can become slow. OVN provides
+    L4 load balancing; HTTP content-based routing needs additional components. The load
+    balancer has upstream health-check configuration in
+    <a href="https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-nb.xml">OVN 24.03 Load_Balancer_Health_Check</a>;
+    this is not a support statement for a Red Hat integration. RAFT clustering requires
     reliable, low-latency network between the cluster members - running the cluster
     across high-latency links can cause instability.
   </aside>

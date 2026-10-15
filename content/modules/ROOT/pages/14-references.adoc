@@ -763,7 +763,7 @@ Conference talk recordings are often the best way to understand complex features
 |The OVS Flow Cache
 |Ben Pfaff
 |docs.openvswitch.org
-|How the OVS flow cache works, including the microflow cache (EMC), megaflow cache (SMC/dpcls), and the upcall path to userspace. Essential for performance tuning.
+|For cache terminology, distinguish the kernel datapath from the userspace datapath's EMC (exact-match cache), SMC (signature-match cache) and dpcls (masked classifier). See the https://docs.openvswitch.org/en/latest/topics/dpdk/bridge/[official userspace cache documentation].
 
 |Understanding OVS Datapath Flows
 |Red Hat
@@ -1908,7 +1908,7 @@ This glossary defines every essential term used throughout this workshop. Terms 
 |The criteria portion of a flow rule that determines which packets the flow applies to. Matches can specify values for any packet header field (MAC addresses, IP addresses, TCP/UDP ports, VLAN tags, etc.) and support wildcards and masks.
 
 |*Megaflow*
-|An OVS optimization that combines multiple microflows (exact-match flows) into a single wildcard flow in the kernel datapath cache. Megaflows reduce the number of cache entries needed and the frequency of upcalls to the userspace daemon. The megaflow cache is also called the datapath classifier (dpcls).
+|A datapath flow whose mask includes the fields needed to preserve the OpenFlow pipeline's forwarding decision. It may cover multiple packets or connections; it is not necessarily produced by merging existing exact-match entries. `dpcls` specifically names the userspace datapath classifier. See https://www.kernel.org/doc/html/latest/networking/openvswitch.html[Linux datapath masks].
 
 |*NAT (Network Address Translation)*
 |The process of modifying source or destination IP addresses as packets traverse a router. OVN supports both SNAT (source NAT, for outbound traffic) and DNAT (destination NAT, for inbound traffic such as floating IPs).
@@ -1962,13 +1962,13 @@ This glossary defines every essential term used throughout this workshop. Terms 
 |A network path that encapsulates packets for transport across an underlay network. OVN creates Geneve tunnels between chassis automatically. Each tunnel carries traffic for all logical networks, using metadata in the Geneve header to demultiplex packets to the correct logical datapath and port.
 
 |*Userspace Datapath*
-|An OVS datapath that processes packets entirely in user space instead of the kernel. Used with DPDK for high-performance networking. The userspace datapath bypasses the kernel network stack and accesses NICs directly through DPDK poll mode drivers.
+|An OVS datapath (`netdev`) that executes forwarding in userspace. It can use DPDK-backed ports, but `netdev` does not by itself imply DPDK, kernel-stack bypass or direct NIC access; those depend on the build and port/driver types. Upstream also documents https://github.com/openvswitch/ovs/blob/v3.3.0/Documentation/intro/install/userspace.rst[userspace operation without DPDK], marked experimental in OVS 3.3. This is not a Red Hat support statement.
 
 |*VXLAN (Virtual Extensible LAN)*
 |A tunneling protocol that encapsulates Layer 2 Ethernet frames in UDP packets. OVN supports VXLAN for communication with hardware VTEPs (physical switches) but prefers Geneve for chassis-to-chassis traffic because VXLAN's 24-bit VNI cannot carry the metadata that OVN needs.
 
 |*Zone (Conntrack)*
-|A conntrack zone is a namespace that isolates connection tracking state. OVN assigns different zones to different logical datapaths so that connection tracking state for one logical network does not interfere with another. Zones are identified by numeric IDs and are managed by `ovn-controller`.
+|A numeric identifier that isolates conntrack state. OVN's allocation depends on the function and version, including logical-port tracking and router NAT zones; it is not simply one zone per logical network. Inspect `ovn-appctl -t ovn-controller ct-zone-list` on the affected chassis and the https://www.ovn.org/support/dist-docs/ovn-controller.8.html[controller reference].
 
 |===
 

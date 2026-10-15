@@ -14,6 +14,8 @@
 
 == OpenShift Networking Overview
 
+This chapter uses *OCP 4.18*, with the default Layer 3 OVN-Kubernetes network in Interconnect mode, as its reference. Historical comparisons do not define support for later releases, managed-service variants or every additional-network topology. Existing captured outputs remain unchanged; aggregate examples are identified where they differ from a node-local IC view.
+
 Before diving into OVN-Kubernetes, it helps to understand the networking model that all Kubernetes distributions - including OpenShift - follow, and how OpenShift evolved to its current implementation.
 
 === The CNI Model
@@ -78,24 +80,22 @@ OpenShift's CNI history is directly relevant because it explains why OVN is the 
 |OVN + OVS (per-node NB/SB DB, zone-per-node)
 |Migration from SDN available
 
-|OCP 4.17+ / 5.x
-|OVN-Kubernetes (sole CNI)
-|OVN + OVS (IC mode, ANP GA, UDN GA)
-|Current - OpenShift SDN removed
+|OCP 4.18 (this chapter)
+|OVN-Kubernetes (default cluster network)
+|OVN + OVS (IC mode); UDN GA in 4.18
+|OpenShift SDN removed in 4.17; additional CNI networks have separate support requirements
 
 |===
 
 
-*OpenShift SDN* used Open vSwitch as its data plane but implemented its own custom controller to program OVS flows. It supported three network modes: `Subnet` (flat network), `Multitenant` (project-level isolation), and `NetworkPolicy` (Kubernetes NetworkPolicy support). *OpenShift SDN was removed in OCP 4.17*, making OVN-Kubernetes the sole CNI going forward into OCP 5.x.
+*OpenShift SDN* used Open vSwitch as its data plane but implemented its own custom controller to program OVS flows. It supported three network modes: `Subnet` (flat network), `Multitenant` (project-level isolation), and `NetworkPolicy` (Kubernetes NetworkPolicy support). *OpenShift SDN was removed in OCP 4.17*. This chapter does not extrapolate that change to unspecified future releases or to Multus additional-network plugins.
 
 *OVN-Kubernetes* replaced this with a fully OVN-based architecture. Instead of a custom controller, it uses OVN's standard architecture (NB DB, SB DB, ovn-northd, ovn-controller) with a Kubernetes-specific management layer that translates Kubernetes objects into OVN logical network configurations.
 
 
 [WARNING]
 ====
-*OVN Interconnect (IC) mode is the default since OCP 4.14.* In IC mode, each node runs its own independent NB/SB DB, ovn-northd, and ovn-controller. There is no centralized Raft-clustered database. Cross-node traffic uses a transit_switch with remote ports. This is a fundamental architectural change from the pre-4.14 centralized model.
-
-Starting with OCP 4.14, clusters can be migrated from OpenShift SDN to OVN-Kubernetes. This migration is a one-way operation - you cannot migrate back.
+*In the OCP 4.18 IC architecture, each node is an OVN zone* with local NB/SB databases, `ovn-northd`, and `ovn-controller`. These databases are standalone, not a cluster-wide Raft database. Cross-zone routing uses `transit_switch` remote ports. See the https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/ovn-kubernetes_network_plugin/ovn-kubernetes-architecture-assembly[OCP 4.18 architecture] and the https://github.com/openshift/cluster-network-operator/blob/release-4.18/bindata/network/ovn-kubernetes/managed/ovnkube-node.yaml[release-4.18 node manifest]. Migration eligibility and rollback procedures must be checked against the source release; they are not inferred from this architecture.
 ====
 
 
@@ -163,25 +163,25 @@ OVN-Kubernetes maps Kubernetes networking concepts to OVN logical network object
 
 === Components
 
-OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack. Since OCP 4.14, the architecture uses *Interconnect (IC) mode* where each node is an independent OVN zone with its own databases.
+OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack. In the OCP 4.18 architecture described here, each node is an OVN zone with its own databases.
 
-==== IC Mode Architecture (OCP 4.14+ / 5.x)
+==== IC Mode Architecture (OCP 4.18)
 
 ----
 +------------------------------------------------------------------------+
 |                     Every Node (zone-per-node)                          |
 |                                                                         |
-|  ovnkube-node pod (DaemonSet, 6 containers):                           |
+|  ovnkube-node pod (DaemonSet; key containers shown):                    |
 |  +------------------+ +------------------+ +-------------------+        |
 |  | nbdb container   | | sbdb container   | | northd container  |        |
 |  | (local NB DB)    | | (local SB DB)    | | (local ovn-northd)|        |
 |  +------------------+ +------------------+ +-------------------+        |
 |  +------------------+ +-------------------+ +------------------+        |
-|  | ovn-controller   | | ovnkube-controller| | OVS              |        |
-|  | Programs local   | | Watches K8s API   | | (ovs-vswitchd +  |        |
-|  | OVS flows        | | Translates to     | |  ovsdb-server)   |        |
-|  |                  | | local NB DB       | |                  |        |
-|  +------------------+ +-------------------+ +------------------+        |
+|  | ovn-controller   | | ovnkube-controller|                             |
+|  | Programs local   | | Watches K8s API   |                             |
+|  | OVS flows        | | Writes local NB  |                             |
+|  +------------------+ +-------------------+                             |
+|  Host services outside this pod: ovs-vswitchd and OVS ovsdb-server     |
 +------------------------------------------------------------------------+
 |  Cross-node: transit_switch with remote ports (Geneve tunnels)          |
 +------------------------------------------------------------------------+
@@ -191,7 +191,7 @@ OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack
 |  ovnkube-control-plane pod (Deployment):                                |
 |  +------------------+                                                   |
 |  | ovnkube-cluster- |  Coordinates cluster-wide resources               |
-|  | manager          |  (EgressIP, EgressFirewall, zone management)      |
+|  | manager          |  (node subnets, EgressIP allocation, zones)       |
 |  +------------------+                                                   |
 +------------------------------------------------------------------------+
 ----
@@ -202,7 +202,7 @@ OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack
 |===
 |Aspect
 |Pre-4.14 (Centralized)
-|4.14+ / 5.x (IC Mode)
+|OCP 4.18 (IC Mode)
 
 |NB/SB Database
 |Centralized Raft cluster on control plane nodes
@@ -214,7 +214,7 @@ OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack
 
 |Failure blast radius
 |DB failure affects entire cluster
-|Failure isolated to single node
+|Local DB failure scope; cross-node traffic and workloads depending on that node can still be affected
 
 |`ovn-nbctl show` scope
 |Full cluster topology
@@ -225,7 +225,7 @@ OVN-Kubernetes adds Kubernetes-aware components on top of the standard OVN stack
 |Via transit_switch with remote ports
 
 |DB access command
-|`oc exec ovnkube-node-<pod> -c nbdb` or `-c sbdb`
+|Central DB/master pod; identify names in that release
 |`oc exec ovnkube-node-<pod> -c nbdb` or `-c sbdb`
 
 |===
@@ -247,8 +247,8 @@ The `ovnkube-node` component runs on every node as a DaemonSet. In IC mode, it i
 The `ovnkube-control-plane` component runs on control plane nodes (Deployment with multiple replicas). In IC mode, its role is limited to cluster-wide coordination:
 
 * *EgressIP management:* Coordinates EgressIP assignment across nodes.
-* *EgressFirewall:* Manages namespace-level egress rules.
-* *Zone management:* Coordinates the OVN Interconnect zones.
+* *Node IPAM:* Allocates node pod subnets and join/transit addresses. Individual pod IP allocation and OVN programming belong to `ovnkube-controller` on the node.
+* *Zone management:* Coordinates the OVN Interconnect zones. EgressFirewall ACL programming is performed by the node's `ovnkube-controller`.
 
 ==== OVS
 
@@ -264,6 +264,8 @@ Open vSwitch runs on every node, providing:
 OVN-Kubernetes creates a rich logical network topology to implement Kubernetes networking. Understanding this topology is essential for debugging.
 
 === The Logical Topology
+
+The diagram is an aggregate view of the Layer 3 topology, not the output of one OCP 4.18 NB database. In IC mode, each zone contains its local node switch, local `ovn_cluster_router`, local join/gateway objects, and transit connections to remote zones. The *Transit Switch* section below shows the inter-zone path.
 
 ----
                         External Network
@@ -322,14 +324,14 @@ OVN-Kubernetes uses *per-node subnet allocation*. The cluster is configured with
 The join switch connects the cluster router to the gateway routers. It acts as the bridge between the internal pod network and the external network.
 
 * *Name:* `join`
-* *Ports:* One port for the cluster router, one port per gateway router (one per node).
+* *Ports:* In the local IC zone, connects its cluster-router instance to its gateway router; the aggregate diagram combines these per-zone objects.
 
 === Cluster Router (ovn_cluster_router)
 
-The cluster router is a *distributed logical router*. It connects all the per-node logical switches, enabling pod-to-pod communication across nodes.
+Each IC zone has an `ovn_cluster_router` instance connecting its local node switch to the local join and transit switches. Remote node subnets are reached through transit routes, rather than through all remote pod switches being present in this NB database.
 
 * *Distributed:* The router logic runs on every node via ovn-controller. A pod sending traffic to a pod on another node does not need to go through a centralized router.
-* *Ports:* One logical router port per node, connecting to that node's logical switch.
+* *Ports:* Connections to the local node switch, join switch and transit switch in this zone.
 * *Load Balancers:* ClusterIP services are implemented as load balancers on this router.
 
 === Gateway Router (GR_node-x)
@@ -343,13 +345,13 @@ Each node that can serve as a gateway gets a gateway router. The gateway router 
 
 [NOTE]
 ====
-By default, every node has a gateway router, but only worker nodes typically handle pod egress traffic. The `ovnkube-controller` (in IC mode, running inside each ovnkube-node pod) manages which nodes serve as active gateways based on configuration and health.
+In this default-network topology, the node's `ovnkube-controller` programs its local gateway objects. Ordinary pod egress uses that node's gateway; EgressIP can select a different eligible egress node through the cluster-manager assignment described below.
 ====
 
 
 === Transit Switch (IC Mode)
 
-Since OCP 4.14, every cluster uses *OVN Interconnect mode* with a *zone-per-node* architecture. Each node is its own zone with an independent OVN control plane. A *transit_switch* connects all zones, using remote ports to route cross-node traffic.
+In this OCP 4.18 default-network topology, each node is its own zone with local OVN databases and northd. A *transit_switch* representation in each zone provides remote ports for inter-zone forwarding over Geneve.
 
 When a pod on Node A communicates with a pod on Node B, the packet passes through the transit_switch as an intermediate hop. The transit_switch uses Geneve tunnels between nodes, just like the pre-IC architecture, but the logical path includes the transit_switch routing step.
 
@@ -397,9 +399,9 @@ ingress(dp="worker-0-984bc", inport="demo-trace_pod-a") {    <1>
 
 When a new node joins the cluster:
 
-. `ovnkube-controller` (in IC mode, running inside each ovnkube-node pod) allocates a pod subnet from the cluster CIDR (e.g., `10.129.0.0/23`).
-. It creates a logical switch for that node.
-. It connects the logical switch to the cluster router.
+. `ovnkube-cluster-manager` in `ovnkube-control-plane` allocates the node's pod subnet (e.g., `10.129.0.0/23`) and its join/transit addresses.
+. The node's `ovnkube-controller` creates the local logical switch.
+. It connects that switch to the zone's cluster router.
 
 When a pod is scheduled to a node:
 
@@ -407,6 +409,8 @@ When a pod is scheduled to a node:
 . It creates a logical switch port on the node's logical switch.
 . It creates a veth pair: one end in the pod's network namespace, one end connected to br-int.
 . It assigns the pod IP and sets up routes (default gateway is the cluster router's port IP).
+
+For ordinary pods on this network, IP allocation and interface configuration use OVN-Kubernetes IPAM/CNI, not an OVN DHCP exchange. Empty `dhcpv4_options` and `dhcpv6_options` on such a pod's logical port are therefore expected. Pod service discovery uses CoreDNS managed by the https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/networking_operators/dns-operator[OCP 4.18 DNS Operator], not the upstream OVN native DNS responder. Additional networks and VM networks can have different DHCP/DNS arrangements.
 
 === Host-Networked Pods vs Regular Pods
 
@@ -501,12 +505,12 @@ Node 1 (192.168.1.10)                    Node 2 (192.168.1.11)
 . Pod A sends a packet to 10.128.2.3 (Pod C on Node 2).
 . The packet enters br-int on Node 1.
 . OVS processes the logical switch pipeline (port security, ACLs, L2 lookup).
-. The L2 lookup does not find 10.128.2.3 on the local switch (different subnet). The packet is forwarded to the cluster router.
+. Pod A addresses the Ethernet frame to its gateway MAC because Pod C is in a different subnet. The logical switch forwards that frame to the local cluster router.
 . The cluster router performs L3 routing: the destination 10.128.2.3 matches the route for Node 2's subnet (10.128.2.0/23).
-. OVN determines the destination port is on Node 2's chassis. The packet is encapsulated in a *Geneve tunnel* destined for Node 2.
+. The source zone routes through `transit_switch` to Node 2's remote port. The packet is encapsulated in a *Geneve tunnel* destined for Node 2.
 . The Geneve packet traverses the physical network from Node 1 to Node 2.
 . On Node 2, the Geneve tunnel is decapsulated.
-. OVS on Node 2 processes the packet through Node 2's logical switch pipeline and delivers it to Pod C.
+. The destination zone receives it through the transit connection, routes it toward Node 2's logical switch and delivers it to Pod C.
 
 
 [NOTE]
@@ -747,11 +751,11 @@ oc exec -n openshift-ovn-kubernetes <ovnkube-node-pod> \
   -c nbdb -- ovn-nbctl list ACL | grep -E "tier|match|action"
 ----
 
-=== User-Defined Networks (OCP 4.17+)
+=== User-Defined Networks (OCP 4.18)
 
-User-Defined Networks (UDN) allow creating additional, isolated network topologies beyond the default cluster network. They are GA since OCP 4.17.
+User-Defined Networks (UDN) allow isolated network topologies beyond the default cluster network. User-defined network segmentation became generally available in https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/release_notes/ocp-4-18-release-notes[OCP 4.18]; `UserDefinedNetwork` was Technology Preview in 4.17. Check the 4.18 topology and feature restrictions before using a specific configuration.
 
-Each UDN gets its own set of OVN logical objects: gateway routers, logical switches, and transit switches. This means `ovn-nbctl show` output is richer and contains per-network topology. When troubleshooting UDN, identify which network the pod belongs to before tracing.
+UDN objects depend on the selected topology; do not assume every UDN has the Layer 3 gateway/join/transit layout shown here. Identify the network and topology before tracing.
 
 === EgressIP
 
@@ -770,16 +774,16 @@ Pod on Node 2 -> SNAT 192.168.1.11   Pod on Node 2 -> SNAT 10.0.0.50
 
 ==== How OVN Implements EgressIP
 
-. The `ovnkube-controller` (in IC mode, running inside each ovnkube-node pod) watches for EgressIP custom resources.
-. It selects a node to host the EgressIP (based on node labels and availability).
-. It configures an *OVN SNAT rule* on the gateway router of the selected node, SNATing traffic from the namespace's pods to the EgressIP.
+. `ovnkube-cluster-manager` watches EgressIP resources and selects eligible nodes based on labels, address availability and health.
+. The assignment is published in the EgressIP resource status.
+. The zone controllers in `ovnkube-controller` program the relevant routing and *OVN SNAT rules* for the selected pods and egress node.
 . The EgressIP is added as a secondary IP on the selected node's external interface.
 . If the hosting node goes down, the EgressIP is *automatically reassigned* to another eligible node (failover).
 
 
 [NOTE]
 ====
-EgressIP failover requires at least two nodes labeled as eligible for the EgressIP. The `ovnkube-controller` (in IC mode, running inside each ovnkube-node pod) monitors node health and reassigns the EgressIP if the hosting node becomes unreachable.
+EgressIP failover requires another eligible node with available address capacity and compatible networking. Node assignment/reassignment belongs to `ovnkube-cluster-manager`; zone-local OVN programming belongs to `ovnkube-controller`. This split is explicit in the https://github.com/openshift/ovn-kubernetes/blob/release-4.18/go-controller/pkg/clustermanager/clustermanager.go[release-4.18 implementation].
 ====
 
 
@@ -793,7 +797,7 @@ EgressFirewall (also known as `EgressNetworkPolicy` in older versions) controls 
 * Rules specify `Allow` or `Deny` for traffic to specific CIDR ranges or DNS names.
 * Implemented as *OVN ACLs* on the logical switch.
 
-Example EgressFirewall resource:
+Example EgressFirewall resource (the wildcard DNS rule requires the Technology Preview DNS-resolution feature described below):
 
 ----
 apiVersion: k8s.ovn.org/v1
@@ -818,7 +822,7 @@ This policy allows pods in `production` to reach `10.0.0.0/8` and `*.example.com
 
 ==== DNS-Based Egress Rules
 
-OVN-Kubernetes supports DNS-based egress rules. When a DNS name is specified:
+For standard DNS names, the egress-firewall controller periodically resolves the name and updates the ACL's address set:
 
 . `ovnkube-controller` (in IC mode, running inside each ovnkube-node pod) resolves the DNS name periodically.
 . It updates the corresponding address set with the resolved IPs.
@@ -828,6 +832,8 @@ OVN-Kubernetes supports DNS-based egress rules. When a DNS name is specified:
 [WARNING]
 ====
 DNS-based egress rules depend on DNS resolution working correctly from the control plane. If DNS is unreliable, the address sets may contain stale IPs, leading to unexpected allow/deny behavior. Also, DNS resolution happens at the controller level, not at the pod level, so TTL-based load balancing may behave differently than expected.
+
+In OCP 4.18, improved DNS resolution, including wildcard names such as `*.example.com`, is *Technology Preview*. In that mode, the cluster manager manages `DNSNameResolver` objects and DNS resolution updates their status. Do not treat the wildcard example as a generally supported production feature. See https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/network_security/egress-firewall[OCP 4.18 Egress Firewall, improved DNS resolution].
 ====
 
 
@@ -874,7 +880,7 @@ oc get network.operator cluster -o jsonpath='{.spec.defaultNetwork.ovnKubernetes
 
 === Interconnect (IC) Mode - Zone-Per-Node
 
-Since OCP 4.14, OVN-Kubernetes uses *OVN Interconnect mode* as the default architecture. In this model, *each node is its own zone* with an independent NB DB, SB DB, and ovn-northd instance. This eliminates the centralized Raft-clustered database and provides per-node failure isolation.
+In the OCP 4.18 IC architecture described here, *each node is its own zone* with local NB DB, SB DB, and ovn-northd. Database failures have a smaller scope, but traffic to pods or egress functions on that node can still affect other nodes.
 
 ----
 +---------------------+        +---------------------+
@@ -896,7 +902,7 @@ Since OCP 4.14, OVN-Kubernetes uses *OVN Interconnect mode* as the default archi
 |===
 |Aspect
 |Pre-4.14 (Centralized)
-|4.14+ / 5.x (IC Mode, Zone-Per-Node)
+|OCP 4.18 (IC Mode, Zone-Per-Node)
 
 |OVN databases
 |One NB DB, one SB DB cluster (Raft)
@@ -908,7 +914,7 @@ Since OCP 4.14, OVN-Kubernetes uses *OVN Interconnect mode* as the default archi
 
 |Failure blast radius
 |DB failure affects entire cluster
-|Isolated to single node
+|Local DB failure scope; dependent workloads/traffic can also be affected
 
 |Inter-node traffic
 |Direct Geneve tunnel
@@ -919,8 +925,8 @@ Since OCP 4.14, OVN-Kubernetes uses *OVN Interconnect mode* as the default archi
 |Node-local view only
 
 |Scale
-|~250 nodes
-|No practical limit
+|Depends on release and tested topology
+|Bounded by OCP 4.18 tested limits and workload; not unlimited
 
 |===
 
@@ -928,7 +934,7 @@ Since OCP 4.14, OVN-Kubernetes uses *OVN Interconnect mode* as the default archi
 [NOTE]
 .Key Concept
 ====
-In IC mode, `ovn-nbctl show` on any given node only shows that node's local topology. To see the full cluster, you must query each node individually. This is a common source of confusion during troubleshooting - if you query a node that does not host the pod you are looking for, you will get empty results. Always query the specific node where the pod is running.
+In IC mode, `ovn-nbctl show` exposes the local zone and the remote representations needed by it. A remote pod's ordinary local switch port is not expected in that database. Query the node hosting the pod, and query other zones when following cross-zone traffic.
 ====
 
 '''
@@ -1026,6 +1032,8 @@ This section provides commands you can run on a live OpenShift cluster to explor
 [NOTE]
 ====
 All commands require access to the OpenShift cluster via the `oc` CLI with appropriate permissions. Most inspection commands require `cluster-admin` privileges.
+
+Select the `ovnkube-node` pod on the node under investigation with `oc get pods -n openshift-ovn-kubernetes -o wide`, then list its containers with `oc get pod -n openshift-ovn-kubernetes <pod> -o jsonpath='{.spec.containers[*].name}'`. Use `nbdb` for `ovn-nbctl`, `sbdb` for SB inspection and the traces below, and `ovn-controller` for its control socket. In https://github.com/openshift/cluster-network-operator/blob/release-4.18/bindata/network/ovn-kubernetes/common/008-script-lib.yaml[release-4.18], DB sockets inside the containers are `/var/run/ovn/ovnnb_db.sock` and `/var/run/ovn/ovnsb_db.sock`; `.ctl` sockets serve `ovn-appctl`. The host mount is `/var/run/ovn-ic`, so host and container paths are not interchangeable. OVS host commands use the separate `/var/run/openvswitch` runtime.
 ====
 
 
@@ -1092,6 +1100,8 @@ ovnkube-node-pqr12                       8/8     Running   0          5d    192.
 * `ovnkube-control-plane` pods run on control plane nodes and coordinate cluster-wide resources (EgressIP, zone management).
 * `ovnkube-node` pods run on every node (DaemonSet) and contain the full OVN stack in IC mode: nbdb, sbdb, northd, ovn-controller, and ovnkube-controller. *These are the pods you use to query OVN databases.*
 
+The retained listing above is not a replica/container-count specification for 4.18. The official architecture example shows two `ovnkube-control-plane` pods with `kube-rbac-proxy` and `ovnkube-cluster-manager`, and eight containers per ordinary `ovnkube-node` pod. Inspect the deployed manifests for the actual configuration.
+
 ==== Check Node IPs and Pod CIDRs
 
 [source,bash]
@@ -1115,7 +1125,7 @@ This output confirms the per-node subnet allocation. For example, all pods on `w
 
 ==== Access the OVN Northbound Database
 
-To run `ovn-nbctl` commands in IC mode (OCP 4.14+), exec into the specific node's `ovnkube-node` pod using the `nbdb` container. Each node has its own database showing only its local topology:
+To run `ovn-nbctl` commands in OCP 4.18 IC mode, exec into the specific node's `ovnkube-node` pod using `nbdb`. It contains local topology plus the remote-zone representations required for connectivity. The retained `show`, `ls-list` and `lr-list` examples below aggregate several nodes and must not be treated as expected output from one IC database.
 
 [source,bash]
 ----
@@ -1168,7 +1178,7 @@ router 5e6f7890-1234-5678-ef01-234567890123 (GR_worker-0)
     nat dnat_and_snat ...
 ----
 
-This output shows the full OVN-Kubernetes topology:
+This retained aggregate example illustrates the object types; a single 4.18 IC database does not enumerate every node's pod switch and gateway router:
 
 * Per-node logical switches (`worker-0`, `worker-1`) with pod ports
 * The `join` logical switch connecting routers
@@ -1515,13 +1525,13 @@ PING 10.129.2.30 (10.129.2.30) 56(84) bytes of data.
 
 [NOTE]
 ====
-The TTL decreases by 1 (from 64 to 63) because the packet passes through the cluster router (a Layer 3 hop) on its way to the other node's logical switch.
+The retained ping output shows TTL 63, but it does not establish the hop count for the OCP 4.18 IC path. That path includes routing in the source and destination zones; determine TTL changes from the actual trace/capture and initial TTL rather than assuming one router hop.
 ====
 
 
 ==== Use ovn-trace from OVN-K Pods
 
-`ovn-trace` is a powerful tool that simulates packet processing through the OVN logical pipeline without sending actual packets:
+`ovn-trace` reads the *Southbound* database and simulates logical processing without sending packets. In IC mode, a source-zone trace can stop at a `remote` transit port; it does not prove delivery through the destination zone or the physical network. Use the destination zone's state to continue the analysis. See https://www.ovn.org/support/dist-docs/ovn-trace.8.html[ovn-trace(8)]. The retained two-pod listing below must be assembled by querying each pod's own zone.
 
 [source,bash]
 ----
@@ -1542,7 +1552,7 @@ name                : "ovn-trace-test_test-pod-b"
 ----
 # Run ovn-trace for pod-a to pod-b (cross-node)
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
-  -c nbdb -- ovn-trace --detailed worker-0 \
+  -c sbdb -- ovn-trace --db=unix:/var/run/ovn/ovnsb_db.sock --detailed worker-0 \
   'inport == "ovn-trace-test_test-pod-a" && eth.src == 0a:58:0a:81:00:32 && eth.dst == 0a:58:0a:81:00:01 && ip4.src == 10.129.0.50 && ip4.dst == 10.129.2.30 && ip.ttl == 64'
 ----
 
@@ -1550,7 +1560,7 @@ The output will show every logical flow table the packet passes through:
 
 . Ingress pipeline on the source logical switch (worker-0)
 . The cluster router routing the packet to the destination subnet
-. Egress pipeline on the destination logical switch (worker-1)
+. Transit-switch output to the destination zone's `remote` port; inspect worker-1 separately for its local routing and delivery pipeline
 
 ==== Trace Pod-to-Service
 
@@ -1584,7 +1594,7 @@ test-svc   ClusterIP   172.30.200.100   <none>        80/TCP    10s
 ----
 # Trace traffic from pod-a to the service
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
-  -c nbdb -- ovn-trace --detailed worker-0 \
+  -c sbdb -- ovn-trace --db=unix:/var/run/ovn/ovnsb_db.sock --detailed worker-0 \
   'inport == "ovn-trace-test_test-pod-a" && eth.src == 0a:58:0a:81:00:32 && eth.dst == 0a:58:0a:81:00:01 && ip4.src == 10.129.0.50 && ip4.dst == 172.30.200.100 && ip.ttl == 64 && tcp.dst == 80'
 ----
 
@@ -1595,7 +1605,7 @@ The trace will show the OVN load balancer performing DNAT from the service IP to
 [source,bash]
 ----
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
-  -c nbdb -- ovn-trace --detailed worker-0 \
+  -c sbdb -- ovn-trace --db=unix:/var/run/ovn/ovnsb_db.sock --detailed worker-0 \
   'inport == "ovn-trace-test_test-pod-a" && eth.src == 0a:58:0a:81:00:32 && eth.dst == 0a:58:0a:81:00:01 && ip4.src == 10.129.0.50 && ip4.dst == 8.8.8.8 && ip.ttl == 64'
 ----
 
@@ -1840,7 +1850,7 @@ oc debug node/<node> -- chroot /host ovs-vsctl list-ports br-int | grep <port-id
 ----
 # Step 6: Use ovn-trace to simulate the packet path
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
-  -c nbdb -- ovn-trace --detailed <source-switch> \
+  -c sbdb -- ovn-trace --db=unix:/var/run/ovn/ovnsb_db.sock --detailed <source-switch> \
   'inport == "<source-port>" && eth.src == <src-mac> && eth.dst == <gw-mac> && ip4.src == <src-ip> && ip4.dst == <dst-ip> && ip.ttl == 64'
 ----
 
@@ -1984,7 +1994,8 @@ oc debug node/<node-name> -- chroot /host systemctl status ovs-vswitchd
 [source,bash]
 ----
 # Step 4: Check if ovn-controller is running and connected
-oc debug node/<node-name> -- chroot /host ovs-appctl -t ovn-controller connection-status
+oc exec -n openshift-ovn-kubernetes ovnkube-node-<id> \
+  -c ovn-controller -- ovn-appctl -t ovn-controller connection-status
 ----
 
 [source,bash]
@@ -2002,7 +2013,7 @@ If the chassis is missing, the node is not connected to the OVN SB DB.
 
 [NOTE]
 ====
-In IC mode (OCP 4.14+), each node runs standalone NB/SB databases - there is no Raft cluster. The Raft commands below apply only to pre-4.14 clusters or to RHOSP/RHOSO centralized deployments. For IC mode, check individual node database health using `ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound` from the respective `ovnkube-node` pod.
+In the OCP 4.18 IC topology, check the local NB/SB databases in the affected node's pod. `cluster/status` is a Raft-only command and does not apply to these standalone databases. RHOSP/RHOSO cluster-health commands belong to their separate OpenStack database deployments.
 ====
 
 *Diagnostic Steps:*
@@ -2015,7 +2026,7 @@ oc get pods -n openshift-ovn-kubernetes | grep -E "control-plane|ovnkube-node" |
 
 [source,bash]
 ----
-# Step 2: Check database health on a node (IC mode, OCP 4.14+)
+# Step 2: Check database health on a node (OCP 4.18 IC mode)
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
   -c nbdb -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl \
   ovsdb-server/get-db-storage-status OVN_Northbound
@@ -2023,23 +2034,22 @@ oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
 
 [source,bash]
 ----
-# Step 3 (pre-4.14 only): Check Raft cluster health
-# These commands return errors in IC mode where standalone DBs are used
+# Step 3: Check the local SB database too
 oc exec -n openshift-ovn-kubernetes ovnkube-node-<pod> \
-  -c nbdb -- ovn-appctl -t /var/run/ovn/ovnnb_db.ctl \
-  cluster/status OVN_Northbound
+  -c sbdb -- ovn-appctl -t /var/run/ovn/ovnsb_db.ctl \
+  ovsdb-server/get-db-storage-status OVN_Southbound
 ----
 
-For pre-4.14 Raft clusters, look for:
+Also check the affected pod's containers:
 
-* *Role:* Should be `leader` on one pod and `follower` on others.
-* *Entries not yet committed:* Should be 0 or very small.
-* *Servers:* All three servers should be listed and active.
+* *Readiness and restarts:* Inspect both DB containers and `northd`.
+* *Logs:* Check startup, storage and connection errors in that zone.
+* *Controller connection:* Check the local `ovn-controller` connection to SB.
 
 
 [WARNING]
 ====
-*Pre-4.14 clusters only:* If the Raft cluster loses quorum (2 of 3 members down), the database becomes read-only. No new networking configurations can be applied. Existing pod connectivity continues to work because ovn-controller on each node continues to enforce the last known flows, but no changes can be made until quorum is restored. In IC mode (4.14+), database failure is isolated to a single node.
+A local database failure can prevent updates in that zone. Existing OVS flows may continue forwarding while their state remains valid, but this is not a guarantee of uninterrupted connectivity, especially for traffic or EgressIP assignments involving the affected node.
 ====
 
 
@@ -2096,7 +2106,7 @@ This module covered OVN-Kubernetes, the default CNI for OpenShift. Key takeaways
 
 * *OVN-Kubernetes maps Kubernetes concepts to OVN:* Pods become logical switch ports, Services become load balancers, NetworkPolicies become ACLs with address sets, and EgressIPs become NAT rules.
 
-* *The topology consists of* per-node logical switches, a distributed cluster router, a join switch, and per-node gateway routers. This architecture provides distributed routing and local-first packet processing.
+* *The OCP 4.18 IC topology consists of* per-zone node switches, cluster-router instances, join/gateway objects and transit-switch connections to other zones. Query the relevant node's NB/SB databases.
 
 * *Packet flows follow predictable paths:* Same-node traffic stays local in OVS, cross-node traffic uses Geneve tunnels, service traffic is handled by OVN load balancers, and external traffic goes through gateway routers with SNAT.
 

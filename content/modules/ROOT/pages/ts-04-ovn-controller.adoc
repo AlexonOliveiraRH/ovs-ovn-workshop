@@ -604,7 +604,7 @@ flows because it cannot connect to the SB DB due to TLS failure.
 
 [NOTE]
 ====
-`fail_mode: secure` on br-int means that when ovn-controller is not connected, OVS drops ALL traffic. This is a security feature - without the controller, the switch does not fall back to learning/forwarding mode. This is why pods have zero connectivity rather than partial connectivity.
+`fail_mode: secure` prevents fallback to standalone MAC learning when the OpenFlow controller is unavailable. Existing flows can still forward traffic; the mode alone does not explain a total outage. The separate SB database connection is not the OVS OpenFlow control connection. In this example, inspect the displayed drop flows and their counters to establish the affected traffic.
 ====
 
 
@@ -680,10 +680,7 @@ Check chronyd:
              man:chrony.conf(5)
 ----
 
-*Finding:* chronyd is *disabled and not running*. After the reboot, chronyd did not
-start because it was disabled. Without NTP, the system clock fell back to the hardware
-RTC clock, which was significantly wrong (possibly the CMOS battery is low, or the RTC
-was never set correctly).
+*Finding:* The excerpt shows chronyd disabled and inactive. It does not establish why the clock was wrong or whether the RTC battery failed; boot history, time-source configuration and RTC observations would be needed for that conclusion.
 
 Verify the certificate validity window to confirm the mismatch:
 
@@ -730,15 +727,13 @@ TLS certificate validation is time-dependent. Every TLS certificate has a validi
 
 == Root Cause
 
-The root cause is a *system clock skew on worker-3* caused by a missing NTP configuration:
+The displayed clock is outside the certificate's validity window and is a sufficient explanation for a TLS validity failure if those values were collected together. However, the earlier controller logs are dated April 2025 while the displayed node clock is March 2024; the excerpts do not establish a synchronized timeline. Confirm timestamps and certificate provenance before treating this as a validated incident. The clock/NTP discrepancy is the supported investigation path; missing configuration and hardware failure are not established.
 
 . Worker-3 was rebooted for a kernel update.
 
 . chronyd (NTP daemon) was *disabled* on worker-3 and did not start after reboot.
 
-. Without NTP synchronization, the system clock fell back to the *hardware RTC clock*,
-   which was set to March 12, 2024 - over 13 months in the past (likely due to a depleted
-   CMOS battery or the RTC was never properly configured).
+. The displayed system and RTC clocks read March 12, 2024. The reason for that value is not established by the excerpts.
 
 . OVN-Kubernetes uses *mutual TLS* for communication between ovn-controller and the
    Southbound DB. The SB DB's TLS certificate was valid from January 2025 to January 2026.
@@ -755,8 +750,7 @@ The root cause is a *system clock skew on worker-3* caused by a missing NTP conf
 ** Program OpenFlow rules into OVS br-int
 ** Claim port bindings for pods on the node
 
-. br-int had only default drop rules (`fail_mode: secure`), causing **all pod traffic to
-   be dropped**.
+. Inspect the installed flows to establish forwarding behavior. `fail_mode: secure` prevents fallback to standalone MAC learning when a controller is unavailable; it does not itself install default-drop rules or erase existing flows. See https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.html[Bridge fail_mode].
 
 '''
 

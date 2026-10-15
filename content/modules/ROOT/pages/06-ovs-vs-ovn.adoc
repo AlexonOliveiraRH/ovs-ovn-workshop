@@ -107,7 +107,7 @@ The following table provides a detailed comparison of what you get with OVS on i
 |Automatic via logical switches spanning multiple hypervisors
 
 |*L3 Routing*
-|Not built-in; requires an external router, Linux network namespaces, or an SDN controller
+|Programmable L3 forwarding actions; no OVN-style logical router model
 |Built-in distributed logical routers; routing happens locally on each hypervisor
 
 |*Security / ACLs*
@@ -116,18 +116,18 @@ The following table provides a detailed comparison of what you get with OVS on i
 
 |*DHCP*
 |Not built-in; requires an external DHCP server
-|Built-in DHCP responder; OVN answers DHCP requests directly in the pipeline
+|Built-in DHCP responder using logical actions and local ovn-controller packet handling
 
 |*DNS*
 |Not built-in
 |Built-in DNS responder for internal name resolution
 
 |*NAT*
-|Not built-in; requires external iptables/nftables or SDN controller
+|Stateful NAT via `ct(nat(...))`; requires flow/zone programming
 |Built-in SNAT and DNAT on logical routers
 
 |*Load Balancing*
-|Not built-in
+|Primitives such as select groups and conntrack NAT; requires a programmed policy
 |Built-in L4 load balancer (TCP/UDP) with VIP support
 
 |*Multi-node Networking*
@@ -139,7 +139,7 @@ The following table provides a detailed comparison of what you get with OVS on i
 |Automatic Geneve tunnels with metadata for logical network identification
 
 |*High Availability*
-|Manual or external HA; no built-in clustering for the database
+|Local OVS configuration DB; OVSDB itself also supports clustering for suitable schemas
 |Built-in HA via Raft consensus for NB/SB databases; BFD for tunnel health
 
 |*Management Model*
@@ -159,8 +159,8 @@ The following table provides a detailed comparison of what you get with OVS on i
 |`ovn-trace`, `ovn-detrace`, `ovn-sbctl lflow-list`, plus all OVS tools
 
 |*Performance Overhead*
-|Minimal; direct datapath processing
-|Slight overhead from logical-to-physical flow translation and metadata processing
+|Depends on programmed actions, datapath and workload
+|Compilation cost plus forwarding costs from the generated policy (ACLs, NAT, tunnels)
 
 |*Connection Tracking*
 |Available but must be manually configured via OpenFlow
@@ -180,7 +180,7 @@ The following table provides a detailed comparison of what you get with OVS on i
 [NOTE]
 .Key Concept
 ====
-Notice the pattern in this table. For virtually every network function, OVS provides the raw mechanism but requires manual or external configuration. OVN provides the same function as a built-in, automated, distributed service. The trade-off is a small amount of additional complexity and overhead in exchange for dramatically simpler operations at scale.
+OVS provides forwarding primitives; OVN supplies a logical network model and compiles it into OVS configuration. Compare https://docs.openvswitch.org/en/latest/ref/ovs-actions.7/[OVS actions], https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-nb.xml[OVN 24.03 load balancers] and https://www.openvswitch.org/support/dist-docs/ovsdb.7.html[OVSDB service models]. These are upstream capabilities, not a Red Hat support matrix.
 ====
 
 
@@ -188,11 +188,11 @@ Notice the pattern in this table. For virtually every network function, OVS prov
 
 *L2 Switching* - With standalone OVS, you create bridges, add ports, and either rely on MAC learning (which has scale limitations) or write explicit flow rules. With OVN, you create a logical switch in the Northbound DB and OVN handles all the flow programming, including across multiple hypervisors with automatic tunneling.
 
-*L3 Routing* - This is one of the biggest differences. Standalone OVS has no routing capability at all. In pre-OVN architectures (like ML2/OVS in OpenStack), routing was handled by Linux network namespaces running on dedicated network nodes - every packet that needed to cross subnets had to travel to the network node and back. OVN provides distributed routing: the routing decision happens locally on the hypervisor where the VM lives, and the packet goes directly to its destination. This eliminates the network node bottleneck for east-west traffic.
+*L3 Routing* - OVS can execute IP matches, TTL updates and MAC rewrites, but the administrator or controller must supply routing policy. OVN provides logical routers and generates those flows. ML2/OVS can use either centralized routing or DVR; centralized network-node traversal is not inherent to OVS.
 
 *Security / ACLs* - With standalone OVS, implementing a stateful firewall requires writing complex OpenFlow rules that use connection tracking (conntrack) actions and matches. You need to handle new connections, established connections, related connections, and invalid connections with separate flow entries. With OVN, you write a simple ACL like "allow TCP to port 80 from this address set" and OVN generates all the necessary conntrack flows.
 
-*DHCP* - In standalone OVS environments, you need a DHCP server running somewhere (a `dnsmasq` process in a namespace, for example). With OVN, DHCP responses are generated directly in the logical flow pipeline - no external process needed. When a VM sends a DHCP discover, OVN's logical flows intercept it and generate a DHCP offer with the configured IP, gateway, DNS, and other options.
+*DHCP* - Standalone OVS deployments normally use a separate DHCP server. OVN integrates this service through logical actions and the local `ovn-controller` packet-in handler; it does not generate the whole response solely in the kernel (https://github.com/ovn-org/ovn/blob/v24.03.0/controller/pinctrl.c[OVN 24.03 implementation]).
 
 '''
 
@@ -234,7 +234,7 @@ A standalone OVS deployment on a single node has three core components:
 
 * *ovsdb-server* - Stores the OVS configuration in a JSON-based database. This includes bridge definitions, port configurations, interface settings, and other persistent state.
 * *ovs-vswitchd* - The main switching daemon. It reads configuration from ovsdb-server, manages OpenFlow tables, and communicates with the kernel datapath. When a packet hits a flow that only exists in the userspace tables (a "cache miss" in the kernel), it gets sent up to ovs-vswitchd for classification.
-* *OVS kernel datapath* - A kernel module that performs fast-path packet forwarding. It maintains a cache of recently seen flow patterns (megaflows). Packets matching cached flows are forwarded entirely in kernel space without involving userspace at all.
+* *OVS kernel datapath* - A kernel module that performs fast-path packet forwarding using cached flow patterns (megaflows). In the common forwarding fast path, a cache hit executes actions in the kernel without userspace classification. A cached flow can still explicitly send a packet to userspace; a hit alone does not guarantee kernel-only processing (see `OVS_ACTION_ATTR_USERSPACE` in the https://raw.githubusercontent.com/torvalds/linux/v6.6/net/openvswitch/actions.c[Linux 6.6 OVS action implementation]).
 
 In this architecture, someone (or something) must program the OpenFlow tables in ovs-vswitchd. That "someone" could be:
 
@@ -421,7 +421,7 @@ With OVN, you describe what you want and OVN figures out the implementation.
 
 |OpenShift / OCP deployment
 |OVN (OVN-Kubernetes)
-|Default CNI since OCP 4.x
+|Default for new OCP installations starting with 4.12
 
 |Network lab / learning
 |Start with OVS, then add OVN
@@ -494,9 +494,9 @@ v                                     v
 
 OVN was created specifically to address these problems:
 
-* *Agent elimination* - A single `ovn-controller` per node replaces four separate Neutron agents.
+* *Agent changes* - OVN replaces the OVS, L3 and DHCP agents for ordinary instance networking; an OVN metadata agent remains on compute nodes.
 * *Native distributed routing* - Every hypervisor can route traffic locally.
-* *Built-in services* - DHCP, DNS, and metadata are implemented as logical flows.
+* *Built-in services* - DHCP and DNS are integrated into OVN; OpenStack metadata still requires its agent/proxy service.
 * *Database-driven state* - OVSDB replaces RabbitMQ for state distribution.
 * *Single bridge* - One `br-int` handles everything, no separate `br-tun`.
 
@@ -515,7 +515,7 @@ OVN was created specifically to address these problems:
 
 |L3 agent
 |neutron-l3-agent (centralized or DVR)
-|OVN logical router (always distributed)
+|OVN logical router (distributed forwarding plus configured gateway functions)
 
 |DHCP agent
 |neutron-dhcp-agent (dnsmasq in namespace)
@@ -523,7 +523,7 @@ OVN was created specifically to address these problems:
 
 |Metadata agent
 |neutron-metadata-agent
-|OVN metadata (logical flows)
+|neutron-ovn-metadata-agent / metadata proxy
 
 |State distribution
 |RabbitMQ (message bus)
@@ -539,7 +539,7 @@ OVN was created specifically to address these problems:
 
 |Routing location
 |Network nodes (or DVR nodes)
-|Every compute node (always distributed)
+|Compute nodes for distributed routing; gateway chassis for centralized functions
 
 |Flow programming
 |L2 agent via OpenFlow
@@ -556,10 +556,10 @@ OVN was created specifically to address these problems:
 
 In Red Hat OpenStack Platform:
 
-* *RHOSP 13* - ML2/OVS was the default. ML2/OVN was available as a technology preview.
-* *RHOSP 16.1* - ML2/OVN became the default for new deployments. ML2/OVS was still supported.
+* *RHOSP 13* - OVN became fully supported, as recorded in the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/13/pdf/release_notes/release-notes.pdf[RHOSP 13 release notes].
+* *RHOSP 15* - ML2/OVN became the default for new deployments, according to the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.0/html/testing_migration_of_the_networking_service_to_the_ml2ovn_mechanism_driver/planning-your-migration-ovs-to-ovn[RHOSP 17.0 migration guide].
 * *RHOSP 16.2* - ML2/OVN was the recommended and default. Migration tooling from ML2/OVS to ML2/OVN was provided.
-* *RHOSP 17* and later - ML2/OVN is the standard networking backend.
+* *RHOSP 17.0/17.1* - ML2/OVS is deprecated but retains maintenance support in the RHOSP 17 releases. Check the release-specific migration requirements; deprecation does not mean immediate removal.
 
 
 [WARNING]
@@ -582,11 +582,11 @@ An ML2/OVS to ML2/OVN migration causes networking downtime. This must be planned
 
 === OVS Kernel Datapath Performance
 
-When OVS processes packets through the kernel datapath (the fast path), performance is very close to native Linux bridge performance. The kernel datapath cache hit rate should be above 99% for established traffic patterns.
+The kernel datapath executes cached actions on a flow hit; those actions can include sending a packet to userspace. Throughput, latency and hit rate must be measured for the workload; neither equivalence to Linux bridge nor a universal 99% threshold follows from this architecture.
 
 === OVN-Programmed OVS Performance
 
-When OVN programs OVS, the same kernel datapath is used. The packet forwarding performance is fundamentally the same. Differences include:
+OVN can program the same OVS datapath, but that does not guarantee identical forwarding performance. Differences include:
 
 * *More flow rules* from the comprehensive logical pipeline
 * *Megaflow cache* efficiency may vary with more complex flow tables
@@ -595,9 +595,9 @@ When OVN programs OVS, the same kernel datapath is used. The packet forwarding p
 
 === Flow Count Differences
 
-*Standalone OVS (minimal):* ~5-10 flows for two VMs on the same bridge.
+*Standalone OVS (minimal):* A learning bridge can use one `normal` OpenFlow rule; explicit policies require additional rules.
 
-*OVN-managed OVS:* ~50-100 flows for the same scenario, covering port security, ACLs, DHCP responder, ARP responder, and more.
+*OVN-managed OVS:* Flow count depends on OVN version, topology and enabled services. Count OpenFlow and datapath flows separately in the actual environment.
 
 === Latency Considerations
 
@@ -608,24 +608,24 @@ When OVN programs OVS, the same kernel datapath is used. The packet forwarding p
 |OVS Standalone
 |OVN
 
-|First packet of new flow
-|Upcall to vswitchd, flow install
-|Upcall to vswitchd, flow install (same)
+|Datapath cache miss (kernel datapath)
+|Upcall to vswitchd, possible flow install
+|Same mechanism, with OVN-generated policy
 
 |Subsequent packets (cached)
-|Kernel fast path (~hundreds of ns)
-|Kernel fast path (~hundreds of ns, same)
+|Execute cached actions
+|Execute cached actions, which can include CT/NAT and recirculation
 
 |New TCP connection (with ACLs)
-|No conntrack overhead (no ACLs)
-|Conntrack new entry (~microseconds)
+|Conntrack setup if stateful rules are programmed
+|Conntrack setup for matching stateful policy
 
 |Established TCP (with ACLs)
-|No conntrack overhead
-|Conntrack lookup (~hundreds of ns)
+|Conntrack lookup if required by programmed actions
+|Conntrack lookup if required by generated actions
 
 |Cross-subnet routing
-|Not applicable (external router)
+|Programmed L3 actions or external router
 |Local logical router lookup
 
 |ARP resolution
@@ -638,13 +638,13 @@ When OVN programs OVS, the same kernel datapath is used. The packet forwarding p
 [NOTE]
 .Key Concept
 ====
-For most real-world workloads, the performance difference between standalone OVS and OVN-managed OVS is not significant enough to be a deciding factor.
+Compare equivalent functions under the same workload, hardware, versions and datapath. The table describes mechanisms, not measured latency or throughput.
 ====
 
 
 === OVS-DPDK with and without OVN
 
-*OVS-DPDK standalone* processes packets entirely in userspace using poll-mode drivers - no kernel module, no interrupts. Can achieve line-rate forwarding on high-speed NICs.
+*OVS-DPDK standalone* uses the userspace `netdev` datapath and poll-mode drivers for DPDK ports, bypassing the OVS kernel datapath on that path. Throughput depends on hardware, NUMA placement, PMD configuration, packet mix and enabled features; line-rate forwarding is not guaranteed. See the https://docs.openvswitch.org/en/stable/intro/install/dpdk/#performance-tuning[OVS-DPDK performance tuning guide].
 
 *OVS-DPDK with OVN* works the same way but with more OpenFlow rules from the OVN pipeline. Considerations include larger flow tables affecting EMC/SMC efficiency, connection tracking overhead in DPDK userspace, and the potential benefit of SmartNIC hardware offload.
 
@@ -652,15 +652,15 @@ For most real-world workloads, the performance difference between standalone OVS
 
 OVN uses conntrack extensively for ACLs, NAT, and load balancing. The overhead has two components:
 
-. *Per-connection setup*: Hash table insertion, ~microseconds per new connection.
-. *Per-packet lookup*: Hash table lookup, ~hundreds of nanoseconds.
+. *Per-connection setup*: Creating and committing connection state.
+. *Per-packet lookup*: Looking up and updating connection state.
 
 This becomes significant in high connection rate scenarios, large connection table scenarios, or short-lived connection workloads.
 
 
 [NOTE]
 ====
-Check conntrack table size with `conntrack -C` and limits with `sysctl net.netfilter.nf_conntrack_max`.
+For the Linux kernel datapath, inspect conntrack with `conntrack -C` and `sysctl net.netfilter.nf_conntrack_max`. These do not measure the `netdev` userspace conntrack table; use the OVS datapath commands appropriate to the installed version.
 ====
 
 
@@ -728,11 +728,11 @@ If you lose all copies of the NB DB (including all Raft replicas), you lose the 
 
 . *OVS is imperative, OVN is declarative.* With OVS, you program each flow rule. With OVN, you describe the desired network topology and OVN generates the flows.
 
-. *OVN adds built-in L3, security, DHCP, NAT, and LB.* These features require external components in standalone OVS but are native in OVN.
+. *OVN adds a logical model for L3, security, DHCP, NAT, and LB.* OVS already supplies primitives such as conntrack, NAT and select groups; OVN configures them as network services.
 
 . *OVN excels at multi-node, multi-tenant environments.* If you are managing networks across multiple hypervisors with multiple tenants, OVN provides automation and consistency that is very difficult to achieve with standalone OVS.
 
-. *The performance overhead of OVN is small.* OVN generates more flows and uses connection tracking, which adds overhead. But for most workloads, this overhead is not significant.
+. *Performance depends on policy and workload.* Sharing the OVS datapath does not make different flow pipelines equally costly.
 
 . *The Red Hat ecosystem has standardized on OVN.* RHOSP uses ML2/OVN, OCP uses OVN-Kubernetes.
 

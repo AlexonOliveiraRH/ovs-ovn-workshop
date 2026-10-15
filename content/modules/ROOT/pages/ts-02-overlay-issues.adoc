@@ -263,9 +263,7 @@ Check the route MTU as well:
     cache
 ----
 
-*Finding:* No specific route MTU is set, so the interface MTU (1500) is used. There is
-no PMTUD-adjusted cached route with a lower MTU either, which tells us PMTUD is not
-functioning (we will investigate this later).
+*Finding:* This route lookup does not display a lower path MTU. That snapshot alone does not prove PMTUD failure: correlate it with the oversized-packet test and captures of ICMP errors on the relevant path.
 
 '''
 
@@ -548,9 +546,7 @@ tcpdump -i any -n 'icmp[icmptype] == 3 and icmp[icmpcode] == 4' -c 5
 0 packets dropped by kernel
 ----
 
-*Finding:* No ICMP "Fragmentation Needed" messages are being received. This means PMTUD
-is not functioning. The oversized Geneve-encapsulated packets are being silently dropped
-somewhere in the physical network without generating the required ICMP responses.
+*Finding:* No matching ICMP message appears in this capture. This does not establish where an oversized packet was dropped or whether a remote device generated an error. Correlate captures on both underlay endpoints and check outer-packet size and DF handling. See https://www.rfc-editor.org/rfc/rfc1191[IPv4 Path MTU Discovery] and https://www.rfc-editor.org/rfc/rfc8926[Geneve encapsulation].
 
 
 [WARNING]
@@ -579,9 +575,7 @@ Check if there is any ICMP filtering on the compute node itself:
 (no output - no ICMP filtering via nftables either)
 ----
 
-*Finding:* The compute nodes themselves are not filtering ICMP. The filtering must be
-happening on a network device between the compute nodes (physical switch, firewall, or
-router).
+*Finding:* Searching for the word `icmp` does not rule out local filtering: generic drop rules, default policies and other hooks can drop ICMP without naming it. Inspect the complete rulesets and counters before locating the loss on the physical network.
 
 '''
 
@@ -634,7 +628,7 @@ The physical NIC has MTU 1500, which is the bottleneck. After Geneve encapsulati
 ~58 bytes of overhead, any inner packet larger than 1442 bytes will result in an outer
 packet exceeding 1500 bytes, which the physical NIC and network cannot carry.
 
-Check OVS interface details:
+Check OVS interface details using the actual tunnel Interface row. `genev_sys_6081` is a kernel device and need not exist as an OVSDB row. Discover names with `ovs-vsctl --columns=name,type,options,statistics find Interface type=geneve`. The original transcript below assumes such a row exists and is retained without validation.
 
 [source,bash]
 ----
@@ -1022,7 +1016,7 @@ Set up monitoring for interface drop counters:
 [source,bash]
 ----
 # Check for drops on Geneve tunnel interfaces:
-ovs-vsctl list interface genev_sys_6081 | grep -E "statistics.*tx_dropped"
+ovs-vsctl --columns=name,statistics find Interface type=geneve
 
 # Watch for increasing drop counters:
 watch -n 5 'ip -s link show ens1f0 | grep -A1 TX'

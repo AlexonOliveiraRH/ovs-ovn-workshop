@@ -857,7 +857,7 @@ connected
 sudo ovn-appctl -t ovn-controller debug/status
 ----
 
-If ovn-controller is connected but flows are missing, force a recompute:
+If comparable traces and flow dumps indicate inconsistent controller state, preserve them before considering a full recompute. This is a CPU-intensive workaround, not a routine response to missing connectivity. Check `ovn-appctl -t ovn-controller list-commands`: the command below is available in older releases; newer builds may also provide `inc-engine/recompute`. See https://www.ovn.org/support/dist-docs/ovn-controller.8.html[ovn-controller(8)].
 
 [source,bash]
 ----
@@ -936,11 +936,12 @@ Check if there are manually added flows:
 sudo ovs-ofctl dump-flows br-int | grep "cookie=0x0"
 ----
 
-Flows with cookie=0x0 (or a cookie that does not match OVN's pattern) are likely manually added. Remove them:
+Cookie zero does not establish that a flow was inserted manually: OVN also installs physical flows with that cookie. Preserve the complete dump and correlate the table, match and actions with the installed OVN version before identifying an unexpected rule. Do not delete flows on `br-int` by cookie alone; that can remove required forwarding rules. See https://github.com/ovn-org/ovn/blob/v23.06.0/controller/physical.c[OVN 23.06 physical flow generation].
 
 [source,bash]
 ----
-sudo ovs-ofctl del-flows br-int cookie=0x0/-1
+# Read-only inspection; this selector is NOT a safe deletion scope
+sudo ovs-ofctl -O OpenFlow15 dump-flows br-int 'cookie=0x0/-1'
 ----
 
 
@@ -1273,11 +1274,11 @@ sudo ovs-vsctl set Open_vSwitch . other_config:n-handler-threads=4
 sudo ovs-vsctl set Open_vSwitch . other_config:n-revalidator-threads=4
 ----
 
-If the flow count is excessively high, consider adjusting the flow eviction policy:
+Inspect the configured flow limit before tuning. Lowering it can increase cache misses and CPU use; a high flow count alone does not justify reducing it. Compare miss-rate deltas and revalidation duration under the same workload. See https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.html[Open_vSwitch other_config:flow-limit].
 
 [source,bash]
 ----
-sudo ovs-vsctl set Open_vSwitch . other_config:flow-limit=100000
+sudo ovs-vsctl get Open_vSwitch . other_config:flow-limit
 ----
 
 Check for broadcast storms or loops:
@@ -2006,7 +2007,7 @@ sudo ovn-trace --detailed net1 \
   'inport=="port1" && eth.src==fa:16:3e:aa:bb:cc && eth.dst==fa:16:3e:11:22:33 && ip4.src==10.0.0.5 && ip4.dst==8.8.8.8 && ip.ttl==64'
 ----
 
-Look for the NAT stage in the output:
+Look for the NAT stages in the output. The following is a schematic illustration, not captured output: table numbers, source line numbers and UUIDs are placeholders. DNAT is in router ingress and SNAT is in router egress (`lr_out_snat`), as defined in https://github.com/ovn-org/ovn/blob/v23.06.0/northd/northd.c[OVN 23.06 northd].
 
 ----
 ingress(dp="router1", inport="router1-net1")
@@ -2015,11 +2016,13 @@ ingress(dp="router1", inport="router1-net1")
  12. lr_in_dnat (northd.c:11234): ip, priority 0, uuid 45678901
      next;
  ...
- 16. lr_in_snat (northd.c:11456): ip4.src == 10.0.0.5 && outport == "router1-external", priority 33, uuid 56789012
+egress(dp="router1", outport="router1-external")
+ ...
+ 16. lr_out_snat (northd.c:11456): ip4.src == 10.0.0.5 && outport == "router1-external", priority 33, uuid 56789012
      ct_snat(172.16.0.101);
 ----
 
-The trace shows SNAT being applied to change the source IP from 10.0.0.5 to 172.16.0.101. If the SNAT step is missing, NAT is not configured for this traffic path.
+The illustration shows the intended SNAT from 10.0.0.5 to 172.16.0.101. If an actual trace omits that step, check the simulated connection state, selected path and NAT configuration before concluding that the rule is absent.
 
 *Common Causes:*
 
@@ -4156,7 +4159,7 @@ Step 6: Verify that compaction has never been run.
 [source,bash]
 ----
 sudo podman exec -it ovn_cluster_north_db_server \
-  ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory/show
+  ovn-appctl -t /var/run/ovn/ovnnb_db.ctl memory/show
 ----
 
 *Root Cause:*
@@ -4298,7 +4301,7 @@ sudo ovn-appctl -t ovn-controller connection-status
 connected
 ----
 
-Connected, but maybe it has stale state. Check the last recompute time:
+Connected does not establish convergence. The following coverage counters report activity and rates, not the timestamp of the last recompute:
 
 [source,bash]
 ----
@@ -4310,7 +4313,7 @@ sudo ovn-appctl -t ovn-controller coverage/show | grep "lflow_run\|recompute"
   recompute                        2    0.0     0.0     0.0     0.0
 ----
 
-`lflow_run` rate is 0.0 in the last 5 seconds and 1 minute. ovn-controller is not processing logical flows. It may have missed the SB database update notification.
+Zero recent activity can be normal when no relevant configuration changes occur. These counters alone do not prove that an update notification was lost. Compare configuration sequence numbers and logs collected over the same interval.
 
 Step 6: Force a recompute.
 
@@ -4345,7 +4348,7 @@ curl --connect-timeout 5 http://<vm-floating-ip>:8080
 
 *Root Cause:*
 
-ovn-controller on the compute node missed the SB database change notification for the new ACL. This can happen when ovn-controller's OVSDB monitor connection experiences a transient issue - the connection stays up, but a change notification is lost. Without the notification, ovn-controller does not know to recompute its flows. This is a known edge case that can occur after network jitter or brief database congestion.
+The supplied excerpts do not establish a root cause. A textual search for `tp_dst=8080` can miss equivalent OpenFlow encodings, and the post-recompute flow shown matches established traffic rather than proving that new connections are permitted. Reproduce with aligned logical/OpenFlow traces and correlate controller logs and configuration sequence numbers before attributing the issue to incremental processing. Recovery after recomputation does not prove that TCP/OVSDB silently lost a notification.
 
 *Resolution:*
 
@@ -4355,12 +4358,12 @@ The `recompute` command forced ovn-controller to re-read all logical flows from 
 
 * Set up periodic flow validation that compares SB logical flows with actual OVS flows
 * Monitor the `nb_cfg` value on each chassis - if a chassis's `nb_cfg` falls behind the SB global `nb_cfg` for more than a few minutes, it indicates a sync issue
-* Consider restarting ovn-controller on a schedule (e.g., weekly) to force a full recompute
+* Investigate repeated divergence with version-specific logs and a reproducer; do not schedule controller restarts as a substitute for diagnosis
 
 [source,bash]
 ----
 # Check nb_cfg sync status across all chassis
-sudo ovn-sbctl list Chassis | grep -E "name|nb_cfg"
+sudo ovn-sbctl --columns=name,nb_cfg list Chassis_Private
 ----
 
 ----
@@ -4551,12 +4554,12 @@ for node in compute-{1..20}; do
 done
 ----
 
-Optionally, reduce the maximum number of datapath flows to force faster eviction of idle flows:
+Inspect the flow limit on the affected nodes before tuning it. A smaller limit can increase misses and upcalls; it is not a general remedy for high CPU:
 
 [source,bash]
 ----
 for node in compute-{1..20}; do
-  ssh $node "sudo ovs-vsctl set Open_vSwitch . other_config:flow-limit=200000"
+  ssh $node "sudo ovs-vsctl get Open_vSwitch . other_config:flow-limit"
 done
 ----
 
@@ -4689,7 +4692,7 @@ On both nodes, ensure OVN is running and the tunnel between them is established.
 [source,bash]
 ----
 # On node-1, block Geneve traffic from node-2
-sudo iptables -I INPUT -p udp --sport 6081 -s <node-2-ip> -j DROP
+sudo iptables -I INPUT -p udp --dport 6081 -s <node-2-ip> -j DROP
 ----
 
 *Tasks:*
@@ -4704,7 +4707,7 @@ sudo iptables -I INPUT -p udp --sport 6081 -s <node-2-ip> -j DROP
 
 [source,bash]
 ----
-sudo iptables -D INPUT -p udp --sport 6081 -s <node-2-ip> -j DROP
+sudo iptables -D INPUT -p udp --dport 6081 -s <node-2-ip> -j DROP
 ----
 
 '''
@@ -4777,7 +4780,7 @@ This exercise does not require deliberate misconfiguration - it uses the existin
 ----
    What percentage of the conntrack table is in use? At what percentage should you be concerned (recommended threshold: 75%)?
 
-. Run `sudo ovs-ofctl dump-flows br-int | wc -l` to count the OpenFlow flows and `sudo ovs-appctl dpctl/dump-flows | wc -l` to count the datapath flows. What is the ratio between them? (Typically datapath flows are 5-20x more than OpenFlow flows because each OpenFlow flow can generate multiple microflow entries in the datapath.)
+. Use `sudo ovs-ofctl -O OpenFlow15 dump-aggregate br-int` for the OpenFlow count and `sudo ovs-appctl dpctl/show` for the datapath count. Compare them under a documented workload. There is no fixed ratio: wildcarding, recirculation, traffic diversity and idle-flow expiry all affect the result.
 
 Write a brief performance assessment based on your findings. Note any values that suggest a potential problem and what action you would recommend.
 

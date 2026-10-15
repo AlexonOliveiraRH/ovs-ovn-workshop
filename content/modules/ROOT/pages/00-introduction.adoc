@@ -47,7 +47,7 @@ Every major Red Hat infrastructure product relies on OVS, OVN, or both for its n
 
 * *RHOSP* uses OVN (via Neutron ML2/OVN) as its default networking backend. Earlier versions used ML2/OVS, which you will still encounter in existing deployments.
 * *RHOSO* uses OVN as its primary networking backend, with the control plane running on OpenShift and the data plane on bare-metal nodes.
-* *OCP* uses OVN-Kubernetes as the default Container Network Interface (CNI) plugin since OpenShift 4.12, including managed offerings like ROSA (Red Hat OpenShift Service on AWS), ARO (Azure Red Hat OpenShift), and ROKS (Red Hat OpenShift on IBM Cloud).
+* *OCP* uses OVN-Kubernetes by default for *new installations starting with 4.12*. An upgrade does not automatically migrate an existing OpenShift SDN cluster. Managed offerings have their own version-specific networking documentation. See the https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/release_notes/ocp-4-12-release-notes[OCP 4.12 release notes].
 
 This means that virtually every networking-related support case, architecture review, or troubleshooting session you participate in will involve OVS, OVN, or both. Understanding how they work - not just at a surface level but at the level of flow tables, database entries, and packet walks - is what separates an engineer who can resolve issues quickly from one who is guessing.
 
@@ -85,12 +85,12 @@ Key milestones:
 |OVS becomes a Linux Foundation Collaborative Project
 
 |2016
-|OVS 2.6 introduces conntrack-based stateful firewalling
+|OVS 2.5 introduces `ct` connection tracking; OVS 2.6 adds `ct(nat(...))` (https://docs.openvswitch.org/en/latest/ref/ovs-actions.7/[ovs-actions(7)])
 
 |2017
 |OVS with DPDK support gains traction for NFV workloads
 
-|2020
+|2019
 |OVN splits from OVS and moves to its own repository under the OVN GitHub organization
 
 |===
@@ -131,13 +131,13 @@ Key milestones:
 |OpenStack Neutron adds ML2/OVN driver (initially experimental)
 
 |2019
-|OVN becomes the default backend for Neutron in upstream OpenStack
+|ML2/OVN becomes the default for new RHOSP 15 deployments (a product-specific choice, not a universal Neutron default)
 
-|2020
-|OVN splits from the OVS repository into its own project under the OVS GitHub organization
+|2019
+|OVN development separates from OVS into the ovn-org/ovn repository
 
-|2021
-|OVN-Kubernetes becomes the default CNI for Red Hat OpenShift 4.x
+|2023
+|OVN-Kubernetes becomes the default for new OCP 4.12 installations
 
 |===
 
@@ -145,7 +145,7 @@ Key milestones:
 [NOTE]
 .Key Concept
 ====
-OVN started as a sub-project within the OVS source tree. In 2020, it was separated into its own repository to allow independent release cycles and governance, but it remains tightly coupled to OVS - OVN cannot function without OVS underneath it.
+OVN started as a sub-project within the OVS source tree. Development separated into its own repository in 2019, allowing independent releases while retaining the OVS datapath. See https://developers.redhat.com/blog/2019/08/30/the-clean-break-of-open-virtual-network-from-open-vswitch[the contemporary account of the OVN/OVS split].
 ====
 
 
@@ -206,7 +206,7 @@ RHOSP has used both OVS-based and OVN-based networking backends over its history
 
 *ML2/OVS (Legacy):*
 
-* Used in RHOSP versions up through RHOSP 16.x (available but not default in later versions).
+* Available in RHOSP 16.x and 17.x; deprecated starting with RHOSP 17.0, with maintenance support documented through the RHOSP 17 releases.
 * Neutron agents (neutron-openvswitch-agent) run on each compute and network node.
 * These agents program OVS flows directly based on Neutron's network model.
 * L3 routing is centralized on dedicated network nodes (unless DVR is enabled).
@@ -214,8 +214,8 @@ RHOSP has used both OVS-based and OVN-based networking backends over its history
 
 *ML2/OVN (Current/Default):*
 
-* Default backend starting with RHOSP 16.2 and the standard in RHOSP 17+.
-* Replaces all Neutron agents with OVN components (ovn-northd, ovn-controller).
+* Default for new deployments starting with RHOSP 15, as documented in the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.0/html/testing_migration_of_the_networking_service_to_the_ml2ovn_mechanism_driver/planning-your-migration-ovs-to-ovn[RHOSP 17.0 migration guide].
+* Replaces the Neutron OVS, L3, and DHCP agents for ordinary OVN-managed instance networking. An OVN metadata agent is still used on compute nodes (https://docs.redhat.com/en/documentation/red_hat_openstack_platform/16.1/html/networking_guide/assembly_work-with-ovn_rhosp-network[RHOSP 16.1 architecture]).
 * Neutron writes to the OVN Northbound Database, and OVN handles everything from there.
 * L3 routing is distributed by default - East-West traffic is routed directly on the compute node.
 * Security groups are implemented via OVN ACLs and OVS conntrack.
@@ -232,7 +232,7 @@ If you are working on a RHOSP support case, one of the first things to determine
 
 RHOSO represents the next generation of Red Hat's OpenStack offering, with the control plane running as containers on OpenShift and the data plane running on bare-metal nodes.
 
-* OVN is the *primary and only supported networking backend* in RHOSO.
+* OVN is the default ML2 mechanism driver in https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html-single/configuring_networking_services/index[RHOSO 18.0]. Other mechanism drivers and integrations must be assessed against that release's documentation.
 * The OVN control plane components (northbound DB, southbound DB, ovn-northd) run as pods on the OpenShift cluster.
 * ovn-controller runs on each bare-metal data plane node, programming OVS on those nodes.
 * The architecture separates the control plane lifecycle (managed by OpenShift operators) from the data plane lifecycle (managed by the OpenStack data plane operator).
@@ -249,7 +249,7 @@ RHOSO introduces a new operational model that can be confusing for engineers acc
 
 OpenShift uses OVN-Kubernetes as its default Container Network Interface (CNI) plugin:
 
-* *OVN-Kubernetes has been the default CNI since OpenShift 4.12* and is the *only* CNI since OCP 4.17 (OpenShift SDN was removed). This applies to all deployment types: self-managed, ROSA (AWS), ARO (Azure), and ROKS (IBM Cloud).
+* *OVN-Kubernetes is the default for new OCP installations starting with 4.12*. This does not mean it is the only CNI: certified third-party providers and additional-network plugins have separate support requirements. Do not extrapolate OCP release dates to every managed offering.
 * OVN-Kubernetes uses OVN to implement pod networking, service routing, NetworkPolicy enforcement, EgressIP, EgressFirewall, and more.
 * Each node runs ovn-controller, which programs the local OVS instance.
 * Since OCP 4.14, OVN-K runs in *Interconnect (IC) mode*: each node has its own NB/SB DB, ovn-northd, and ovn-controller (no centralized Raft cluster). In pre-4.14, the databases ran centrally on control plane nodes.

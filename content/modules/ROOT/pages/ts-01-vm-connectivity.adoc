@@ -547,6 +547,8 @@ Nov 13 08:16:02 compute-1.lab.redhat.local ovn-controller[1856]: 0001|ovn_contro
 
 Verify that `ovn-controller` can reach the southbound database:
 
+The original transcripts below use a short `ovs-appctl` target. This resolves only when the client's runtime directory matches the controller's socket location. With the displayed `/var/run/ovn/ovn-controller.pid`, normally use `ovn-appctl -t ovn-controller connection-status`, or pass the actual absolute control-socket path to either client. See xref:11-management-tooling.adoc#_ovn_controller_appctl_commands[the runtime socket reference].
+
 [source,bash]
 ----
 [root@compute-0 ~]# ovs-appctl -t ovn-controller connection-status
@@ -1298,7 +1300,7 @@ If the security team insists on blocking UDP 6081 and cannot make an exception:
 [root@controller-0 ~]# ovn-nbctl set nb_global . ipsec=true
 ----
 
-. *Switch to STT encapsulation:* OVN can use STT (Stateless Transport Tunneling) which uses TCP instead of UDP. However, STT has limitations and is not widely recommended.
+. *Retain the product's documented encapsulation:* Do not propose STT as a generic RHOSP workaround for blocked Geneve. Verify the supported encapsulation for the exact release and correct the required underlay firewall path with the network team.
 
 . *Request a dedicated VLAN for tunnel traffic:* Place all compute node tunnel interfaces on a dedicated VLAN that bypasses the UDP firewall rule. This is often the simplest organizational solution.
 

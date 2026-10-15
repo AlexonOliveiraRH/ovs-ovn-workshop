@@ -2,6 +2,11 @@
 
 == The Problem
 
+[IMPORTANT]
+====
+Technical review: the original command outputs and log excerpts below are preserved, but they do not validate the proposed missing-DNS root cause. In https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0], mandatory DHCPv4 options are `server_id`, `server_mac` and `lease_time`; `dns_server` is optional. The exact RHOSP package build and any claimed downstream defect still require verification. Do not use this scenario as proof that DNS configuration is required to obtain a DHCP lease.
+====
+
 *Customer report:* "New VMs in RHOSP are not getting IP addresses via DHCP. Existing VMs
 with static IPs work fine. The issue started after a new subnet was configured."
 
@@ -290,10 +295,10 @@ For comparison, capture on a working VM's TAP interface on a different subnet:
           DHCP-Message Option 53, length 1: ACK
 ----
 
-*Finding:* On the working subnet, we see the full DHCP exchange: Discover, Offer,
-Request, Ack. The Offer includes all required options (server_id, lease_time, subnet_mask,
-router, DNS, MTU). On the broken subnet, only Discovers are seen with no Offers. The
-difference must be in the OVN DHCP configuration.
+*Finding:* The supplied captures show a full DHCP exchange on one subnet and only
+Discovers at the failing VM's capture point. This motivates comparing DHCP configuration,
+logical flows and the packet delivery path; it does not establish a configuration error.
+Options present in a successful Offer, including DNS, are not all mandatory OVN fields.
 
 '''
 
@@ -486,9 +491,7 @@ server_id = 192.168.100.1            | server_id = 192.168.200.1
 server_mac = fa:16:3e:00:00:01       | server_mac = fa:16:3e:00:00:02
 ----
 
-The broken subnet is *missing the `dns_server` option*. In some OVN versions and
-configurations, missing required DHCP options can cause the DHCP response generation
-to fail silently in the logical flow pipeline.
+The displayed subnet has no `dns_server` option, but all three mandatory DHCPv4 options are present. Missing DNS configuration does not explain the absence of an Offer. Check the port association, offered address/CIDR, logical flows, controller connectivity and packet path before changing configuration.
 
 
 [NOTE]
@@ -529,8 +532,7 @@ up                  : true
 ----
 
 *Finding:* The `dhcpv4_options` field is set to the correct DHCP options UUID
-(`b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e`). The association exists, but the options
-themselves are incomplete (missing dns_server).
+(`b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e`). The association exists and the displayed options include the mandatory DHCPv4 fields; absence of `dns_server` does not make the set invalid.
 
 The `addresses` field correctly shows the MAC and IP (`fa:16:3e:cc:44:88 192.168.200.10`).
 This is important - OVN uses the addresses field to determine what IP to offer via DHCP.
@@ -539,9 +541,7 @@ This is important - OVN uses the addresses field to determine what IP to offer v
 
 === Step 6: Use ovn-trace to Trace a DHCP Discover Packet
 
-*Why:* ovn-trace lets us simulate a packet through the OVN logical pipeline and see
-exactly where the DHCP response generation succeeds or fails. This is the definitive
-diagnostic tool for understanding OVN's DHCP behavior.
+*Why:* ovn-trace inspects logical flow selection, but does not validate the real DHCP payload or delivery. In https://github.com/ovn-org/ovn/blob/v23.06.0/utilities/ovn-trace.c[OVN 23.06.0], `execute_put_dhcp_opts()` assumes a DHCP request and sets the result to success. The supplied trace below is internally inconsistent: it shows the response branch requiring `reg0[3]` and then claims that bit was unset. Preserve it as supplied material, not as proof of an actual trace result.
 
 [source,bash]
 ----
@@ -576,22 +576,13 @@ ingress(dp="neutron-c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f", inport="c4d5e6f7-a8b9
     /* but reg0[3] was not set - put_dhcp_opts failed due to incomplete options */
 ----
 
-*Finding:* The trace shows what happens in the logical pipeline:
-
-. *Table 11 (ls_in_dhcp_options):* The pipeline matches the DHCP Discover and attempts
-   to call `put_dhcp_opts()` with the configured options. Note that `dns_server` is
-   absent from the call.
-
-. *Table 12 (ls_in_dhcp_response):* This table checks `reg0[3]` which should be set
-   by `put_dhcp_opts()` if the options were successfully applied. When the DHCP options
-   are incomplete or fail validation, `reg0[3]` is not set, and the response is not
-   generated.
+*Finding:* The excerpt cannot establish a missing-DNS failure. The selected response flow requires a successful options result, contradicting its final comment. Recollect the trace with the installed build and separately capture DHCP requests and responses on the affected port.
 
 
 [NOTE]
 .Key Concept
 ====
-The `put_dhcp_opts()` action in OVN constructs the DHCP response packet. It sets `reg0[3]` to 1 if successful. The subsequent `ls_in_dhcp_response` table checks this register to decide whether to send the response. If `put_dhcp_opts()` fails (due to missing or invalid options), the DHCP response is never sent and the Discover packet continues through the pipeline as a regular broadcast - which also gets dropped by default ACLs since there is no DHCP server port to receive it.
+Real DHCP handling depends on the packet and controller execution; logical tracing alone cannot prove it succeeded. Pair the trace with packet captures and controller logs, and distinguish failure to generate an Offer from failure to deliver it to the guest.
 ====
 
 
@@ -620,8 +611,7 @@ Now trace the same packet on the *working* subnet for comparison:
     /* reg0[3] IS set - put_dhcp_opts succeeded, response is sent */
 ----
 
-*Finding:* On the working subnet, `put_dhcp_opts()` includes `dns_server = 8.8.8.8`
-and succeeds (sets `reg0[3]`). The DHCP response is generated and sent back to the VM.
+*Finding:* This second excerpt includes DNS information. Its simulated success does not prove that DNS made the difference or that a response reached the VM.
 
 '''
 
@@ -668,28 +658,20 @@ help pinpoint the exact cause of the failure.
 [root@compute-0 ~]# journalctl -u ovn-controller --since "1 hour ago" | grep -i dhcp
 ----
 
-----
-Apr 15 14:10:01 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
-Apr 15 14:10:05 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
-Apr 15 14:10:13 compute-0 ovn-controller[12345]: pinctrl_handle_put_dhcp_opts: DHCP options incomplete for lport c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f: missing required option dns_server for client fa:16:3e:cc:44:88
-----
-
-*Finding:* ovn-controller explicitly logs that the DHCP options are *incomplete* and
-specifically identifies `dns_server` as the missing option. This confirms our diagnosis.
-
-
 [WARNING]
 ====
-Not all OVN versions produce this specific log message. In older versions, the DHCP failure may be completely silent. Always use `ovn-trace` as the definitive diagnostic rather than relying solely on log messages.
+A transcrição anterior atribuía ao ovn-controller uma mensagem sobre `dns_server` obrigatório, sem arquivo original que comprovasse sua origem. Ela foi retirada: DNS é opcional no https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0 verificado]. Não há uma saída esperada de erro para apresentar aqui. Colete os logs reais, registre a versão exata dos pacotes e confronte a mensagem com o código correspondente antes de usá-la como evidência.
 ====
+
+*Conclusão:* sem um log autêntico e uma reprodução, essa etapa não confirma a causa da falha. Preserve as coletas originais; traces lógicos complementam capturas de pacotes, não as substituem.
 
 
 '''
 
 === Step 9: Verify the Issue Scope
 
-*Why:* We need to confirm that this is a subnet-wide configuration issue rather than a
-problem specific to one compute node or one VM.
+*Why:* Test whether the symptom also occurs on another VM and compute node. This
+helps assess its scope without presuming a subnet-wide configuration error.
 
 Test on a second VM on a different compute node:
 
@@ -707,52 +689,34 @@ Test on a second VM on a different compute node:
 2 packets captured
 ----
 
-*Finding:* The second VM on compute-2 has the same problem - DHCP Discovers without
-Offers. This confirms the issue is *subnet-wide* (an OVN DHCP configuration problem)
-and not specific to a single compute node.
+*Finding:* The supplied capture from a second VM on compute-2 also shows Discovers
+without Offers. The symptom is therefore reported on two VMs across two nodes; this
+does not prove that every VM in the subnet is affected or that shared DHCP configuration
+is the cause. Correlate configuration and packet paths before drawing that conclusion.
 
 '''
 
 == Root Cause
 
-The root cause is a *missing DNS nameserver configuration* on the Neutron subnet, which
-resulted in incomplete DHCP options in the OVN Northbound DB:
-
-. The subnet `app-subnet` (192.168.200.0/24) was created with `enable_dhcp: True` but
-   *without specifying DNS nameservers* (`dns_nameservers` was left empty).
-
-. The Neutron ML2/OVN driver created DHCP options in the OVN NB DB, but without the
-   `dns_server` option since no DNS nameservers were configured in Neutron.
-
-. When VMs send DHCPDISCOVER packets, ovn-controller processes them through the logical
-   pipeline. The `put_dhcp_opts()` action attempts to construct a DHCP Offer but fails
-   because the `dns_server` option is missing.
-
-. In this OVN version, certain DHCP options (including `dns_server`) are required for
-   `put_dhcp_opts()` to succeed. When they are absent, `reg0[3]` is not set and the DHCP
-   response is never generated.
-
-. The VM's DHCP client sends repeated Discovers but never receives an Offer, eventually
-   timing out.
+The root cause is not established by the supplied material. Missing `dns_server` is not a mandatory-option failure in the verified upstream release. The https://github.com/ovn-org/ovn/blob/v23.06.0/northd/northd.c[northd DHCPv4 checks] require `server_id`, `server_mac` and `lease_time`, all present in the supplied options. A downstream regression would require an exact package version, original logs and a reproducible test; none is established here.
 
 
 [NOTE]
 .Key Concept
 ====
-The difference between traditional DHCP (dnsmasq) and OVN native DHCP is important here:
-
-* *dnsmasq (traditional):* Acts as a full DHCP server. Can provide default values for missing options. If DNS is not configured, dnsmasq can still send a valid Offer without the DNS option.
-* *OVN native DHCP:* Constructs the DHCP response from explicitly configured options in the NB DB. In some versions, missing options that the VM's DHCP client requested via Option 55 (Parameter Request List) can cause the response construction to fail, especially if the client's request includes DNS as a required parameter.
+A client's Parameter Request List does not turn optional DNS information into a mandatory OVN configuration field. Distinguish successful address allocation from subsequent DNS resolution, and inspect client-specific acceptance rules separately.
 ====
 
 
 '''
 
-== Resolution
+[#_resolution]
+== Configuration Example and Recovery Checks (Causality Unverified)
 
-=== Step 1: Fix the Subnet Configuration
+[#_step_1_fix_the_subnet_configuration]
+=== Step 1: Optional DNS Configuration (Not a Proven DHCP Fix)
 
-Add DNS nameservers to the subnet:
+The original DNS change below is retained as a configuration example, not a verified fix for missing Offers. Configure organization-approved resolvers only if DNS distribution is desired. To resolve the DHCP failure, identify the failed stage from captures and logs, correct that specific configuration through Neutron and retest.
 
 [source,bash]
 ----
@@ -780,7 +744,8 @@ Verify the change:
 
 '''
 
-=== Step 2: Verify OVN DHCP Options Updated
+[#_step_2_verify_ovn_dhcp_options_updated]
+=== Step 2: Verify the DNS Configuration Update in OVN
 
 The Neutron ML2/OVN driver should automatically update the OVN DHCP options when the
 subnet is modified:
@@ -799,10 +764,10 @@ server_id = 192.168.200.1
 server_mac = fa:16:3e:00:00:02
 ----
 
-*Finding:* The `dns_server` option is now present with both nameservers. The DHCP options
-are complete.
+*Finding:* DNS information is now present in the supplied example. The mandatory DHCPv4 fields were already present before the change; this does not establish why Offers were absent.
 
-Compare before and after:
+The original comparison below uses "fix" as a label; it shows a DNS configuration
+change, not a demonstrated repair of DHCP address allocation:
 
 ----
 Before fix:                          | After fix:
@@ -817,9 +782,11 @@ server_mac = fa:16:3e:00:00:02       | server_mac = fa:16:3e:00:00:02
 
 '''
 
-=== Step 3: Restart DHCP on Affected VMs
+[#_step_3_restart_dhcp_on_affected_vms]
+=== Step 3: Retest DHCP on Affected VMs
 
-The VMs need to send new DHCP Discovers now that the options are fixed. From inside the VM:
+Retest DHCP from inside the VM and capture the exchange. A successful retest after
+changing DNS is not, by itself, evidence that DNS caused the original failure:
 
 [source,bash]
 ----
@@ -833,7 +800,7 @@ Or simply reboot the VM if console access is not available:
 (overcloud) [stack@undercloud ~]$ openstack server reboot test-vm-1
 ----
 
-Verify DHCP works with tcpdump:
+Capture the DHCP exchange during the retest:
 
 [source,bash]
 ----
@@ -858,8 +825,9 @@ Verify DHCP works with tcpdump:
           DHCP-Message Option 53, length 1: ACK
 ----
 
-*Finding:* The full DHCP exchange now works: Discover, Offer, Request, Ack. The Offer
-includes all required options including the DNS servers.
+*Finding:* The supplied retest excerpt shows Discover, Offer, Request and Ack. The
+Offer includes optional DNS information. This sequence does not establish that adding
+DNS caused recovery or identify why Offers were absent earlier.
 
 '''
 
@@ -922,16 +890,17 @@ PING 192.168.200.1 (192.168.200.1) 56(84) bytes of data.
 142.250.80.46
 ----
 
-*Finding:* Everything works now - IP address via DHCP, default route via DHCP, DNS
-resolution via the configured nameservers.
+*Finding:* The supplied outputs show an assigned address, default route and successful
+DNS lookup. They do not establish the cause of the earlier DHCP failure or demonstrate
+that adding DNS caused recovery.
 
 '''
 
 == Prevention
 
-=== 1. Always Specify DNS Nameservers When Creating Subnets
+=== 1. Configure DNS According to Application Requirements
 
-Make it a standard practice to always include DNS nameservers:
+Use approved DNS servers when required by the workload; the following addresses are examples, not a DHCP prerequisite:
 
 [source,bash]
 ----
@@ -1160,17 +1129,11 @@ Manually modifying OVN DHCP options bypasses Neutron's management. If Neutron la
   to check. DHCP responses are generated locally on each compute node by ovn-controller
   using options configured in the OVN NB DB.
 
-* *Missing DHCP options can silently break DHCP.* Unlike dnsmasq, OVN may not provide
-  default values for missing options. If the VM's DHCP client requests an option (via
-  Option 55) that is not configured, the DHCP response may fail to be generated.
+* *Check mandatory options and port associations.* For the verified release, these are `server_id`, `server_mac` and `lease_time`; also verify the offered address belongs to the configured CIDR.
 
-* *Always configure DNS nameservers when creating subnets.* This is the most common
-  omission that breaks OVN DHCP. Even if VMs will not use DNS, configure a placeholder
-  value.
+* *DNS is optional for DHCP address allocation.* Configure valid resolvers when needed; do not add placeholder DNS values to try to fix missing Offers.
 
-* *ovn-trace is the definitive DHCP diagnostic tool.* It shows exactly what happens to
-  a DHCP Discover in the OVN logical pipeline, including whether `put_dhcp_opts()` succeeds
-  and whether a response is generated.
+* *Use ovn-trace together with packet captures.* The trace simulates logical behavior and does not validate real DHCP packet processing or delivery.
 
 * *Compare working and broken configurations side by side.* When DHCP works on one
   subnet but not another, a direct comparison of the OVN DHCP options between the two

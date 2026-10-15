@@ -341,7 +341,7 @@ Physical Switch:
 
 Why VLANs matter for OVS/OVN:
 
-* OVS uses VLANs internally as a tagging mechanism to identify which logical network a packet belongs to (even in overlay networks)
+* ML2/OVS can use local VLAN tags to identify tenant networks; OVN uses logical datapath and port metadata instead of requiring a local VLAN for every overlay network
 * RHOSP provider networks often map to physical VLANs
 * OVN can work with VLAN-backed networks in addition to overlay networks
 
@@ -368,7 +368,7 @@ TCI (Tag Control Information):
   - VID: 12 bits (VLAN ID, 0-4095)
 ----
 
-The *VLAN ID (VID)* field is 12 bits, giving a range of 0-4095. VLAN 0 and 4095 are reserved, leaving 4094 usable VLANs.
+The *VLAN ID (VID)* field is 12 bits. IDs 1-4094 identify VLANs; VID 0 denotes a priority-tagged frame rather than a separate VLAN, and 4095 is reserved. See the https://docs.openvswitch.org/en/stable/faq/vlan/[OVS VLAN FAQ].
 
 === Access Ports vs Trunk Ports
 
@@ -391,7 +391,7 @@ ovs-vsctl add-port br0 eth3
 
 [NOTE]
 ====
-In OVS, a port without a `tag` or `trunks` setting behaves as a trunk port carrying all VLANs by default. This is different from many physical switches where ports default to access mode on VLAN 1.
+For the OVS `normal` switching action, a port without a `tag` or `trunks` setting behaves as a trunk carrying all VLANs. Explicit OpenFlow actions must implement the required VLAN handling themselves; these OVSDB settings do not automatically constrain arbitrary flows. See the https://docs.openvswitch.org/en/stable/faq/vlan/[OVS VLAN FAQ].
 ====
 
 
@@ -506,13 +506,13 @@ Overlays are the fundamental mechanism that makes cloud-scale networking possibl
 |  Flags | Reserved | VNI (24 bits) | Reserved  |
 +-----------------------------------------------+
 | Original (Inner) Ethernet Frame               |
-|  Dst MAC | Src MAC | EtherType | Payload | FCS|
+|  Dst MAC | Src MAC | EtherType | Payload      |
 +-----------------------------------------------+
 ----
 
 *Key VXLAN concepts:*
 
-* *VNI (VXLAN Network Identifier):* A 24-bit identifier that labels which virtual network the encapsulated frame belongs to. This is the overlay equivalent of a VLAN ID, but with ~16.7 million possible values instead of 4094.
+* *VNI (VXLAN Network Identifier):* A 24-bit identifier that labels which virtual network the encapsulated frame belongs to. It provides ~16.7 million possible values; this field size is not a supported deployment scale. VXLAN does not carry the original Ethernet FCS (https://www.rfc-editor.org/rfc/rfc7348.html[RFC 7348, section 5]).
 * *VTEP (VXLAN Tunnel Endpoint):* The device that performs encapsulation and decapsulation. In our context, OVS acts as the VTEP.
 * *UDP port 4789:* The standard VXLAN port. The outer source port is typically a hash of the inner frame's headers, providing ECMP load distribution across multiple physical paths.
 
@@ -585,38 +585,35 @@ Geneve solves this with *Type-Length-Value (TLV) options* - variable-length meta
 +-----------------------------------------------+
 ----
 
-*What OVN puts in Geneve TLV options:*
+*How OVN encodes logical tunnel metadata (upstream OVN 24.03):*
 
-OVN uses Geneve TLV options to carry logical metadata through the tunnel:
+OVN uses the VNI and one Geneve option for its logical identifiers:
 
 
 [cols="1,1",options="header"]
 |===
-|TLV Option
+|Field
 |Purpose
 
 |Logical Datapath (VNI field)
 |Identifies which logical switch or router the packet belongs to
 
-|Logical Input Port
+|Logical Input Port (15 bits in the option value)
 |The logical port where the packet entered the OVN pipeline
 
-|Logical Output Port
+|Logical Output Port (16 bits in the same option value)
 |The logical port where the packet should exit
-
-|Connection Tracking State
-|Conntrack state for stateful ACL processing
 
 |===
 
 
-This metadata is critical: it allows the receiving hypervisor's ovn-controller to continue processing the packet through the correct logical pipeline without re-doing the entire classification from scratch.
+These identifiers total *55 bits*: 24 + 15 + 16. The option has class `0x0102`, type `0x80`, and a 32-bit value (one reserved bit plus the two port IDs). It does not transport the conntrack table or `ct_state`. See https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-architecture.7.xml[OVN 24.03 tunnel encapsulations].
 
 
 [NOTE]
 .Key Concept
 ====
-OVN uses Geneve instead of VXLAN because Geneve's extensible TLV options allow OVN to carry logical pipeline metadata (input port, output port, datapath) inside the tunnel header. This metadata is essential for OVN's distributed processing model. When VXLAN is used with OVN (which is possible but not recommended), OVN loses the ability to carry this metadata efficiently, and some features may not work correctly.
+Geneve carries OVN's complete logical identifiers. Upstream OVN 24.03 also defines VXLAN mode with reduced datapath/output-port ranges and no ingress-port identifier. This upstream capability does not establish Red Hat product support; consult the documentation for the deployed product version.
 ====
 
 
@@ -906,7 +903,7 @@ In OVN deployments, *ovn-controller* is the SDN controller. It runs on every nod
 
 [NOTE]
 ====
-When you see "SDN" in the context of Red Hat products, it almost always means OVS + OVN. The older OpenShift SDN plugin (which was not based on OVN) was removed in OCP 4.17. OVN-Kubernetes is the sole CNI going forward.
+SDN is an architectural approach, not a synonym for OVS + OVN; identify the implementation for the product and release in use. The older OpenShift SDN plugin (which was not based on OVN) was removed in https://docs.redhat.com/en/documentation/openshift_container_platform/4.17/html/release_notes/ocp-4-17-release-notes[OCP 4.17]. OVN-Kubernetes is the default primary network plugin in that release, not the only CNI option: the https://docs.redhat.com/en/documentation/openshift_container_platform/4.17/html/networking_overview/about-networking[OCP 4.17 networking overview] also lists certified third-party primary network plugins and additional-network CNI plugins. Availability and support must be checked for the specific plugin and release.
 ====
 
 

@@ -2,9 +2,9 @@
 #
 # OVN Hands-On Lab (Module 05) - Restore Script
 #
-# Restores the OVN lab environment to the state at the beginning of a
-# specified exercise. Run this from a machine with SSH access to all
-# lab nodes (e.g., your workstation), or directly on the central node.
+# Restaura o estado ao fim do exercício informado: restore 6 prepara o 7.
+# Execute em uma máquina com acesso SSH aos três nós do laboratório,
+# ou diretamente no nó central.
 #
 # Usage: bash restore-ovn-lab.sh [exercise_number]
 #   exercise_number: 1-10 (default: 10, restores everything)
@@ -32,8 +32,12 @@
 #   CENTRAL=local COMPUTE1=root@compute1 COMPUTE2=root@compute2 \
 #   CENTRAL_IP=10.0.0.1 COMPUTE1_IP=10.0.0.2 COMPUTE2_IP=10.0.0.3 \
 #       bash restore-ovn-lab.sh 6
+#
+# Mantenha lab-netns.sh no mesmo diretório deste script.
+# Os exercícios 9 e 10 requerem Python 3 e curl em central, onde estão vm4–vm6.
 
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lab-netns.sh"
 
 CENTRAL="${CENTRAL:-root@central}"
 COMPUTE1="${COMPUTE1:-root@compute1}"
@@ -68,7 +72,7 @@ show_usage() {
     echo "  COMPUTE2_IP=$COMPUTE2_IP"
 }
 
-if [[ "$TARGET" -lt 1 || "$TARGET" -gt 10 ]]; then
+if [[ ! "$TARGET" =~ ^([1-9]|10)$ ]]; then
     show_usage
     exit 1
 fi
@@ -88,16 +92,46 @@ if [[ "$TARGET" -ge 1 && ( -z "$CENTRAL_IP" || -z "$COMPUTE1_IP" || -z "$COMPUTE
     exit 1
 fi
 
-run_central() {
-    if [[ "$CENTRAL" == "local" ]]; then
-        bash -c "$@"
+# Validar antes de interpolar valores no código remoto ou iniciar o SSH.
+# A configuração tcp:IP:porta deste lab aceita somente IPv4 decimal.
+valid_ipv4() {
+    local address="$1" octet
+    local -a octets
+    [[ "$address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    IFS=. read -r -a octets <<< "$address"
+    for octet in "${octets[@]}"; do
+        [[ "$octet" == 0 || "$octet" != 0* ]] && (( 10#$octet <= 255 )) || return 1
+    done
+}
+
+for variable in CENTRAL_IP COMPUTE1_IP COMPUTE2_IP; do
+    if ! valid_ipv4 "${!variable}"; then
+        echo "ERRO: $variable deve conter um endereço IPv4 decimal válido, sem opções ou comandos." >&2
+        exit 1
+    fi
+done
+for variable in CENTRAL COMPUTE1 COMPUTE2; do
+    # Alias SSH, hostname ou IPv4, opcionalmente precedido por usuário@.
+    if [[ ! "${!variable}" =~ ^([a-zA-Z_][a-zA-Z0-9_.-]*@)?[a-zA-Z0-9_][a-zA-Z0-9_.-]*$ ]] ||
+       [[ "$variable" != CENTRAL && "${!variable}" == local ]]; then
+        echo "ERRO: $variable deve conter um destino SSH simples; somente CENTRAL aceita local." >&2
+        exit 1
+    fi
+done
+
+run_node() {
+    local node="$1" script="$2"
+    # O shell iniciado por SSH não herda as opções do shell local.
+    if [[ "$node" == "local" ]]; then
+        bash -euo pipefail -s <<< "$script"
     else
-        ssh "$CENTRAL" "$@"
+        ssh -- "$node" 'bash -euo pipefail -s' <<< "$script"
     fi
 }
 
-run_compute1() { ssh "$COMPUTE1" "$@"; }
-run_compute2() { ssh "$COMPUTE2" "$@"; }
+run_central() { run_node "$CENTRAL" "$1"; }
+run_compute1() { run_node "$COMPUTE1" "$1"; }
+run_compute2() { run_node "$COMPUTE2" "$1"; }
 
 get_central_system_id() {
     run_central 'ovs-vsctl get open_vswitch . external_ids:system-id 2>/dev/null | tr -d \"'
@@ -107,36 +141,50 @@ cleanup() {
     echo "=== Cleaning up existing OVN lab state ==="
 
     # Clean namespaces and OVS ports on central
+    run_central "$(declare -f cleanup_lab_namespaces)
+        cleanup_lab_namespaces vm1 vm2 vm4 vm5 vm6 ext-gw
+    "
     run_central '
-        for ns in vm1 vm2 vm4 vm5 vm6 ext-gw; do
-            ip netns del "$ns" 2>/dev/null || true
-        done
         for port in vm1 vm2 vm4 vm5 vm6 ext-gw; do
-            ovs-vsctl --if-exists del-port br-int "$port" 2>/dev/null || true
+            ovs-vsctl --if-exists del-port br-int "$port"
         done
     '
 
     # Clean namespaces and OVS ports on compute1
+    run_compute1 "$(declare -f cleanup_lab_namespaces)
+        cleanup_lab_namespaces vm3
+    "
     run_compute1 '
-        for ns in vm3; do ip netns del "$ns" 2>/dev/null || true; done
-        for port in vm3; do ovs-vsctl --if-exists del-port br-int "$port" 2>/dev/null || true; done
-    ' 2>/dev/null || true
-
-    # Clean compute2
-    run_compute2 '
-        ip netns list 2>/dev/null | while read ns _; do ip netns del "$ns" 2>/dev/null; done || true
-    ' 2>/dev/null || true
-
-    # Remove OVN logical configuration (only if services are running)
-    run_central '
-        ovn-nbctl lb-del web-lb 2>/dev/null || true
-        ovn-nbctl lr-del router1 2>/dev/null || true
-        ovn-nbctl ls-del network1 2>/dev/null || true
-        ovn-nbctl ls-del network2 2>/dev/null || true
-        ovn-nbctl ls-del external 2>/dev/null || true
-        ovs-appctl dpctl/flush-conntrack 2>/dev/null || true
+        ovs-vsctl --if-exists del-port br-int vm3
     '
 
+    # O workshop não cria namespaces em compute2. Não há nada a excluir ali.
+    # Não esvaziar conntrack globalmente: isso também afetaria tráfego alheio.
+    run_central '
+        # DHCP_Options é raiz: excluir switches não coleta esses registros.
+        # Preservar legados sem marca e registros usados por portas externas.
+        owned=$(ovn-nbctl --format=csv --data=bare --no-heading --columns=_uuid find DHCP_Options external_ids:workshop=restore-ovn-lab)
+        for uuid in $owned; do
+            shared=0
+            for column in dhcpv4_options dhcpv6_options; do
+                refs=$(ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Logical_Switch_Port "$column=$uuid")
+                while IFS= read -r port; do
+                    case "$port" in
+                        ""|vm1|vm2|vm3) ;;
+                        *) shared=1 ;;
+                    esac
+                done <<< "$refs"
+            done
+            if [[ "$shared" == 0 ]]; then
+                ovn-nbctl destroy DHCP_Options "$uuid"
+            fi
+        done
+        ovn-nbctl --if-exists lb-del web-lb
+        ovn-nbctl --if-exists lr-del router1
+        ovn-nbctl --if-exists ls-del network1
+        ovn-nbctl --if-exists ls-del network2
+        ovn-nbctl --if-exists ls-del external
+    '
     echo "Cleanup complete."
 }
 
@@ -152,36 +200,48 @@ exercise_1() {
         ovn-sbctl set-connection ptcp:6642
         ovn-nbctl set-connection ptcp:6641
         if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6641/tcp --add-port=6642/tcp --permanent 2>/dev/null || true
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
+            firewall-cmd --add-port=6641/tcp --add-port=6642/tcp --permanent
+            firewall-cmd --add-port=6081/udp --permanent
+            firewall-cmd --reload
         fi
-        systemctl stop ovn-controller 2>/dev/null || true
+        systemctl stop ovn-controller
     "
     run_compute1 "
         systemctl enable --now openvswitch
         if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
+            firewall-cmd --add-port=6081/udp --permanent
+            firewall-cmd --reload
         fi
-        systemctl stop ovn-controller 2>/dev/null || true
+        systemctl stop ovn-controller
     "
     run_compute2 "
         systemctl enable --now openvswitch
         if systemctl is-active firewalld >/dev/null 2>&1; then
-            firewall-cmd --add-port=6081/udp --permanent 2>/dev/null || true
-            firewall-cmd --reload 2>/dev/null || true
+            firewall-cmd --add-port=6081/udp --permanent
+            firewall-cmd --reload
         fi
-        systemctl stop ovn-controller 2>/dev/null || true
+        systemctl stop ovn-controller
     "
+
+    # Limpar com OVS/NB disponíveis e os três controllers já parados.
+    cleanup
 
     # Phase 2: Clear stale chassis, set external_ids, start ovn-controller.
     # After a reboot, chassis entries from a previous session persist in the
     # SB database. If the system-id changed, the old entry blocks registration
     # ("already has encap ip ... cannot duplicate").
+    # Capturar os IDs atuais dos três nós antes de substituí-los.
+    # IDs antigos não associados a esses nós exigem investigação manual.
+    local central_id compute1_id compute2_id chassis_names
+    central_id=$(get_central_system_id)
+    compute1_id=$(run_compute1 'ovs-vsctl get open_vswitch . external_ids:system-id | tr -d \"')
+    compute2_id=$(run_compute2 'ovs-vsctl get open_vswitch . external_ids:system-id | tr -d \"')
+    printf -v chassis_names '%q ' "$central_id" "$compute1_id" "$compute2_id" central compute1 compute2
     run_central "
-        for ch in \$(ovn-sbctl --bare --columns=name list chassis 2>/dev/null); do
-            ovn-sbctl chassis-del \"\$ch\" 2>/dev/null || true
+        for ch in $chassis_names; do
+            if [[ -n \"\$ch\" && \"\$ch\" != '[]' ]]; then
+                ovn-sbctl --if-exists chassis-del \"\$ch\"
+            fi
         done
         ovs-vsctl set open_vswitch . \\
             external_ids:ovn-remote=unix:/run/ovn/ovnsb_db.sock \\
@@ -264,6 +324,7 @@ exercise_4() {
 
     run_central '
         dhcp_uuid=$(ovn-nbctl create DHCP_Options cidr=10.0.0.0/24 \
+            external_ids:workshop=restore-ovn-lab \
             options="\"server_id\"=\"10.0.0.1\" \"server_mac\"=\"00:00:00:ff:00:01\" \"lease_time\"=\"3600\" \"router\"=\"10.0.0.1\" \"dns_server\"=\"8.8.8.8\"")
 
         ovn-nbctl lsp-set-dhcpv4-options vm1 "$dhcp_uuid"
@@ -345,11 +406,7 @@ exercise_7() {
     echo "--- Exercise 7: ACLs on network1 ---"
 
     run_central '
-        # CT established/related
-        ovn-nbctl acl-add network1 to-lport 32767 \
-            "ct.est && !ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0" allow-related
-        ovn-nbctl acl-add network1 to-lport 32767 \
-            "!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0" allow-related
+        # allow-related gera o tratamento de estado; não copiar regras internas de CT.
 
         # Allow ICMP
         ovn-nbctl acl-add network1 to-lport 1000 "ip4 && icmp4" allow-related
@@ -447,12 +504,81 @@ exercise_9() {
         ovn-nbctl lr-lb-add router1 web-lb
         ovn-nbctl ls-lb-add network1 web-lb
         ovn-nbctl ls-lb-add network2 web-lb
+
+    '
+
+    # Mesmo handler do Step 9.2: lê HTTP, calcula bytes e não serve arquivos.
+    local backend_code backend_code_quoted
+    backend_code='
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+body = ("Server: " + sys.argv[1] + "\n").encode("ascii")
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+with HTTPServer(("0.0.0.0", 8080), Handler) as server:
+    server.serve_forever()
+'
+    printf -v backend_code_quoted '%q' "$backend_code"
+    # Desconectar todos os descritores do SSH. A verificação HTTP detecta
+    # falhas de partida; cleanup_lab_namespaces encerra os processos no restore.
+    run_central "
+        for ns in vm4 vm5 vm6; do
+            nohup ip netns exec \"\$ns\" python3 -u -c $backend_code_quoted \"\$ns\" </dev/null >/dev/null 2>&1 &
+        done
+    "
+}
+
+verify_control_plane() {
+    local node status
+    for node in "$CENTRAL" "$COMPUTE1" "$COMPUTE2"; do
+        status=$(run_node "$node" 'ovn-appctl -t ovn-controller connection-status') || return 1
+        if [[ "$status" != connected ]]; then
+            echo "FAIL: controller de $node não está conectado ao SB: $status" >&2
+            return 1
+        fi
+    done
+    run_central "TARGET=$TARGET"$'\n''
+        names=$(ovn-sbctl --format=csv --data=bare --no-heading --columns=name list Chassis)
+        mapfile -t chassis <<< "$names"
+        declare -A ids
+        for name in "${chassis[@]}"; do
+            case "$name" in
+                central|compute1|compute2) ids[$name]=$(ovn-sbctl get Chassis "$name" _uuid) ;;
+                *) : ;; # Chassis alheios não são requisito nem alvo de exclusão.
+            esac
+        done
+        [[ ${#ids[@]} == 3 ]] || { echo "FAIL: faltam chassis do laboratório." >&2; exit 1; }
+        for item in vm1:3:central vm2:3:central vm3:5:compute1 vm4:6:central vm5:6:central ext-gw:8:central vm6:9:central; do
+            IFS=: read -r port minimum owner <<< "$item"
+            if (( TARGET >= minimum )); then
+                bound=$(ovn-sbctl get Port_Binding "$port" chassis)
+                if [[ "$bound" != "${ids[$owner]}" ]]; then
+                    echo "FAIL: $port sem binding no chassis $owner: $bound" >&2
+                    exit 1
+                fi
+            fi
+        done
     '
 }
 
 verify() {
+    local failed=0
     echo ""
     echo "=== Verification ==="
+
+    if verify_control_plane; then
+        echo "Três chassis, conexões SB e bindings esperados: OK"
+    else
+        echo "FAIL: plano de controle incompleto."
+        failed=1
+    fi
 
     if [[ "$TARGET" -ge 1 ]]; then
         echo "--- Chassis ---"
@@ -472,7 +598,10 @@ verify() {
 
     if [[ "$TARGET" -ge 5 ]]; then
         echo "--- Namespaces (compute1) ---"
-        run_compute1 'ip netns list' 2>/dev/null || echo "(unreachable)"
+        if ! run_compute1 'ip netns list'; then
+            echo "FAIL: não foi possível consultar os namespaces de compute1."
+            failed=1
+        fi
         echo ""
     fi
 
@@ -482,6 +611,7 @@ verify() {
             echo "vm1 -> vm2 (L2): OK"
         else
             echo "vm1 -> vm2 (L2): FAIL"
+            failed=1
         fi
     fi
 
@@ -490,6 +620,7 @@ verify() {
             echo "vm3 -> vm1 (cross-node): OK"
         else
             echo "vm3 -> vm1 (cross-node): FAIL"
+            failed=1
         fi
     fi
 
@@ -498,6 +629,7 @@ verify() {
             echo "vm1 -> vm4 (L3 routing): OK"
         else
             echo "vm1 -> vm4 (L3 routing): FAIL"
+            failed=1
         fi
     fi
 
@@ -506,9 +638,26 @@ verify() {
             echo "vm1 -> ext-gw (NAT): OK"
         else
             echo "vm1 -> ext-gw (NAT): FAIL"
+            failed=1
         fi
     fi
 
+    if [[ "$TARGET" -ge 9 ]]; then
+        local endpoint
+        for endpoint in 10.0.1.11:8080 10.0.1.12:8080 10.0.1.13:8080 10.0.1.100:80; do
+            if run_central "ip netns exec vm1 curl --fail --silent --show-error --connect-timeout 2 --max-time 10 --retry 4 --retry-connrefused --retry-delay 1 http://$endpoint/" >/dev/null 2>&1; then
+                echo "HTTP $endpoint: OK"
+            else
+                echo "HTTP $endpoint: FAIL"
+                failed=1
+            fi
+        done
+    fi
+
+    if [[ "$failed" -ne 0 ]]; then
+        echo "ERRO: a verificação falhou; restauração não validada." >&2
+        return 1
+    fi
     echo ""
     echo "Lab restored to Exercise $TARGET state."
 }
@@ -524,7 +673,24 @@ echo "  Compute1: $COMPUTE1 ($COMPUTE1_IP)"
 echo "  Compute2: $COMPUTE2 ($COMPUTE2_IP)"
 echo ""
 
-cleanup
+echo "AVISO: use somente em laboratório exclusivo. Serviços, conexões dos bancos," >&2
+echo "IDs dos chassis e objetos com os nomes do workshop serão alterados." >&2
+echo "Processos nos namespaces do workshop serão encerrados." >&2
+
+# Interromper antes da limpeza se qualquer nó estiver inacessível.
+run_central 'true'
+run_compute1 'true'
+run_compute2 'true'
+if [[ "$TARGET" -ge 9 ]]; then
+    run_central '
+        for cmd in python3 curl; do
+            if ! command -v "$cmd" >/dev/null; then
+                echo "ERRO: $cmd é necessário para o exercício 9; nenhuma restauração foi iniciada." >&2
+                exit 1
+            fi
+        done
+    '
+fi
 
 # Build up state incrementally
 [[ "$TARGET" -ge 1 ]] && exercise_1

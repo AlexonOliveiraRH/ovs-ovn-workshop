@@ -1,11 +1,16 @@
 = Module 03 - OVS Hands-On Lab
 
+[NOTE]
+====
+Output blocks illustrate command results and formats; they are not evidence that this audit executed the lab. Preserve your own outputs, versions and timestamps when validating the exercises. This module uses the Linux `system` datapath unless stated otherwise.
+====
+
 
 == Prerequisites
 
 === Lab Environment
 
-This lab requires a single virtual machine (or physical machine) running RHEL 9 or Fedora. All exercises run on a single node. Exercise 6 simulates two OVS instances by using network namespaces and a loopback tunnel.
+This lab requires a single virtual machine (or physical machine) running RHEL 9 or Fedora. All exercises run on a single node. Exercise 6 uses two bridges managed by the same ovs-vswitchd and a local tunnel; the namespaces represent workloads, not separate OVS instances or separate hosts.
 
 
 [cols="1,1",options="header"]
@@ -39,6 +44,11 @@ This lab requires a single virtual machine (or physical machine) running RHEL 9 
 All commands in this lab assume you are running as root or using `sudo`. The lab is designed to be entirely self-contained on a single machine using network namespaces to simulate virtual machines.
 ====
 
+[WARNING]
+====
+Use uma máquina exclusiva para o laboratório. As redes didáticas `10.0.0.0/24`, `10.0.1.0/24` e `172.16.0.0/24` não devem se sobrepor à rede de gerenciamento nem a redes necessárias ao seu acesso. Criar endereços nas bridges também cria rotas locais; uma sobreposição pode interromper SSH ou outros acessos. Não adicione a interface de gerenciamento às bridges do exercício.
+====
+
 
 [IMPORTANT]
 .Persistence across reboots
@@ -51,9 +61,9 @@ If you reboot or power off the lab machine, *some* components survive and others
 
 After reboot, OVS will "remember" that br0 has a port called `veth-vm1`, but the veth interface no longer exists, so the port will be in an error state. You will need to recreate the namespaces, veth pairs, and IP assignments.
 
-*In production, this is not a problem* because VMs and containers are managed by orchestrators (libvirt/Nova for VMs, CRI-O/containerd for pods) that automatically recreate the virtual interfaces when VMs or pods start. Physical interface IPs are configured through NetworkManager, which is persistent. OVN recreates tunnel ports automatically through the ovn-controller daemon.
+Em produção, os objetos de kernel também são temporários. A diferença é a reconciliação: libvirt/Nova e a integração de rede Kubernetes/CNI recriam interfaces ao iniciar VMs ou pods; ovn-controller reconcilia portas de túnel e programação do OVN. Endereços físicos podem ser persistidos por ferramentas como NetworkManager. Isso depende de serviços saudáveis e configuração declarada; mudanças manuais não passam a ser persistentes apenas porque o ambiente é produtivo ou multi-node.
 
-A restore script is provided in `labs/standalone/restore-lab.sh` to recreate the lab state up to any exercise (e.g., `sudo bash labs/standalone/restore-lab.sh 5` restores up to Exercise 5). See the <<lab-restore>> section at the end of this page.
+O script `labs/standalone/restore-lab.sh` recria checkpoints do laboratório; ele não salva alterações arbitrárias feitas depois deles. Mantenha `lab-netns.sh` no mesmo diretório. Veja <<lab-restore>> para os estados disponíveis e os limites da validação.
 ====
 
 
@@ -127,7 +137,7 @@ Complete!
 
 [NOTE]
 ====
-On RHEL 9, the package is available from the Fast Datapath repository. If not enabled, run `sudo subscription-manager repos --enable fast-datapath-for-rhel-9-x86_64-rpms` first. On Fedora, `openvswitch` is available in the standard repositories. The OVS version will differ between distributions - the expected outputs in this lab use placeholder values, but all commands work identically regardless of the specific OVS version.
+On RHEL 9, the package is available from the Fast Datapath repository. If not enabled, run `sudo subscription-manager repos --enable fast-datapath-for-rhel-9-x86_64-rpms` first. On Fedora, `openvswitch` is available in the standard repositories. Package availability, service names and command options depend on the installed release; compare examples with its manpages rather than assuming identical behavior across versions.
 ====
 
 
@@ -250,7 +260,7 @@ The exact list of dependent kernel modules varies between distributions and kern
 [NOTE]
 .Key Concept
 ====
-OVS has two forwarding paths. The kernel module (`openvswitch.ko`) handles the "fast path" - once a flow is learned, packets are switched directly in the kernel for maximum performance. The `ovs-vswitchd` userspace daemon handles the "slow path" - the first packet of each new flow goes up to userspace for flow table lookup and classification, and then a datapath flow is installed in the kernel for subsequent packets. Think of it like a restaurant: the first order goes to the chef (userspace) who decides the recipe, and then the line cooks (kernel) prepare all identical orders automatically.
+With the Linux `system` datapath, packets matching cached flows execute their actions in the kernel. A cache miss sends an upcall to `ovs-vswitchd` for OpenFlow translation and possible flow installation. A new connection can already match an existing wildcard flow, and later packets can miss after cache changes. See https://docs.openvswitch.org/en/stable/topics/datapath/[OVS datapath design].
 ====
 
 
@@ -839,7 +849,7 @@ recirc_id(0),in_port(3),eth(src=5b:7c:9d:1e:3f:4a,dst=3e:5f:7a:9b:1c:2d),eth_typ
 [NOTE]
 .Key Concept
 ====
-These are the kernel-level "fast path" flows. After `ovs-vswitchd` makes a forwarding decision for the first packet, it installs a cached flow in the kernel datapath. Subsequent matching packets are forwarded entirely in the kernel without going to userspace. This is why OVS is so fast - the slow path only handles the first packet. Think of it like GPS navigation: the first time you drive a route, you need directions (userspace), but once you know the way, you drive on autopilot (kernel).
+These are kernel datapath flows, distinct from the OpenFlow tables. Matching packets execute the cached actions; a cache miss requires userspace classification. One wildcard flow can cover multiple connections, so the number of upcalls is not the number of new TCP connections.
 ====
 
 
@@ -2144,6 +2154,8 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 === Step 8: Tunnel comparison
 
+The overhead figures assume outer IPv4 without options and an untagged inner Ethernet frame, measured against underlay IP MTU. Outer IPv6 adds 20 bytes; options, tags and encryption can add more. See https://www.rfc-editor.org/rfc/rfc8926.html[RFC 8926] for Geneve's base header and options.
+
 
 [cols="1,1,1,1",options="header"]
 |===
@@ -2164,8 +2176,8 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 |*Header Overhead*
 |50 bytes
-|54+ bytes
-|38 bytes
+|50 bytes + option length (58 with OVN's 8-byte option)
+|38 bytes without optional GRE fields; 42 with a key
 
 |*Network ID Range*
 |24-bit (16M)
@@ -2461,19 +2473,15 @@ Port mirroring is like having a security camera (the mirror port) watching a doo
 
 === Step 1: Run an iperf3 baseline test WITHOUT rate limiting
 
-First, start an iperf3 server inside vm2:
+No primeiro terminal, inicie o servidor iperf3 em primeiro plano. Mantenha esse terminal aberto e execute os clientes em um segundo terminal:
 
 [source,bash]
 ----
-# Start iperf3 server in vm2 (run in background)
-sudo ip netns exec vm2 iperf3 -s -D
+# Terminal 1: servidor; encerre com Ctrl+C depois da verificação final.
+sudo ip netns exec vm2 iperf3 -s
 ----
 
-Expected output:
-
-----
-Running as a daemon
-----
+Não use `ip netns exec vm2 pkill iperf3`: o namespace de rede não isola a lista de processos, portanto esse comando pode atingir outros servidores iperf3 do host.
 
 [source,bash]
 ----
@@ -2683,9 +2691,9 @@ Egress QoS controls traffic LEAVING the OVS port (from the switch to the VM). Un
 # Remove QoS from the port
 sudo ovs-vsctl clear port veth-vm2 qos
 
-# Remove the QoS and queue entries from the database
-# (They remain as orphans if not explicitly destroyed)
-sudo ovs-vsctl -- --all destroy qos -- --all destroy queue
+# Os registros QoS/Queue podem permanecer sem referência.
+# Não execute --all destroy: isso alcançaria políticas de outras bridges.
+# Exclua por UUID somente após comprovar propriedade e ausência de referências.
 
 # Remove ingress policing from veth-vm1
 sudo ovs-vsctl set interface veth-vm1 \
@@ -2697,7 +2705,7 @@ sudo ovs-vsctl set interface veth-vm1 \
 ----
 # Verify QoS is cleared
 sudo ovs-vsctl list interface veth-vm1 | grep ingress_policing
-sudo ovs-vsctl list qos
+sudo ovs-vsctl get port veth-vm2 qos
 ----
 
 Expected output:
@@ -2705,14 +2713,10 @@ Expected output:
 ----
 ingress_policing_burst: 0
 ingress_policing_rate: 0
-(no output from list qos - all QoS removed)
+[]
 ----
 
-[source,bash]
-----
-# Stop the iperf3 server
-sudo ip netns exec vm2 pkill iperf3
-----
+`[]` indica que a porta não referencia QoS. Isso não significa que todas as linhas QoS/Queue foram removidas do banco.
 
 === Verification
 
@@ -2724,27 +2728,24 @@ sudo ovs-vsctl get interface veth-vm1 ingress_policing_rate
 sudo ovs-vsctl get interface veth-vm1 ingress_policing_burst
 
 echo ""
-echo "=== QoS entries ==="
-echo "QoS count: $(sudo ovs-vsctl list qos 2>/dev/null | grep -c _uuid)"
-echo "Queue count: $(sudo ovs-vsctl list queue 2>/dev/null | grep -c _uuid)"
+echo "=== QoS da porta ==="
+sudo ovs-vsctl get port veth-vm2 qos
 
 echo ""
 echo "=== Unrestricted throughput test ==="
-sudo ip netns exec vm2 iperf3 -s -D
+# Terminal 2: o servidor do terminal 1 ainda deve estar em execução.
 sudo ip netns exec vm1 iperf3 -c 10.0.0.2 -t 2 | grep sender
-sudo ip netns exec vm2 pkill iperf3
 ----
 
-Expected output:
+Exemplo de formato, com throughput histórico apenas ilustrativo, não um desempenho garantido. Depois do teste, encerre o servidor com Ctrl+C no terminal 1:
 
 ----
 === Ingress policing ===
 0
 0
 
-=== QoS entries ===
-QoS count: 0
-Queue count: 0
+=== QoS da porta ===
+[]
 
 === Unrestricted throughput test ===
 [  5]   0.00-2.00   sec  18.6 GBytes  80.0 Gbits/sec    0             sender
@@ -3113,14 +3114,14 @@ member eth-b: enabled
 You configured NIC bonding (link aggregation) on OVS:
 
 . *Bond creation* - Combined two interfaces into a single logical port, providing redundancy.
-. *Failover* - When one interface failed, traffic automatically moved to the backup with zero downtime for the VMs.
+. *Failover* - When one interface failed, the bond selected an available member. Detection and convergence can interrupt traffic; a successful test does not guarantee zero downtime.
 . *Bond modes* - You explored three modes, each with different trade-offs between simplicity, compatibility, and performance.
 
-In production cloud environments, bonding is used on every hypervisor. The management network, storage network, and tenant network each typically use bonded interfaces for redundancy. A typical OpenStack compute node might have two 25GbE NICs bonded together for a combined 50 Gbps of bandwidth with automatic failover if one cable is pulled.
+Bonding é comum, mas não obrigatório em todos os hypervisors. Dois links de 25 Gb/s podem oferecer até 50 Gb/s de capacidade agregada em um modo de distribuição compatível, considerando múltiplos fluxos e o equipamento remoto. Um único fluxo normalmente fica limitado a um membro; active-backup usa um membro por vez. A perda de um link reduz a capacidade disponível e pode causar perda de pacotes durante a convergência.
 
 === Try it yourself
 
-* Add a third interface to the bond: `sudo ip link add eth-c type veth peer name eth-c-peer && sudo ip link set eth-c up && sudo ip link set eth-c-peer up && sudo ovs-vsctl add-bond-member bond0 eth-c`
+* Consulte `ovs-vsctl --help` e o manual da versão instalada antes de explorar a adição de um terceiro membro. `add-bond-member` não é um subcomando válido de `ovs-vsctl`; versões que oferecem `add-bond-iface` usam esse nome. A operação também pode ser expressa pelas operações OVSDB `create Interface` e `add Port interfaces`. Faça a extensão apenas no lab e remova o membro e seu par veth ao terminar. Referência: https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.html[ovs-vsctl(8)].
 * Check LACP details: `sudo ovs-appctl lacp/show bond0`
 * Monitor bond in real time: `watch -n 1 'sudo ovs-appctl bond/show bond0'`
 * Force a specific active member: `sudo ovs-appctl bond/set-active-member bond0 eth-a`
@@ -3733,11 +3734,9 @@ Run these commands to clean up all resources created during this lab:
 
 [source,bash]
 ----
-# Stop any background processes
-sudo ip netns exec vm2 pkill iperf3 2>/dev/null
-
-# Remove all mirrors
-sudo ovs-vsctl clear bridge br0 mirrors 2>/dev/null
+# Na raiz do workshop, encerre processos e remova somente os namespaces do lab.
+# O helper interrompe a limpeza caso processos ainda mantenham um namespace vivo.
+if sudo bash -euo pipefail -c 'source labs/standalone/lab-netns.sh; cleanup_lab_namespaces vm1 vm2 vm3 vm4 vm5 vm6 monitor trunk-ns'; then
 
 # Remove the bond
 sudo ovs-vsctl del-port br0 bond0 2>/dev/null
@@ -3776,19 +3775,9 @@ sudo ip link del veth-trunk 2>/dev/null
 sudo ip link del eth-a 2>/dev/null
 sudo ip link del eth-b 2>/dev/null
 
-# Delete all namespaces
-sudo ip netns del vm1 2>/dev/null
-sudo ip netns del vm2 2>/dev/null
-sudo ip netns del vm3 2>/dev/null
-sudo ip netns del vm4 2>/dev/null
-sudo ip netns del vm5 2>/dev/null
-sudo ip netns del vm6 2>/dev/null
-sudo ip netns del monitor 2>/dev/null
-sudo ip netns del trunk-ns 2>/dev/null
-
-# Clean up any orphaned QoS/queue entries
-sudo ovs-vsctl -- --all destroy qos 2>/dev/null
-sudo ovs-vsctl -- --all destroy queue 2>/dev/null
+# Os namespaces já foram removidos pelo helper acima.
+# Registros QoS/Queue sem propriedade comprovada são preservados.
+# Não faça exclusão global de QoS/Queue.
 
 # Verify cleanup
 echo "=== Remaining bridges ==="
@@ -3799,6 +3788,9 @@ ip netns list
 echo ""
 echo "=== OVS status ==="
 sudo ovs-vsctl show
+else
+    echo 'Limpeza interrompida: resolva a falha dos namespaces antes de excluir as bridges.' >&2
+fi
 ----
 
 Expected output after cleanup:
@@ -3829,7 +3821,14 @@ If you want to stop OVS entirely, run `sudo systemctl stop openvswitch`. If you 
 
 After a reboot or power cycle, network namespaces, veth pairs, and IP addresses are lost (see the <<_persistence_across_reboots,Persistence across reboots>> note in Prerequisites). OVS bridges survive in OVSDB but their ports will be in an error state because the underlying interfaces no longer exist.
 
-A restore script is provided that tears down any stale state and recreates everything from scratch up to the exercise you specify. Pass the exercise number as an argument:
+O restore recebe o número do exercício e recria seu checkpoint. Na revisão de 15/10/2026, os alvos 2–10 e reexecuções de 6/9/10 passaram na VM Fedora 44 com OVS 3.6.2. Os alvos 7–10 representam somente a base do exercício 6, não snapshots de passos intermediários de mirroring, QoS ou bonding.
+
+[WARNING]
+====
+Use somente uma VM exclusiva para o laboratório: bridges e namespaces com os nomes dos exercícios serão recriados, encerrando seus processos. Registros QoS/Queue sem propriedade comprovada são preservados, não removidos globalmente. O restore interrompe com erro se a verificação falhar. Copie também `lab-netns.sh`, não apenas o script principal. Não houve reboot durante a validação; o teste verificou recriação e reexecução a partir do estado pós-boot encontrado, não todas as sequências de recuperação possíveis.
+====
+
+Pass the exercise number as an argument:
 
 [source,bash]
 ----
@@ -3873,24 +3872,14 @@ Each exercise builds on the previous ones. The script always starts from a clean
 
 Exercises 7-10 all start from the same state (end of Exercise 6). Each of those exercises does its own setup and cleanup within the exercise itself.
 
-Expected output (example with default, Exercise 6):
+Trecho real da validação do alvo 6; os testes não constituem benchmark:
 
 ----
-=== Restoring OVS Hands-On Lab (up to Exercise 6) ===
-
-[cleanup] Removing stale OVS configuration...
-[exercise 2] Creating br0 bridge...
-[exercise 3] Creating vm1 and vm2...
-[exercise 4] Creating vm3 and vm4...
-[exercise 5] Setting NORMAL flow on br0...
-[exercise 6] Creating br1 with vm5/vm6 and Geneve tunnel...
-
-[verify] Testing connectivity...
-
-=== Lab Restored (up to Exercise 6) ===
+=== Resultado da restauração (até o exercício 6) ===
   Topology: br0 (vm1-vm4 + geneve0), br1 (vm5-vm6 + geneve1)
   Tests: 20 passed, 0 failed
-  Ready for: Exercise 6
+  Estado: fim do exercício 6.
+  Os alvos 7–10 restauram somente a base do exercício 6.
 ----
 
 '''

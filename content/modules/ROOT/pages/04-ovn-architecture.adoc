@@ -46,7 +46,7 @@ To understand OVN, you first need to be clear about the division of labor betwee
 
 |Data plane
 |Forwards packets according to flow rules
-|Does not touch packets directly
+|OVS forwards traffic; ovn-controller handles selected packet-in services, including DHCP/DNS
 
 |Control plane
 |Accepts OpenFlow rules from controllers
@@ -82,9 +82,8 @@ OVN was created by the same team behind Open vSwitch. Here is the timeline:
 * *2015:* OVN was first announced and development began in earnest. The initial focus was on L2 virtual networking with basic L3 support.
 * *2016:* OVN reached production-ready status. OpenStack Neutron gained ML2/OVN driver support, allowing OVN to serve as the networking backend for OpenStack.
 * *2017-2018:* OVN matured with features like distributed NAT, load balancing, and improved ACL performance through connection tracking integration. OVN-Kubernetes was developed to bring OVN networking to Kubernetes.
-* *2019:* OVN-Kubernetes was introduced as an optional CNI plugin for OpenShift 4.x, alongside the existing OpenShift SDN.
-* *2020:* The OVN project moved to its own repository (ovn-org/ovn), separating from the OVS repository while maintaining tight integration. Red Hat began transitioning RHOSP from ML2/OVS to ML2/OVN.
-* *2023:* OVN-Kubernetes became the default CNI for OpenShift starting with OCP 4.12, replacing OpenShift SDN. OVN also became the default and recommended networking backend for Red Hat OpenStack Platform. Ongoing development focuses on performance, scalability, and feature parity with traditional networking.
+* *2019:* OVN development moved into its own repository (ovn-org/ovn); see https://developers.redhat.com/blog/2019/08/30/the-clean-break-of-open-virtual-network-from-open-vswitch[the OVN/OVS split].
+* *2023:* OVN-Kubernetes became the default for *new OCP 4.12 installations*. Existing OpenShift SDN clusters are not automatically migrated by an upgrade (https://docs.redhat.com/en/documentation/openshift_container_platform/4.12/html/release_notes/ocp-4-12-release-notes[OCP 4.12 release notes]).
 
 === Why OVN Was Created
 
@@ -408,14 +407,11 @@ table=67, priority=100, match=(reg15=0x2, metadata=0x1), actions=(set_field:tunn
 |*VNI (24-bit)*
 |Identifies the logical datapath (switch or router)
 
-|*TLV: Logical Inport*
+|*TLV: Logical Inport (15 bits)*
 |The logical port the packet entered from
 
-|*TLV: Logical Outport*
+|*TLV: Logical Outport (16 bits)*
 |The destination logical port
-
-|*TLV: Flags*
-|Control bits (allow loopback, etc.)
 
 |===
 
@@ -492,7 +488,7 @@ Implement security groups using connection tracking. The `allow-related` action 
 
 === DHCP
 
-Built-in DHCP responder generates responses directly in the OVS flow pipeline. No external DHCP server needed. Responses are generated locally on the compute node.
+OVN provides a local DHCP responder without a separate DHCP server. Logical actions send selected packets to `ovn-controller`, whose packet-in handler builds the response before resuming processing. This is not an entirely kernel-only service (https://github.com/ovn-org/ovn/blob/v24.03.0/controller/pinctrl.c[OVN 24.03 packet-in implementation]).
 
 === NAT (Network Address Translation)
 
@@ -504,7 +500,7 @@ Built-in DHCP responder generates responses directly in the OVS flow pipeline. N
 
 === Load Balancers
 
-Built-in L4 load balancing using conntrack DNAT. Distributes traffic to backend servers at kernel line rate. This is how OVN-Kubernetes implements Kubernetes Services.
+Built-in L4 load balancing selects a backend and uses OVS conntrack DNAT to preserve its mapping. Throughput depends on the datapath, enabled features and workload; kernel line rate is not guaranteed. OVN-Kubernetes uses OVN load balancers to implement Kubernetes Services.
 
 '''
 
@@ -530,7 +526,7 @@ If ovn-controller loses connection to SB DB or crashes, existing OpenFlow flows 
 [NOTE]
 .Key Concept
 ====
-OVN is designed so that data plane (OVS) continues working even when the control plane is temporarily unavailable. A control plane outage does not cause a data plane outage.
+Existing programmed forwarding can continue during a control-plane outage, but new configuration and services requiring `ovn-controller` packet handling can fail. An outage therefore does not guarantee uninterrupted connectivity for every traffic type.
 ====
 
 
@@ -556,8 +552,8 @@ OVN is designed so that data plane (OVS) continues working even when the control
 |Arbitrary metadata in TLV options
 
 |OVN logical context
-|Cannot encode logical port IDs
-|Encodes logical inport, outport, flags
+|OVN 24.03 VXLAN mode encodes reduced datapath/outport IDs, without inport
+|Encodes datapath, logical inport and outport IDs
 
 |Standardization
 |RFC 7348
@@ -568,13 +564,13 @@ OVN is designed so that data plane (OVS) continues working even when the control
 
 [WARNING]
 ====
-Always use Geneve for OVN unless there is a specific hardware requirement for VXLAN. VXLAN loses important functionality.
+Geneve is OVN's preferred encapsulation. VXLAN capabilities and limitations depend on the OVN release and integration; upstream availability alone does not establish support in a Red Hat product.
 ====
 
 
 === Geneve TLV Options
 
-OVN uses class 0x0102 with four TLV types: logical datapath, logical input port, logical output port, and flags. These map to OVS registers (tun_metadata0, etc.) in the OpenFlow pipeline.
+In https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-architecture.7.xml[OVN 24.03], the 24-bit logical datapath ID occupies the VNI. One option (class `0x0102`, type `0x80`) carries a 32-bit value: one reserved bit, a 15-bit input-port ID and a 16-bit output-port ID. This is 55 bits of identifiers, not four TLVs or transferred conntrack state. IDs 32768-65535 identify multicast groups, not additional unicast ports.
 
 === Automated Tunnel Setup
 

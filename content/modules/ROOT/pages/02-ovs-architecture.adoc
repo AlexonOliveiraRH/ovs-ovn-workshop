@@ -185,7 +185,7 @@ The two most important components are `ovs-vswitchd` (the brain that decides how
 * Handles packets that do not match any cached flow in the kernel (the "slow path")
 * Supports multiple datapath types:
 ** *system* (default): Uses the kernel module for fast-path forwarding. Packets that miss the kernel flow cache are sent up to userspace for `ovs-vswitchd` to process.
-** *netdev* (DPDK): Everything runs in userspace. The kernel module is not used for packet forwarding. Instead, DPDK poll-mode drivers (PMDs) handle packets entirely in userspace for maximum performance.
+** *netdev* (userspace): The datapath runs in `ovs-vswitchd`. It can use DPDK ports and poll-mode drivers, but `datapath_type=netdev` alone does not enable DPDK. OVS also supports a https://docs.openvswitch.org/en/stable/intro/install/userspace/[userspace datapath without DPDK].
 
 *The restaurant analogy:* `ovs-vswitchd` is like the head chef in a restaurant kitchen. When a new type of order comes in for the first time, the head chef figures out the recipe (processes the packet, decides the actions). Then the head chef writes the recipe on a card and hands it to the line cooks (installs a flow in the kernel cache). From that point on, the line cooks handle identical orders without bothering the head chef. The head chef only gets involved when a genuinely new order arrives.
 
@@ -339,7 +339,7 @@ Imagine a library. The megaflow cache is like knowing which shelf the book is on
 
 [NOTE]
 ====
-The kernel datapath originally had a microflow cache (exact-match) but it was replaced by the more efficient megaflow cache, which masks irrelevant bits in the match. The *Exact Match Cache (EMC)* exists only in the *userspace datapath* (DPDK), where it provides a two-level cache: EMC (exact) -> DPCLS/classifier (wildcard). Do not confuse the two datapaths - they have different caching architectures.
+The kernel datapath supports masked flow matches; it does not use the userspace *Exact Match Cache (EMC)*. In the `netdev` datapath, lookup can use EMC, optional SMC (Signature Match Cache), then DPCLS (wildcard classifier), depending on configuration. A classifier miss invokes OpenFlow translation in userspace, not a kernel Netlink upcall. See https://docs.openvswitch.org/en/stable/topics/datapath/[kernel datapath design] and https://docs.openvswitch.org/en/stable/topics/dpdk/bridge/[userspace flow caches].
 ====
 
 [source,bash]
@@ -589,7 +589,7 @@ The `ofproto/trace` command is one of the most powerful debugging tools in OVS. 
 
 === The Big Picture
 
-When a packet arrives at an OVS bridge, it goes through a well-defined pipeline. Understanding this pipeline is critical for troubleshooting and for understanding how OVN programs OVS.
+The diagram below describes the *OpenFlow processing semantics*. On a datapath cache hit, OVS executes cached actions without traversing these OpenFlow tables again. A datapath miss and an OpenFlow table miss are different events.
 
 ----
   Packet arrives at OVS port
@@ -929,7 +929,7 @@ When a packet matches a flow rule, the associated actions are executed. Actions 
 
 [source,bash]
 ----
-# Example: NAT-like flow - rewrite destination IP and MAC, then forward
+# Example: stateless destination rewrite (no conntrack or reverse NAT)
 ovs-ofctl add-flow br-int "table=0,ip,nw_dst=10.0.0.100,actions=mod_dl_dst:00:aa:bb:cc:dd:ee,mod_nw_dst:192.168.1.10,output:5"
 
 # Example: VLAN tagging on ingress
@@ -938,6 +938,8 @@ ovs-ofctl add-flow br-int "table=0,in_port=1,actions=mod_vlan_vid:100,resubmit(,
 # Example: VLAN stripping on egress
 ovs-ofctl add-flow br-int "table=1,dl_vlan=100,dl_dst=00:11:22:33:44:55,actions=strip_vlan,output:1"
 ----
+
+This rewrite is not a complete stateful NAT service. OVS provides `ct` for connection tracking and `ct(commit,nat(...))` to establish translations; later packets use `ct(nat,...)` in the appropriate zone. OVN compiles its NAT/LB configuration into such OVS actions. See https://docs.openvswitch.org/en/latest/ref/ovs-actions.7/#the-ct-action[ovs-actions(7)].
 
 === Flow Priority and Matching Order
 
@@ -977,7 +979,7 @@ A common mistake is forgetting the table-miss flow. Without it, packets that mat
 
 === Kernel Fast Path and Flow Caching
 
-The kernel fast path is what makes OVS perform at near-wire speed. Understanding the caching mechanism helps you diagnose performance problems.
+The kernel fast path avoids OpenFlow translation for packets covered by a cached datapath flow. The example assumes an initial cache miss and a policy permitting the illustrated wildcard mask; even the first packet of a new TCP connection can hit an existing megaflow.
 
 ----
   Packet #1 (TCP SYN from 10.0.0.1:12345 to 10.0.0.2:80)
@@ -1009,16 +1011,16 @@ The kernel fast path is what makes OVS perform at near-wire speed. Understanding
 [cols="1,1,1",options="header"]
 |===
 |Path
-|Latency
+|Processing
 |When It Happens
 
 |Megaflow hit
-|~1-5 microseconds
+|Executes cached datapath actions
 |Flow matching a cached wildcard rule
 
 |Userspace upcall
-|~100+ microseconds
-|New flow never seen before
+|Netlink upcall and OpenFlow translation
+|No matching datapath flow (including after eviction or revalidation)
 
 |===
 
@@ -1028,8 +1030,8 @@ The kernel fast path is what makes OVS perform at near-wire speed. Understanding
 # Check cache hit rates
 ovs-appctl dpctl/show -s
 
-# Look for "lost" packets (packets dropped because userspace was too busy)
-ovs-appctl upcall/show
+# Inspect hit/miss/lost counters (lost means an upcall could not be delivered)
+ovs-appctl dpctl/show -s
 
 # View the number of kernel datapath flows
 ovs-dpctl dump-flows | wc -l
@@ -1039,7 +1041,7 @@ ovs-dpctl dump-flows | wc -l
 [NOTE]
 .Key Concept
 ====
-In a healthy OVS deployment, 99%+ of packets should hit the kernel megaflow cache. If you see a high upcall rate, it usually means either the traffic pattern is very diverse (many unique flows), or the megaflow cache is being too specific (creating too many entries instead of wildcarding). The EMC (Exact Match Cache) is available only in the userspace/DPDK datapath - see the xref:#_ovs_dpdk[OVS-DPDK section] for details.
+There is no universal healthy cache-hit percentage or packet latency. Compare hit/miss/lost counter deltas under a defined workload, including flow churn, packet sizes and enabled actions. The EMC is specific to the userspace datapath - see the xref:#_ovs_dpdk[OVS-DPDK section].
 ====
 
 
@@ -1294,7 +1296,7 @@ OVS supports several tunnel encapsulation protocols. These create overlay networ
                     Underlay Network
 ----
 
-*Tunnel type comparison:*
+*Tunnel type comparison:* Overhead below is the reduction from underlay IP MTU to inner IP MTU for untagged inner Ethernet and outer IPv4 without options. Add 20 bytes for outer IPv6; additional tags, options or encryption change the budget. Geneve has an 8-byte base header (https://www.rfc-editor.org/rfc/rfc8926.html[RFC 8926]).
 
 
 [cols="1,1,1,1",options="header"]
@@ -1312,7 +1314,7 @@ OVS supports several tunnel encapsulation protocols. These create overlay networ
 |*Header overhead*
 |50 bytes
 |50+ bytes (variable)
-|38 bytes
+|38 bytes without optional GRE fields; 42 with a key
 
 |*Metadata*
 |24-bit VNI only
@@ -1320,7 +1322,7 @@ OVS supports several tunnel encapsulation protocols. These create overlay networ
 |32-bit key
 
 |*OVN support*
-|Limited (no metadata)
+|Version-dependent VXLAN mode with reduced metadata
 |Full (preferred by OVN)
 |Not used by OVN
 
@@ -1465,11 +1467,11 @@ When OVS is configured to use DPDK (the `netdev` datapath type), the architectur
         v                                    NIC
       NIC                               (direct access)
 
-  Packet path:                            Packet path:
-  NIC -> kernel -> module ->              NIC -> DPDK PMD ->
-  upcall -> vswitchd ->                   vswitchd flow tables ->
-  module -> NIC                           DPDK PMD -> NIC
-  (multiple context switches)             (ZERO context switches)
+  Cache-hit packet path:                  Cache-hit packet path:
+  NIC -> kernel datapath -> NIC           NIC -> DPDK PMD ->
+                                          netdev cached actions -> NIC
+  Miss: Netlink upcall to ovs-vswitchd     Miss: OpenFlow translation
+                                          inside ovs-vswitchd
 ----
 
 *Key differences:*
@@ -1486,7 +1488,7 @@ When OVS is configured to use DPDK (the `netdev` datapath type), the architectur
 |Userspace (DPDK libraries)
 
 |*Packet processing*
-|Kernel + userspace for misses
+|Kernel fast path; userspace for misses or explicit userspace actions
 |Entirely in userspace
 
 |*NIC access*
@@ -1494,28 +1496,28 @@ When OVS is configured to use DPDK (the `netdev` datapath type), the architectur
 |Direct via DPDK PMD
 
 |*Context switches*
-|Yes (kernel/userspace)
-|No (all userspace)
+|Kernel/userspace transition on upcall, not on every cache hit
+|No kernel upcall for datapath classification
 
 |*CPU usage*
-|On-demand (interrupt-driven)
-|100% on dedicated cores (polling)
+|Driver interrupts plus NAPI polling; load and tuning dependent
+|PMD polling; idle CPU usage depends on supported sleep settings
 
 |*Memory*
 |Regular system memory
 |Hugepages required
 
 |*Latency*
-|Microseconds
-|Sub-microsecond possible
+|Measure for the workload, scheduling and driver configuration
+|Measure for the workload, PMD placement and configuration
 
 |*Throughput*
-|Good (millions pps)
-|Excellent (tens of millions pps)
+|Depends on hardware, packet mix and enabled features
+|Depends on hardware, packet mix, enabled features and PMD configuration
 
 |*CPU cost*
-|Proportional to traffic
-|Fixed (dedicated cores always busy)
+|Varies with traffic and host configuration
+|Varies with core allocation, polling and sleep configuration
 
 |*Setup complexity*
 |Minimal
@@ -1528,7 +1530,7 @@ When OVS is configured to use DPDK (the `netdev` datapath type), the architectur
 
 *Use kernel OVS when:*
 
-* Traffic volumes are moderate (less than ~5 million packets per second)
+* The kernel datapath meets the workload's measured throughput and latency targets
 * CPU resources are limited and cannot be dedicated to polling
 * The workload is general-purpose cloud computing (VMs, containers)
 * Simplicity of setup and operations is a priority
@@ -1546,7 +1548,7 @@ When OVS is configured to use DPDK (the `netdev` datapath type), the architectur
 [NOTE]
 .Key Concept
 ====
-OVS-DPDK trades CPU efficiency for packet processing performance. Kernel OVS uses CPU only when packets arrive (interrupt-driven). OVS-DPDK uses dedicated CPU cores that poll continuously at 100% utilization even when idle. This means OVS-DPDK always consumes those CPU cores, but in return, it processes packets significantly faster with lower and more predictable latency.
+OVS-DPDK changes the CPU allocation and packet-processing model, but is not inherently faster for every workload. Kernel networking commonly combines driver interrupts with NAPI polling; CPU usage also depends on background work and tuning. Busy-polling PMDs can keep assigned cores highly utilized even at low traffic, while PMD sleeping, where supported and enabled, can reduce idle CPU usage with latency tradeoffs. Compare throughput, latency and CPU cost under equivalent workloads and configurations; see the https://docs.openvswitch.org/en/stable/intro/install/dpdk/#performance-tuning[OVS-DPDK performance tuning guide].
 ====
 
 
@@ -1578,7 +1580,7 @@ mount -t hugetlbfs none /dev/hugepages
 
 *2. PMD (Poll Mode Driver) Threads*
 
-PMD threads are dedicated CPU threads that continuously poll NICs for incoming packets. They run at 100% CPU utilization by design.
+PMD threads poll their assigned receive queues. Busy polling can keep their assigned CPU cores highly utilized even without traffic; supported PMD sleep settings can change this behavior and its latency tradeoff.
 
 [source,bash]
 ----
@@ -1689,7 +1691,7 @@ When configuring OVS-DPDK, always ensure that PMD cores, guest vCPUs, and host O
 |Userspace datapath using poll-mode drivers for high-performance NFV workloads
 
 |*DPDK tradeoff*
-|Dedicated CPU cores and hugepages in exchange for higher throughput and lower latency
+|CPU allocation and hugepage requirements; throughput and latency benefits depend on the workload and tuning, not a guarantee
 
 |===
 

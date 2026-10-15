@@ -1,5 +1,10 @@
 = Module 05 - OVN Hands-On Lab
 
+[NOTE]
+====
+Command output blocks are instructional examples, not evidence that this audit ran the lab. Record installed OVS/OVN/kernel versions and retain actual outputs when validating it. The exercises below assume the Linux `system` datapath; upstream references do not establish support for a Red Hat product release.
+====
+
 
 == Prerequisites
 
@@ -780,7 +785,7 @@ sudo ovs-ofctl dump-flows br-int | head -30
 
 == Exercise 4: Enabling DHCP
 
-*Objective:* Configure OVN's built-in DHCP responder and test DHCP address assignment.
+*Objetivo:* Configurar o responder DHCP do OVN e verificar uma aquisição real de lease, sem aplicar seus parâmetros ao host do laboratório.
 
 === Step 4.1: Create DHCP options
 
@@ -849,43 +854,67 @@ sudo ovn-sbctl lflow-list network1 | grep -i dhcp
 [NOTE]
 .Key Concept
 ====
-OVN constructs the DHCP response directly in the flow actions. There is no external DHCP server - OVS itself generates the DHCP offer/ack as flow actions. The `put_dhcp_opts()` action creates the DHCP options payload, and the subsequent flow rewrites headers and sends the reply back to the requesting port.
+OVN's `put_dhcp_opts()` action uses a packet-in to the local `ovn-controller` to construct the DHCP payload; subsequent flows rewrite headers and deliver it. No separate DHCP server is required, but userspace processing is involved (https://github.com/ovn-org/ovn/blob/v24.03.0/controller/pinctrl.c[OVN 24.03 implementation]).
 ====
 
 
 === Step 4.5: Test DHCP from a namespace
 
+Neste laboratório, `vm1` é um namespace de rede, não uma VM com sistema de arquivos próprio. Executar o cliente DHCP com os hooks padrão pode alterar arquivos compartilhados, inclusive a configuração de DNS do host. O https://man7.org/linux/man-pages/man8/ip-netns.8.html[manual de ip-netns] explica o tratamento especial de arquivos em `/etc/netns/NOME/`; o namespace de rede, isoladamente, não fornece esse isolamento.
+
+Use o teste abaixo no nó central, a partir da raiz da cópia do workshop. Mantenha o endereço estático do exercício 3. O helper usa `dhclient -sf /bin/true`, PID e lease exclusivos, captura os pacotes e encerra os processos que iniciou. Ele verifica o ciclo *DORA* — Discover, Offer, Request e ACK — mas deliberadamente *não aplica* IP, rota ou DNS recebidos. Veja as opções `-sf`, `-pf` e `-lf` no https://manpages.debian.org/testing/isc-dhcp-client/dhclient.8.en.html[manual do cliente DHCP].
+
 [source,bash]
 ----
-# Remove the static IP from vm1 to test DHCP
-sudo ip netns exec vm1 ip addr flush dev vm1
-
-# Request a DHCP lease
-sudo ip netns exec vm1 dhclient -v vm1
+# Pré-requisitos: dhclient e tcpdump já instalados; vm1 configurado como acima.
+sudo bash labs/standalone/check-ovn-dhcp.sh
 ----
 
-Expected output:
+Recortes literais da validação no Fedora 44 em 15/10/2026, com linhas intermediárias omitidas. Horários, identificadores e diretórios temporários variam:
 
 ----
-Listening on LPF/vm1/00:00:00:00:00:01
-Sending on   LPF/vm1/00:00:00:00:00:01
-DHCPDISCOVER on vm1 to 255.255.255.255 port 67 interval 3
-DHCPOFFER of 10.0.0.11 from 10.0.0.1
-DHCPREQUEST for 10.0.0.11 on vm1 to 255.255.255.255 port 67
-DHCPACK of 10.0.0.11 from 10.0.0.1
-bound to 10.0.0.11 -- renewal in 1800 seconds.
+4 packets captured
+4 packets received by filter
+0 packets dropped by kernel
+/etc/resolv.conf: OK
+----
+
+As quatro mensagens decodificadas na captura:
+
+----
+DHCP-Message (53), length 1: Discover
+DHCP-Message (53), length 1: Offer
+DHCP-Message (53), length 1: Request
+DHCP-Message (53), length 1: ACK
+----
+
+E os campos registrados na lease:
+
+----
+  fixed-address 10.0.0.11;
+  option routers 10.0.0.1;
+  option dhcp-server-identifier 10.0.0.1;
+  option domain-name-servers 8.8.8.8;
+DORA concluído; hook /bin/true; IP e DNS do host não foram aplicados pelo cliente.
 ----
 
 
 [NOTE]
 ====
-If `dhclient` is not available, install it with `sudo dnf install -y dhcp-client`. Alternatively, you can use `sudo ip netns exec vm1 nmap --script broadcast-dhcp-discover -e vm1` from the `nmap` package.
+O helper mantém as evidências nos diretórios que imprime. A validação usou `dhcp-client` 4.4.3 no Fedora 44 e estado sob `/var/lib/dhclient/`. Nessa instalação, as mensagens do cliente apareceram no journal; não dependa de uma saída textual idêntica no terminal. Em outra distribuição, confira a disponibilidade do cliente, os caminhos de estado e as políticas de acesso antes de executar. O script não instala pacotes.
+
+O `broadcast-dhcp-discover` do Nmap não é um substituto equivalente: ele consulta uma oferta, mas não configura o endereço da interface nem comprova todo o ciclo de aquisição. Além disso, usa por padrão uma MAC diferente da porta deste lab; uma consulta diagnóstica deve informar a MAC permitida. Consulte a https://nmap.org/nsedoc/scripts/broadcast-dhcp-discover.html[documentação do script Nmap].
 ====
 
+[NOTE]
+.Diferença para uma VM real
+====
+Dentro de uma VM com sistema de arquivos próprio, o gerenciador de rede do guest normalmente aplica a lease e mantém sua renovação. Se o guest usa ISC dhclient, um comando de referência é `sudo dhclient -v INTERFACE_DO_GUEST`, usando a interface correta e sem disputar sua gestão com outro cliente ou com NetworkManager. Não copie esse comando para o namespace deste lab: aqui o objetivo é observar o protocolo sem executar os hooks de configuração. IPAM de pods no OpenShift é outro mecanismo, não esse teste DHCP.
+====
 
 [source,bash]
 ----
-# Verify the IP was assigned
+# Confirme que o endereço estático permanece; isto não prova aplicação da lease.
 sudo ip netns exec vm1 ip addr show vm1
 ----
 
@@ -902,13 +931,13 @@ sudo ovn-trace --summary network1 \
 
 . You created DHCP options for the 10.0.0.0/24 subnet in the NB DB
 . ovn-northd generated logical flows that intercept DHCP requests from the configured ports
-. When vm1 sent a DHCP Discover, OVS matched it against the DHCP flows and generated a DHCP Offer/Ack locally - no external DHCP server was involved
-. The `ovn-trace` tool confirmed the DHCP flow path through the logical pipeline
+. DHCP flows and the local ovn-controller handler provide the response without a separate DHCP server
+. `ovn-trace` simulates the logical path; a successful lease still requires live validation
 
 === Try it yourself
 
-* Modify the DHCP options to change the DNS server and verify the change
-* Create a new port with DHCP options and test that a new namespace gets an IP
+* Altere a opção DNS e confira seu valor na oferta/lease, não no DNS do host.
+* Compare o endereço configurado na porta lógica com `fixed-address` na lease. O helper fornecido é específico para `vm1` e `10.0.0.11` da topologia didática, não para nomes ou IPs físicos dos participantes.
 * Use `ovn-trace` with the `--detailed` flag instead of `--summary` for more information
 
 '''
@@ -1289,20 +1318,23 @@ The trace shows the packet traveling through three datapaths:
 
 === Step 7.1: Verify baseline connectivity
 
+In a dedicated terminal on `central`, start the server in the foreground and keep it running through Step 7.6:
+
+[source,bash]
+----
+sudo ip netns exec vm2 python3 -m http.server 8080 --bind 10.0.0.12
+----
+
+After the server reports that it is listening, use a second terminal for the tests. A fixed sleep is not a readiness check.
+
 [source,bash]
 ----
 # ICMP should work
 sudo ip netns exec vm1 ping -c 2 10.0.0.12
 
-# Start a simple TCP listener on vm2 (port 8080)
-sudo ip netns exec vm2 python3 -m http.server 8080 &
-VM2_PID=$!
-
-# TCP should work
-sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.0.12:8080/
-
-# Clean up the listener
-kill $VM2_PID 2>/dev/null
+# TCP should work; retain both output and exit status
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.0.12:8080/
+echo "Exit code: $?"
 ----
 
 === Step 7.2: View default ACL behavior
@@ -1312,12 +1344,12 @@ kill $VM2_PID 2>/dev/null
 sudo ovn-nbctl acl-list network1
 ----
 
-By default, OVN allows all traffic when no ACLs are configured. Once you add any ACL, the implicit default becomes *deny* for the direction where ACLs are applied.
+Adding an ACL does not by itself turn unmatched traffic into a deny policy. In upstream OVN 24.03, `NB_Global.options:default_acl_drop` defaults to `false`; verify the installed version and configuration. This exercise establishes its IPv4 deny policy with an explicit lower-priority drop rule. See https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-nb.xml[OVN 24.03 ACL and NB_Global definitions].
 
 
-[WARNING]
+[NOTE]
 ====
-Adding your first ACL changes the behavior. Traffic that was previously allowed will be denied unless explicitly permitted by an ACL rule.
+Northbound ACL priority is *0-32767*, distinct from OpenFlow priority 0-65535. `allow-related` generates state handling internally; do not copy generated `ct_mark.blocked` matches into user ACLs. The rules below restrict IPv4; ARP and IPv6 need separate consideration for a complete policy.
 ====
 
 
@@ -1325,13 +1357,6 @@ Adding your first ACL changes the behavior. Traffic that was previously allowed 
 
 [source,bash]
 ----
-# Allow established and related connections (critical for stateful operation)
-sudo ovn-nbctl acl-add network1 to-lport 32767 \
-    'ct.est && !ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
-
-sudo ovn-nbctl acl-add network1 to-lport 32767 \
-    '!ct.est && ct.rel && !ct.new && !ct.inv && ct_mark.blocked == 0' allow-related
-
 # Allow inbound ICMP
 sudo ovn-nbctl acl-add network1 to-lport 1000 \
     'ip4 && icmp4' allow-related
@@ -1366,16 +1391,11 @@ sudo ip netns exec vm1 ping -c 2 10.0.0.12
 
 [source,bash]
 ----
-# Start a TCP listener on port 8080 on vm2
-sudo ip netns exec vm2 python3 -m http.server 8080 &
-VM2_PID=$!
-
-# TCP to port 8080 should be BLOCKED (not in allowed ports)
-sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
+# Keep the Step 7.1 server running; use a new TCP connection
+# TCP to port 8080 should be BLOCKED by the explicit inbound drop rule
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 3 --max-time 10 http://10.0.0.12:8080/
 echo "Exit code: $?"
-# Exit code 28 = connection timed out (ACL dropped the packet)
-
-kill $VM2_PID 2>/dev/null
+# Exit code 28 means timeout; correlate with ACL flows/trace before attributing it to a drop
 ----
 
 === Step 7.6: Add an ACL to allow HTTP
@@ -1389,23 +1409,23 @@ sudo ovn-nbctl acl-add network1 to-lport 1000 \
 
 [source,bash]
 ----
-# Start the listener again and verify it works now
-sudo ip netns exec vm2 python3 -m http.server 8080 &
-VM2_PID=$!
-sudo ip netns exec vm1 curl -s --connect-timeout 3 http://10.0.0.12:8080/
-kill $VM2_PID 2>/dev/null
+# Use the same listener and a new connection after the ACL propagates
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 3 --max-time 10 http://10.0.0.12:8080/
+echo "Exit code: $?"
 ----
+
+Stop the server with `Ctrl+C` in its own terminal after this test.
 
 === Step 7.7: Understand connection tracking behavior
 
 [source,bash]
 ----
 # Use ovn-trace to see how ACLs use connection tracking
-sudo ovn-trace --summary network1 \
+sudo ovn-trace --ct=new --summary network1 \
     'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && tcp.dst == 8080 && ip.ttl == 64'
 ----
 
-The trace shows the connection tracking lifecycle:
+The trace simulates the connection tracking path; it does not observe a live connection:
 
 . `ct_next` performs a conntrack lookup
 . For new connections matching an allow rule, `ct_commit` commits the connection
@@ -1436,7 +1456,7 @@ sudo ovn-nbctl acl-add network1 to-lport 1000 \
 |`allow-stateless`
 |No
 |Must have explicit rules
-|Higher throughput, more rules needed
+|Avoids ACL conntrack processing; throughput must be measured
 
 |===
 
@@ -1444,7 +1464,7 @@ sudo ovn-nbctl acl-add network1 to-lport 1000 \
 === What just happened?
 
 . You added ACLs to control traffic on network1
-. ICMP and SSH are allowed inbound, everything else is dropped
+. The explicit inbound IPv4 drop has exceptions for ICMP, SSH and HTTP 8080 (plus the UDP 5000 stateless example if added)
 . You verified that blocked traffic was denied and that adding a new allow ACL permits traffic
 . You examined how connection tracking enables stateful firewalling
 
@@ -1667,31 +1687,42 @@ sudo ip netns exec vm6 ip route add default via 10.0.1.1
 
 === Step 9.2: Start web servers on the backends
 
+On `central`, open one terminal for each backend. Run this block with `LB_NS=vm4`, `LB_NS=vm5` and `LB_NS=vm6`, respectively. Keep each server in the foreground:
+
 [source,bash]
 ----
-# Start simple web servers that return their identity
-sudo ip netns exec vm4 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm4\n" | nc -l -p 8080 --send-only; done' &
-VM4_LB_PID=$!
+LB_NS=vm4  # Change to vm5 or vm6 in the other terminals
+sudo ip netns exec "$LB_NS" python3 -u -c '
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-sudo ip netns exec vm5 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm5\n" | nc -l -p 8080 --send-only; done' &
-VM5_LB_PID=$!
+body = ("Server: " + sys.argv[1] + "\n").encode("ascii")
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-sudo ip netns exec vm6 bash -c 'while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nServer: vm6\n" | nc -l -p 8080 --send-only; done' &
-VM6_LB_PID=$!
+with HTTPServer(("0.0.0.0", 8080), Handler) as server:
+    print("Listening on port 8080 for " + sys.argv[1], flush=True)
+    server.serve_forever()
+' "$LB_NS"
 ----
 
 [NOTE]
 ====
-On RHEL 9 and Fedora, `nc` is actually `ncat` (from Nmap), which uses `--send-only` to close the connection after sending. If you are on a system with GNU netcat (e.g., Debian/Ubuntu), use `-q 1` instead of `--send-only`.
+This uses https://docs.python.org/3/library/http.server.html[Python's HTTP request handler] to read the request and calculate the response length. Wait for each listening message, then validate direct access below. The former `nc --send-only` loop did not parse HTTP and advertised 14 bytes for a 13-byte body produced by `echo -e`; closing with unread request data can also cause a TCP reset. A fixed sleep does not correct those protocol errors.
 ====
 
 === Step 9.3: Test direct access to backends
 
 [source,bash]
 ----
-sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.11:8080/
-sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.12:8080/
-sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.13:8080/
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.11:8080/
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.12:8080/
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.13:8080/
 ----
 
 === Step 9.4: Create a load balancer
@@ -1722,52 +1753,52 @@ sudo ovn-nbctl ls-lb-add network2 web-lb
 ----
 # Send multiple requests to the VIP from vm1
 for i in $(seq 1 9); do
-    sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.100:80/
+    sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.100:80/ || break
 done
 ----
 
-You should see requests distributed across the three backends.
+New connections can select different backends. Nine requests do not guarantee equal distribution or a visit to every backend; selection uses hashing rather than a guaranteed round-robin sequence (https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-nb.xml[OVN 24.03 Load_Balancer.selection_fields]).
 
 === Step 9.7: Verify load balancer flows
 
 OVN implements load balancing using conntrack DNAT in the OVS datapath. You can observe this by dumping conntrack entries while a request is active.
 
-Since the `--send-only` web servers close connections very quickly, conntrack entries expire before you can see them with a manual command. To observe the DNAT in action, run the dump in a tight loop while sending requests:
+An HTTP connection ending does not imply immediate conntrack expiry. For the Linux datapath, timeout depends on TCP state and configured policy (https://docs.kernel.org/networking/nf_conntrack-sysctl.html[Linux conntrack timeouts]). Inspect the chassis that actually processes the connection and correlate the VIP, backend, client port and zone:
 
 [source,bash]
 ----
-# In one terminal: dump conntrack in a loop
-while true; do sudo ovs-appctl dpctl/dump-conntrack | grep "10.0.1.100"; done
+# On the processing chassis, in one terminal: sample once per second; stop with Ctrl+C
+sudo watch -n 1 'ovs-appctl dpctl/dump-conntrack | grep -F "10.0.1.100"'
 ----
 
 [source,bash]
 ----
 # In another terminal: send a request
-sudo ip netns exec vm1 curl -s --connect-timeout 2 http://10.0.1.100:80/
+sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.100:80/
 ----
 
-Expected conntrack output (briefly visible):
+Linha real coletada em 15/10/2026, no chassis central do lab, com uma requisição mantida ativa durante a consulta. Porta de origem, backend, zona, marca e estado variam entre execuções:
 
 ----
-tcp,orig=(src=10.0.0.11,dst=10.0.1.100,sport=<port>,dport=80),reply=(src=10.0.1.12,dst=10.0.0.11,sport=8080,dport=<port>),zone=...
+tcp,orig=(src=10.0.0.11,dst=10.0.1.100,sport=60186,dport=80),reply=(src=10.0.1.12,dst=10.0.0.11,sport=8080,dport=60186),zone=2,mark=2,protoinfo=(state=ESTABLISHED)
 ----
 
 The key fields to observe:
 
 * `dst=10.0.1.100,dport=80` - the original destination was the VIP
 * `src=10.0.1.12,sport=8080` in the reply - shows the actual backend (e.g., vm5 at 10.0.1.12) and the real port (8080)
-* This DNAT translation happens entirely in the OVS datapath, without any userspace involvement
+* OVS datapath actions perform the translation; kernel cache misses can still require userspace classification, and the `netdev` datapath itself runs in userspace
 
 You can also verify the OVN logical flows that implement the load balancer:
 
 [source,bash]
 ----
-sudo ovn-sbctl dump-flows network1 | grep "lb"
+sudo ovn-sbctl lflow-list network1 | grep "lb"
 ----
 
 [NOTE]
 ====
-If `dump-conntrack` returns empty, it means all connections have already completed and their entries expired. This is expected with short-lived HTTP connections. In production with persistent connections (e.g., database pools, long-lived TCP streams), conntrack entries remain visible for much longer.
+An empty filtered dump alone cannot distinguish no matching traffic, the wrong chassis/datapath/zone, failed connection setup, reset, removal or expiry. First inspect the unfiltered dump and the client exit status. If necessary, capture TCP flags at the client/backend with `tcpdump -nn -i any 'tcp port 80 or tcp port 8080'` inside the relevant namespace. https://nmap.org/book/ncat-man.html[Ncat --send-only] closes at stdin EOF; https://github.com/torvalds/linux/blob/v6.1/net/ipv4/tcp.c[Linux 6.1 TCP close] can send RST when unread data remains. This is a possible mechanism, not evidence that a reset occurred in this lab.
 ====
 
 === Step 9.8: Add and remove backends
@@ -1778,7 +1809,7 @@ If `dump-conntrack` returns empty, it means all connections have already complet
 sudo ovn-nbctl --may-exist lb-add web-lb 10.0.1.100:80 \
     10.0.1.11:8080,10.0.1.12:8080
 
-# Test - traffic only goes to vm4 and vm5
+# Test with new connections; existing conntrack mappings can still reference vm6
 
 # Add vm6 back
 sudo ovn-nbctl --may-exist lb-add web-lb 10.0.1.100:80 \
@@ -1787,9 +1818,13 @@ sudo ovn-nbctl --may-exist lb-add web-lb 10.0.1.100:80 \
 
 === Step 9.9: Clean up listeners
 
+Stop each foreground server with `Ctrl+C` in its own terminal, and stop the watcher. Verify that port 8080 no longer has a listener in each backend namespace:
+
 [source,bash]
 ----
-kill $VM4_LB_PID $VM5_LB_PID $VM6_LB_PID 2>/dev/null
+for ns in vm4 vm5 vm6; do
+    sudo ip netns exec "$ns" ss -ltnp 'sport = :8080'
+done
 ----
 
 === What just happened?
@@ -1861,7 +1896,7 @@ sudo ovn-trace --ct new --summary network1 \
     'inport == "vm1" && eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02 && ip4.src == 10.0.0.11 && ip4.dst == 10.0.0.12 && tcp.dst == 9999 && ip.ttl == 64'
 ----
 
-Look for `ct_mark.blocked = 1` in the output, which indicates the ACL dropped the packet. Without `--ct`, ovn-trace defaults to allowing traffic through the connection tracking tables, which may hide ACL drops.
+Look for the ACL decision and the final drop/no-output path; internal fields such as `ct_mark.blocked` vary by release. By default, `ct_next` in `ovn-trace` assumes tracked, established traffic. `--ct=new` changes that assumption to test a new connection; it does not read live conntrack state. See https://www.ovn.org/support/dist-docs/ovn-trace.8.html[ovn-trace(8), Stateful Actions].
 
 
 [NOTE]
@@ -2012,40 +2047,36 @@ sudo ovs-vsctl get Interface ovn-comput-0 statistics
 
 == Lab Cleanup
 
-When you are done with the lab, clean up the environment:
+When you are done, stop the exercise servers, watchers and captures in their own terminals. Confirm that the listed objects belong to this disposable lab before removing them. A namespace can remain alive while processes still use it; inspect `sudo ip netns pids NAME` before deletion and investigate any remaining process.
 
 [source,bash]
 ----
 # Remove network namespaces (on central node)
 for ns in vm1 vm2 vm4 vm5 vm6 ext-gw; do
-    sudo ip netns del $ns 2>/dev/null
+    sudo ip netns del "$ns"
 done
 
 # Remove network namespaces on compute nodes
 # On compute1:
-sudo ip netns del vm3 2>/dev/null
+sudo ip netns del vm3
 
 # Remove OVS ports (also removes the OVN port bindings)
 # On central:
 for port in vm1 vm2 vm4 vm5 vm6 ext-gw; do
-    sudo ovs-vsctl --if-exists del-port br-int $port
+    sudo ovs-vsctl --if-exists del-port br-int "$port"
 done
 # On compute1:
 sudo ovs-vsctl --if-exists del-port br-int vm3
 
 # Remove OVN logical configuration (from central)
-# The commands below ignore errors for objects that may not exist
-# (e.g., if you only completed some exercises)
-sudo ovn-nbctl lb-del web-lb 2>/dev/null || true
-sudo ovn-nbctl lr-del router1 2>/dev/null || true
-sudo ovn-nbctl ls-del network1 2>/dev/null || true
-sudo ovn-nbctl ls-del network2 2>/dev/null || true
-sudo ovn-nbctl ls-del external 2>/dev/null || true
+# --if-exists tolerates missing objects without hiding other errors
+sudo ovn-nbctl --if-exists lb-del web-lb
+sudo ovn-nbctl --if-exists lr-del router1
+sudo ovn-nbctl --if-exists ls-del network1
+sudo ovn-nbctl --if-exists ls-del network2
+sudo ovn-nbctl --if-exists ls-del external
 
-# Flush conntrack state
-sudo ovs-appctl dpctl/flush-conntrack 2>/dev/null || true
-
-# Verify everything is clean
+# Verify the named logical topology is gone; chassis/services remain registered
 sudo ovn-nbctl show
 sudo ovn-sbctl show
 ----
@@ -2054,13 +2085,20 @@ sudo ovn-sbctl show
 [NOTE]
 ====
 Remember to also clean up namespaces and OVS ports on your compute nodes. The `ovn-nbctl` commands only need to run on the central node since they modify the centralized databases.
+
+Do not run an unqualified `dpctl/flush-conntrack`: it can remove connections belonging to other workloads. This cleanup removes the named topology and leaves connection expiry to the datapath. See https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.8.html[ovs-vswitchd(8), dpctl/flush-conntrack] and https://www.ovn.org/support/dist-docs/ovn-nbctl.8.html[ovn-nbctl(8)] for scoped operations.
 ====
 
 
 [[lab-restore]]
 == Lab Restore
 
-A restore script is provided in `labs/standalone/restore-ovn-lab.sh` to recreate the lab state up to any exercise. This is useful when you need to resume the lab after a reboot or want to skip ahead to a specific exercise.
+O script `labs/standalone/restore-ovn-lab.sh` recria o estado ao fim do exercício informado: `6` prepara o início do exercício 7. Ele não é um snapshot de cada comando executado manualmente. A rodada final de 15/10/2026 passou pelos alvos 1–10 e reexecuções 6/9/10 nas três VMs Fedora 44, incluindo conectividade, DHCP, ACL, NAT e HTTP/LB. Não houve reboot durante essa validação.
+
+[WARNING]
+====
+Use somente nós e bancos dedicados ao workshop. O restore altera serviços, conexões dos bancos, firewall e IDs dos chassis, e recria os objetos nominais dos exercícios. Nomes iguais não provam propriedade em um ambiente compartilhado. As falhas remotas e de verificação agora geram retorno não zero, sem mensagem final de sucesso. Mantenha `lab-netns.sh` ao lado do script; `check-ovn-dhcp.sh` é o teste complementar do passo 4.5. Nenhum desses scripts deve ser aplicado em OCP/RHOSP/RHOSO de produção.
+====
 
 Configure the script by setting environment variables for your lab nodes and their IPs:
 
@@ -2125,7 +2163,7 @@ bash labs/standalone/restore-ovn-lab.sh 10
 
 [IMPORTANT]
 ====
-The restore script does not install packages. Ensure `ovn-central`, `ovn-host`, and `openvswitch` are installed on the appropriate nodes before running the script. Exercise 1 handles everything else (starting services, configuring databases, opening firewall ports, and registering chassis).
+O restore não instala pacotes. Instale previamente OVS/OVN apropriados para a distribuição, conforme o exercício 1. Os alvos 9/10 exigem Python 3 e curl no central, onde ficam os três backends; o teste DHCP separado requer dhclient e tcpdump. As variáveis físicas devem refletir seu ambiente: são aceitos IPv4 decimal e destinos SSH simples, sem opções embutidas. `CENTRAL=local` exige execução privilegiada no nó central. O checkpoint 1 inicia/configura serviços e registra chassis, mas não substitui instalação nem provisionamento de VMs.
 ====
 
 

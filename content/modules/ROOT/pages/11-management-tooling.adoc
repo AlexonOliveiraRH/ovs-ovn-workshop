@@ -106,7 +106,7 @@ sudo ovs-vsctl get bridge br-int datapath_id
 sudo ovs-vsctl get interface eth1 statistics
 
 # Set a field
-sudo ovs-vsctl set bridge br-int other_config:flow-eviction-threshold=2500
+sudo ovs-vsctl set bridge br-test other_config:mac-aging-time=300
 sudo ovs-vsctl set interface eth1 ingress_policing_rate=1000
 sudo ovs-vsctl set interface eth1 ingress_policing_burst=100
 
@@ -187,7 +187,7 @@ sudo ovs-ofctl dump-flows br-int
 # Specify OpenFlow protocol version (OVN uses OpenFlow 1.5)
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15
 
-# Sort by table number for readability
+# Sort by priority (the default field for --sort)
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 --sort
 
 # Filter flows by table
@@ -370,7 +370,20 @@ Common actions:
 ----
 # Count flows per table
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | \
-  grep -oP 'table=\d+' | sort | uniq -c | sort -rn
+  awk '/actions=/ {
+    table = 0
+    metadata = $0
+    sub(/actions=.*/, "", metadata)
+    n = split(metadata, fields, /[[:space:],]+/)
+    for (i = 1; i <= n; i++) {
+      if (fields[i] ~ /^table=[0-9]+$/) {
+        table = substr(fields[i], 7) + 0
+        break
+      }
+    }
+    count[table]++
+  }
+  END { for (table in count) printf "%7d table=%d\n", count[table], table }' | sort -rn
 
 # Find flows with zero packet counts
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "n_packets=0"
@@ -378,6 +391,8 @@ sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "n_packets=0"
 # Find flows matching a specific IP
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "10\.0\.0\.1"
 ----
+
+Somente linhas com `actions=` são contadas, excluindo o cabeçalho da resposta. Quando `table=` é omitido, a tabela é 0; um número explícito substitui esse padrão. A análise considera somente os campos anteriores a `actions=`, portanto `learn(table=...)` não altera a tabela atribuída ao flow. Consulte https://raw.githubusercontent.com/openvswitch/ovs/v3.3.0/lib/ofp-flow.c[OVS 3.3.0, ofputil_flow_stats_format()].
 
 '''
 
@@ -390,7 +405,7 @@ sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "10\.0\.0\.1"
 OVS has two flow processing levels:
 
 . *OpenFlow tables* (in `ovs-vswitchd`) - the full pipeline.
-. *Datapath flow cache* (in kernel) - simplified exact-match flows for fast forwarding.
+. *Datapath flow cache* (in kernel) - cached matches and actions, with wildcard masks (megaflows).
 
 Cache hits are forwarded entirely in the kernel (fast path). Cache misses go to `ovs-vswitchd` (slow path).
 
@@ -408,7 +423,7 @@ sudo ovs-dpctl show
 [NOTE]
 .Key Concept
 ====
-Datapath flows are not the same as OpenFlow flows. OpenFlow flows define policy (with wildcards). Datapath flows are cached exact-match results of evaluating specific packets. There can be many datapath flows for a single OpenFlow flow.
+Datapath flows cache the result of translating the OpenFlow pipeline, with masks identifying the fields relevant to that decision. They need not be exact matches or correspond one-to-one to OpenFlow rules or connections. The userspace datapath's EMC/SMC/dpcls terminology must not be applied directly to the kernel datapath. See the https://www.kernel.org/doc/html/latest/networking/openvswitch.html[Linux datapath documentation] and https://docs.openvswitch.org/en/latest/topics/dpdk/bridge/[OVS userspace cache documentation].
 ====
 
 
@@ -766,8 +781,8 @@ sudo ovs-appctl ofproto/trace br-int "<flow>" 2>&1 | \
 ----
 sudo ovn-appctl -t ovn-controller connection-status    # SB DB connection
 sudo ovn-appctl -t ovn-controller ct-zone-list         # conntrack zones
-sudo ovn-appctl -t ovn-controller debug/status         # controller status
-sudo ovn-appctl -t ovn-controller inc-engine/recompute # trigger flow recompute
+sudo ovn-appctl -t ovn-controller debug/status         # processing loop: running/paused
+sudo ovn-appctl -t ovn-controller list-commands        # commands available in this build
 sudo ovn-appctl -t ovn-controller vlog/set dbg         # debug logging
 sudo ovn-appctl -t ovn-controller vlog/set info        # restore
 ----
@@ -775,7 +790,9 @@ sudo ovn-appctl -t ovn-controller vlog/set info        # restore
 
 [NOTE]
 ====
-Use `ovn-appctl` (not `ovs-appctl`) for OVN components. The `ovn-appctl` command looks for control sockets in `/var/run/ovn/`, while `ovs-appctl` looks in `/var/run/openvswitch/`. If `-t ovn-controller` does not work, try the full path: `-t /var/run/ovn/ovn-controller.<pid>.ctl`.
+For a short target such as `-t ovn-controller`, use the client whose runtime directory matches the deployment. Common package paths are `/var/run/ovn/` and `/var/run/openvswitch/`, but builds and containers can differ. Both clients can address a compatible Unix control socket by its actual absolute path; `ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ...` is not inherently invalid. Inspect the daemon's runtime directory and container before choosing the path. See https://www.openvswitch.org/support/dist-docs/ovs-appctl.8.html[ovs-appctl(8)].
+
+`debug/status` reports running/paused, not overall controller health. A full recomputation is a CPU-intensive diagnostic workaround for suspected incremental-processing problems. Check `list-commands` first: newer releases document `inc-engine/recompute`, while `recompute` is an older command retained as a deprecated alias in current upstream documentation. See https://www.ovn.org/support/dist-docs/ovn-controller.8.html[ovn-controller(8)].
 ====
 
 
@@ -897,7 +914,8 @@ ls -lh /etc/ovn/*.db 2>/dev/null || \
 echo "OVN databases not found in standard locations"
 
 # Logical flow count
-sudo ovn-sbctl --no-headings --columns=_uuid list Logical_Flow | wc -l
+set -o pipefail
+sudo ovn-sbctl --format=csv --no-headings --columns=_uuid list Logical_Flow | wc -l
 ----
 
 '''

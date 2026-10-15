@@ -20,8 +20,11 @@
 #   Exercise 5: OpenFlow NORMAL flow on br0
 #   Exercise 6: br1 with vm5/vm6 + Geneve tunnel
 #   Exercise 7-10: Start from Exercise 6 state (each does its own setup/cleanup)
+#
+# Mantenha lab-netns.sh no mesmo diretório deste script.
 
-set -e
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lab-netns.sh"
 
 TARGET=${1:-6}
 
@@ -30,7 +33,7 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-if [ "$TARGET" -lt 2 ] || [ "$TARGET" -gt 10 ]; then
+if [[ ! "$TARGET" =~ ^([2-9]|10)$ ]]; then
     echo "ERROR: Exercise number must be between 2 and 10"
     echo "Usage: $0 [EXERCISE_NUMBER]"
     exit 1
@@ -45,14 +48,11 @@ fi
 
 cleanup() {
     echo "[cleanup] Removing stale OVS configuration..."
+    cleanup_lab_namespaces vm1 vm2 vm3 vm4 vm5 vm6 monitor trunk-ns
     ovs-vsctl --if-exists del-br br0
     ovs-vsctl --if-exists del-br br1
-    ovs-vsctl -- --all destroy qos 2>/dev/null || true
-    ovs-vsctl -- --all destroy queue 2>/dev/null || true
-
-    for ns in vm1 vm2 vm3 vm4 vm5 vm6 monitor trunk-ns; do
-        ip netns del "$ns" 2>/dev/null || true
-    done
+    # QoS/Queue não têm propriedade comprovada; preservar registros órfãos
+    # em vez de excluir globalmente políticas que podem pertencer a outras bridges.
 
     for veth in veth-vm1 veth-vm2 veth-vm3 veth-vm4 veth-vm5 veth-vm6 veth-mirror veth-trunk eth-a eth-b; do
         ip link del "$veth" 2>/dev/null || true
@@ -171,7 +171,7 @@ verify() {
     fi
 
     echo ""
-    echo "=== Lab Restored (up to Exercise $TARGET) ==="
+    echo "=== Resultado da restauração (até o exercício $TARGET) ==="
 
     case $EFFECTIVE_TARGET in
         2) echo "  Topology: br0 (empty bridge)" ;;
@@ -185,19 +185,21 @@ verify() {
         echo "  Tests: $PASS passed, $FAIL failed"
     fi
 
-    echo "  Ready for: Exercise $TARGET"
-    echo ""
-
     if [ "$FAIL" -gt 0 ]; then
         echo "WARNING: Some connectivity tests failed. Check 'ovs-vsctl show' for details."
         exit 1
     fi
+    echo "  Estado: fim do exercício $EFFECTIVE_TARGET."
+    echo "  Os alvos 7–10 restauram somente a base do exercício 6."
+    echo ""
 }
 
 # --- Main ---
 echo "=== Restoring OVS Hands-On Lab (up to Exercise $TARGET) ==="
 echo ""
 
+echo "AVISO: use somente em laboratório exclusivo. As bridges br0/br1 e os" >&2
+echo "namespaces do workshop serão recriados, encerrando seus processos." >&2
 cleanup
 
 for ex in $(seq 2 $EFFECTIVE_TARGET); do

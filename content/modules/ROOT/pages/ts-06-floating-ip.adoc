@@ -2,6 +2,11 @@
 
 == The Problem
 
+[IMPORTANT]
+====
+Technical review: the supplied transcripts are preserved, but their MAC values containing `ex` or `up` are not valid hexadecimal Ethernet addresses and cannot be treated as real capture evidence. The original explanation also confuses the host bridge MAC with OVN's logical NAT MAC. Read the corrected interpretation below before attempting remediation; the exact product build and packet path still require verification.
+====
+
 *Customer report:* "Assigned a floating IP to a VM in RHOSP but cannot reach it from the
 external network. VM can reach external network fine (outbound SNAT works). This started
 after a controller node failover."
@@ -95,10 +100,10 @@ ____
 
 OVN implements two types of NAT for routers:
 
-* *SNAT (Source NAT / outbound):* Distributed across all compute nodes. Each compute node performs SNAT locally for VMs it hosts. Traffic exits through the local Geneve tunnel to the gateway chassis. Return traffic for established SNAT connections follows conntrack entries and can arrive at any gateway.
-* *DNAT (Destination NAT / floating IP inbound):* Centralized on the gateway chassis. Inbound traffic to a floating IP must arrive at the gateway chassis, which performs DNAT (translating 10.20.30.100 to 192.168.100.50) and forwards the packet to the correct compute node via the Geneve overlay.
+* *Subnet SNAT:* In this distributed-router model, subnet SNAT is processed on the active gateway chassis. Return traffic needs the corresponding conntrack state; it cannot arrive at an arbitrary chassis and recover that state automatically.
+* *Floating IP (`dnat_and_snat`):* Both directions may be centralized on the gateway, or distributed when the NAT rule has the required `logical_port` and `external_mac` configuration and the deployment provides external connectivity on the relevant chassis. The NAT output in this scenario leaves those fields empty, so the diagram below describes centralized processing.
 
-This asymmetry is why outbound SNAT can work while inbound DNAT fails - they use different paths.
+Different inbound and outbound results do not uniquely identify an ARP failure. See https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06 NAT schema]; upstream capability alone does not establish RHOSP support or deployment configuration.
 ____
 
 
@@ -127,9 +132,9 @@ VM sends packet -> Compute node local OVS ->
 ----
 OVN supports multiple gateway chassis for high availability:
 
-  controller-0: priority 1 (highest - preferred active)
+  controller-0: priority 3 (highest - preferred active)
   controller-1: priority 2 (standby)
-  controller-2: priority 3 (standby)
+  controller-2: priority 1 (standby)
 
 When the active gateway fails:
   1. BFD detects the failure
@@ -139,8 +144,9 @@ When the active gateway fails:
   5. Upstream router updates its ARP cache
   6. Traffic flows to the new active gateway
 
-If step 4 or 5 fails, the upstream router still sends traffic to the
-old gateway's MAC address, and inbound traffic is black-holed.
+The logical MAC normally stays unchanged across this gateway failover.
+The physical switch must learn that MAC on the new gateway's uplink.
+Inspect both the neighbor entry and the switch forwarding table.
 ----
 
 '''
@@ -414,10 +420,7 @@ The infrastructure on the new gateway looks correct.
 
 === Step 6: Check ARP on the External Network (KEY FINDING)
 
-*Why:* For external traffic to reach the floating IP, the upstream router must have the
-correct ARP entry mapping 10.20.30.100 to the MAC address of the ACTIVE gateway chassis.
-If the ARP cache still points to the old gateway (controller-0), traffic will be sent to
-the wrong destination.
+*Why:* Verify the floating IP's advertised logical MAC and the physical switch's forwarding entry. In the centralized NAT example, the MAC comes from the logical router port, not automatically from the active host's `br-ex`. A gateway failover can move that same MAC to another uplink without changing the upstream IP-to-MAC neighbor entry. See https://github.com/ovn-org/ovn/blob/v23.06.0/northd/northd.c[OVN 23.06 get_nat_addresses()].
 
 From a machine on the external network (or the upstream router):
 
@@ -451,10 +454,7 @@ identify which controller this belongs to:
     link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff
 ----
 
-*Finding:* The ARP entry points to `52:54:00:ex:c0:01`, which is *controller-0's*
-br-ex MAC address. But the active gateway is now *controller-1* (MAC
-`52:54:00:ex:c1:01`). The upstream router is sending traffic for the floating IP to
-the WRONG controller.
+*Finding:* These invalid placeholder MACs do not establish the real destination. The original sketch below expresses the unverified hypothesis; it incorrectly assumes the floating IP must move to the new host bridge MAC.
 
 ----
 Current (broken) state:
@@ -472,7 +472,7 @@ External client -> upstream router -> ARP: 10.20.30.100 = 52:54:00:ex:c1:01
       -> VM receives the traffic
 ----
 
-This is the root cause. The upstream router's ARP cache was not updated after the
+This comparison does not establish a root cause. A host bridge MAC need not be the advertised NAT MAC; inspect the logical router port, NAT fields and physical-switch FDB before attributing the failure to an ARP update after the
 failover.
 
 '''
@@ -541,9 +541,7 @@ Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP fo
 Apr 15 09:31:12 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP for 10.20.30.5 on port lrp-ext-tenant-router
 ----
 
-*Finding:* ovn-controller on controller-1 DID send gratuitous ARP for 10.20.30.100 at
-09:31:12, right after the failover. So the GARP was sent - but the upstream router did
-not update its ARP cache.
+*Finding:* The supplied log claims a GARP send at 09:31:12. A send log does not prove reception at the upstream router or forwarding-table learning on the physical switch; that requires captures and switch state from the same interval.
 
 Verify with tcpdump (if we had captured at the time):
 
@@ -560,14 +558,14 @@ Verify with tcpdump (if we had captured at the time):
 [NOTE]
 .Key Concept
 ====
-Gratuitous ARP (GARP) is an ARP Reply packet sent without a corresponding ARP Request. It announces "I am now at this MAC address" to all devices on the L2 network. However, not all network devices honor GARP:
+Gratuitous ARP can use a Request or Reply. In https://github.com/ovn-org/ovn/blob/v23.06.0/controller/pinctrl.c[OVN 23.06 pinctrl], GARP uses `ARP_OP_REQUEST`; the original reconstructed Reply above is not a verified capture. GARP can refresh neighbor information and move a MAC between physical switch ports. Reception and learning can be affected by:
 
 * Some switches/routers have GARP filtering enabled for security
 * Some routers have static ARP entries that GARP cannot override
 * GARP may be lost if the network is congested at the moment of failover
 * Some enterprise routers have long ARP cache timeouts and ignore GARP
 
-When GARP fails to update the upstream router, inbound traffic continues to flow to the old gateway's MAC address, causing a black hole.
+If forwarding still points to the old gateway uplink, traffic can be lost even while the upstream IP-to-MAC mapping remains correct.
 ====
 
 
@@ -586,9 +584,7 @@ logical_port        : "lrp-ext-tenant-router"
 mac                 : "52:54:00:up:rr:01"
 ----
 
-*Finding:* OVN's mac_binding table has the upstream router's MAC (10.20.30.1 ->
-52:54:00:up:rr:01). OVN knows how to reach the upstream router. The problem is the
-reverse - the upstream router does not know the new MAC for the floating IP.
+*Finding:* The supplied `MAC_Binding` row represents OVN's neighbor information, not the upstream router's ARP table. Its invalid placeholder MAC cannot prove reachability in either direction.
 
 '''
 
@@ -668,34 +664,7 @@ path is working. The only issue is the stale ARP entry on the upstream router.
 
 == Root Cause
 
-The root cause is a *stale ARP entry on the upstream router* after an OVN gateway
-failover:
-
-. *controller-0 was the active gateway* for tenant-router with the highest priority (3).
-   The floating IP 10.20.30.100 was advertised from controller-0's br-ex with MAC
-   `52:54:00:ex:c0:01`.
-
-. *controller-0 was rebooted* for maintenance. OVN HA failover triggered, moving the
-   active gateway to *controller-1* (priority 2).
-
-. *OVN sent gratuitous ARP* from controller-1, announcing that 10.20.30.100 is now at
-   MAC `52:54:00:ex:c1:01`.
-
-. *The upstream router did not update its ARP cache.* The GARP was either:
-** Received but ignored (some routers have GARP filtering or static ARP entries)
-** Lost due to network timing during the failover transition
-** The ARP entry had not yet expired and the router's ARP implementation does not
-     honor GARP for existing entries
-
-. *Result:* The upstream router continued sending traffic for 10.20.30.100 to
-   controller-0's MAC (`52:54:00:ex:c0:01`). Controller-0 was either down or no longer
-   the active gateway, so traffic was black-holed.
-
-. *Outbound SNAT continued to work* because SNAT is processed at the gateway and return
-   traffic for established connections follows conntrack entries. The established TCP/UDP
-   connections could still return via the old conntrack entries, and new outbound connections
-   from the VM used controller-1 (the new active gateway) for SNAT, which worked because
-   controller-1 could reach the upstream router directly.
+The supplied material does not establish a stale upstream ARP entry as the root cause. It lacks valid captured MAC addresses, the expected logical NAT MAC and the physical switch's FDB during failover. Investigate gateway binding, GARP reception, MAC movement, VLAN/bridge mappings and security rules with synchronized evidence. Conntrack state is local to the chassis; a gateway failover does not by itself replicate established NAT sessions to the new gateway.
 
 '''
 
@@ -703,10 +672,9 @@ failover:
 
 === Immediate Fix: Trigger ARP Refresh
 
-*Option 1: Re-add the NAT rule to trigger new GARP*
+*Original proposal 1: Remove and re-add NAT - not a diagnostic recommendation*
 
-This is the least invasive approach - removing and re-adding the NAT rule causes OVN to
-re-send gratuitous ARP:
+Do not execute the original sequence below merely to refresh ARP. It interrupts the floating IP and can discard NAT metadata or distribution settings managed by Neutron. Preserve the rule and inspect its current configuration first; make any necessary reassociation through the owning OpenStack workflow after confirming the defect.
 
 [source,bash]
 ----
@@ -741,7 +709,7 @@ Apr 15 10:15:01 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP fo
 
 [WARNING]
 ====
-Removing and re-adding the NAT rule causes a brief disruption to any active connections using the floating IP. The disruption should be very short (sub-second) but should be communicated to the customer.
+The original delete/add sequence has no demonstrated recovery-time bound and is not a safe generic fix. A sub-second disruption cannot be promised.
 ====
 
 
@@ -762,10 +730,11 @@ For Linux-based router:
 [admin@upstream-router ~]# ip neigh del 10.20.30.100 dev eth1
 ----
 
-The upstream router will then send a new ARP request, which controller-1 will answer
-with its own MAC.
+Use this only after confirming that this one neighbor entry is wrong. The expected reply uses OVN's advertised logical MAC, not necessarily controller-1's bridge MAC. If the neighbor entry is already correct, investigate the switch FDB instead.
 
-*Option 3: Send manual gratuitous ARP from controller-1*
+*Original proposal 3: Host arping - not equivalent to OVN GARP*
+
+Do not execute the original command below as an OVN repair: it can advertise the host's `br-ex` MAC for an IP owned by the logical router. Inspect OVN-generated announcements on the physical uplink and compare them with `Logical_Router_Port.mac` and the NAT configuration.
 
 [source,bash]
 ----
@@ -781,13 +750,13 @@ Received 0 response(s)
 
 [NOTE]
 ====
-The `arping -A` command sends unsolicited ARP Reply packets (gratuitous ARP). This is equivalent to what OVN does automatically after failover. If OVN's GARP did not work, manually sending GARP may not work either if the upstream router filters GARP. In that case, clearing the ARP cache on the upstream router (Option 2) is the only reliable approach.
+Host `arping -A` does not reproduce the logical packet injection used by OVN. Clearing ARP also cannot repair an incorrect VLAN, a stale physical FDB or missing gateway flows. Select the remedy only after identifying which state is wrong.
 ====
 
 
 === Verify Recovery
 
-After applying any of the above fixes, verify from an external client:
+After applying a remedy justified by captured evidence, verify from an external client. The original recovery transcript below is preserved and still contains invalid placeholder MACs:
 
 [source,bash]
 ----
@@ -798,7 +767,7 @@ After applying any of the above fixes, verify from an external client:
 10.20.30.100             ether   52:54:00:ex:c1:01   C                     eth1
 ----
 
-*Finding:* ARP now points to controller-1's MAC (`52:54:00:ex:c1:01`).
+*Finding:* This placeholder output does not validate recovery. Compare the actual neighbor entry with OVN's logical MAC and confirm forwarding through the active gateway.
 
 Verify traffic reaches controller-1:
 
@@ -1055,7 +1024,8 @@ The chassisredirect (cr-) port is a special port type in the SB DB:
 - Type: chassisredirect
 - Purpose: Represents the active gateway for a logical router
 - Binding: Points to the active gateway chassis
-- nat_addresses: Lists all floating IPs and SNAT IPs to be advertised via GARP
+- nat_addresses: Inspect the associated switch-side router Port_Binding;
+  do not assume the list belongs to the chassisredirect row
 
 When the binding changes (failover), the new chassis:
 1. Installs OpenFlow rules for gateway processing
@@ -1067,17 +1037,17 @@ When the binding changes (failover), the new chassis:
 
 ----
 After failover, the new active gateway sends:
-1. Gratuitous ARP Reply for each floating IP
-2. Gratuitous ARP Reply for the router's external IP (SNAT address)
+1. Gratuitous ARP for eligible floating IPs
+2. Gratuitous ARP for eligible router/NAT addresses
 
 Each GARP packet:
-- Is an ARP Reply (opcode 2)
+- Uses ARP Request (opcode 1) in the verified OVN 23.06 implementation
 - sender IP = sender protocol address = floating IP
-- sender MAC = new gateway's br-ex MAC
+- sender MAC = OVN logical NAT/router MAC, not the host br-ex MAC
 - target IP = floating IP (same as sender)
 - Broadcast to ff:ff:ff:ff:ff:ff
 
-All devices on the L2 segment that receive this should update their ARP cache.
+Verify neighbor state and physical-switch MAC learning separately.
 ----
 
 '''
@@ -1137,20 +1107,14 @@ All devices on the L2 segment that receive this should update their ARP cache.
 
 == Key Takeaways
 
-* *Floating IP accessibility depends on correct ARP on the external network.* After a
-  gateway failover, the upstream router must learn the new MAC address for the floating IP.
-  If GARP fails, the floating IP becomes unreachable from the external network.
+* *Check both ARP and physical MAC learning.* Gateway failover normally moves the logical MAC between uplinks; it need not change the floating IP's neighbor mapping.
 
-* **Outbound SNAT working while inbound DNAT fails is the hallmark of a gateway
-  failover ARP issue.** SNAT and DNAT use different paths - SNAT is partially distributed
-  while DNAT is centralized on the gateway chassis.
+* *Outbound success does not isolate an ARP defect.* Inspect actual NAT placement, connection state, security policy and the return path.
 
 * *Not all network devices honor gratuitous ARP.* Always verify that the upstream router
   accepts GARP. If it does not, plan for manual ARP cache clearing during failovers.
 
-* *BFD is essential for fast failover detection.* Without BFD, OVN relies on the inactivity
-  probe timeout (default 5 seconds), which means a longer disruption window. Configure BFD
-  with aggressive intervals (300ms x 3 = ~1 second detection).
+* *Measure BFD detection and gateway convergence.* Database inactivity probes are not a substitute for tunnel liveness. Detection depends on negotiated intervals and the multiplier, while recovery also requires forwarding convergence; do not promise a one-second failover from timer settings alone.
 
 * *Always verify floating IP accessibility after any gateway maintenance.* Do not assume
   GARP worked - check the upstream router's ARP table and test from an external client.

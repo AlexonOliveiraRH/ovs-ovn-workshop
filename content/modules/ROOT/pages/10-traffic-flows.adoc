@@ -915,27 +915,27 @@ sudo tshark -i eth0 -f "port 6081" -O geneve
 
 [source,bash]
 ----
-# Create a mirror
-sudo ovs-vsctl \
+# Create a mirror and retain its UUID for scoped cleanup
+# vm1 and monitor must already exist on br-int
+MIRROR_UUID=$(sudo ovs-vsctl \
   -- --id=@vm1 get port vm1 \
   -- --id=@mon get port monitor \
   -- --id=@m create mirror name=debug \
      select-src-port=@vm1 select-dst-port=@vm1 \
      output-port=@mon \
-  -- set bridge br-int mirrors=@m
+  -- add bridge br-int mirrors @m)
 
 # Capture on the mirror port
 sudo tcpdump -i monitor -nn -w /tmp/vm1-traffic.pcap
 
-# Clean up
-sudo ovs-vsctl -- clear bridge br-int mirrors \
-  -- --if-exists destroy mirror debug
+# Remove only the mirror created above, preserving other sessions
+sudo ovs-vsctl remove bridge br-int mirrors "${MIRROR_UUID:?missing mirror UUID}"
 ----
 
 
 [WARNING]
 ====
-Port mirroring duplicates traffic and consumes additional bandwidth and CPU. Always clean up mirrors after debugging.
+Port mirroring duplicates traffic and consumes additional bandwidth and CPU. Always clean up the specific mirror created for this session. Adding to and removing from `Bridge.mirrors` preserves existing mirrors; setting or clearing the entire set does not. See https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.html[ovs-vsctl set operations].
 ====
 
 
@@ -1100,7 +1100,7 @@ sudo ovn-trace --ct est ls1 '<flow>'    # established connection
 [NOTE]
 .Key Concept
 ====
-Use `ovn-trace` to understand logical intent and `ovs-appctl ofproto/trace` to understand physical execution. Compare both when debugging. If they diverge, the problem is in `ovn-controller`'s flow translation.
+Use `ovn-trace` to inspect the logical pipeline and `ovs-appctl ofproto/trace` to simulate the installed OpenFlow pipeline. Neither sends a real packet. Before attributing a difference to `ovn-controller`, align the packet fields, ingress port, conntrack assumptions, database snapshot and chassis. A difference alone does not establish a translation bug. See https://www.ovn.org/support/dist-docs/ovn-trace.8.html[ovn-trace(8)] and https://docs.openvswitch.org/en/latest/topics/tracing/[OVS packet tracing].
 ====
 
 

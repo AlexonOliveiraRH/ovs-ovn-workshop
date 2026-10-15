@@ -7,6 +7,8 @@ Red Hat OpenStack Platform (RHOSP) is where most Red Hat engineers encounter OVS
 
 This module covers both architectures in detail - the legacy ML2/OVS approach and the current ML2/OVN approach - so you can support environments running either one, and explain the differences to customers considering migration.
 
+The product-specific reference for this chapter is *RHOSP 17.1*. Upstream driver lists and OVN capabilities do not constitute a Red Hat support matrix; consult the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/configuring_red_hat_openstack_platform_networking/assembly_work-with-ovn_rhosp-network[RHOSP 17.1 ML2/OVN documentation] for supported configurations and limitations.
+
 '''
 
 == RHOSP Networking Architecture Overview
@@ -473,9 +475,11 @@ ML2/OVN replaces the multiple Neutron agents with OVN's distributed architecture
 
 *No more neutron-l3-agent* - Routing is handled natively by OVN's distributed logical routers. Every compute node running `ovn-controller` can route traffic locally for VMs it hosts. There are no router namespaces, no keepalived processes, and no DVR complexity.
 
-*No more neutron-dhcp-agent* - DHCP is handled by OVN's built-in DHCP responder. When a VM sends a DHCP discover, OVN's logical flows intercept it and generate a DHCP offer directly in the pipeline. There is no `dnsmasq` process, no DHCP namespace, and no external port needed.
+*Native DHCP for ordinary OVN VM ports* - Logical flows invoke the DHCP responder in `ovn-controller`; this is not a response generated entirely in the OVS fast path. DHCP options are referenced by each logical switch port. Native DHCP avoids `dnsmasq` and `qdhcp` namespaces for these ports; SR-IOV/external-port configurations have release-specific requirements. See https://www.ovn.org/support/dist-docs/ovn-nb.5.html[OVN Northbound schema, DHCP_Options and Logical_Switch_Port].
 
-*No more neutron-metadata-agent* (in most configurations) - OVN can provide metadata service through its own mechanism, eliminating the need for a separate metadata agent and the complex metadata proxy chain through router namespaces.
+The DHCP `dns_server` option advertises resolver addresses to a guest; it is distinct from OVN's native `DNS` table/responder. Neither mechanism replaces OpenShift's CoreDNS-based pod service discovery described in Module 09. The presence of an upstream DNS capability alone does not establish its configuration or Red Hat support in a deployment.
+
+*OVN-specific metadata agent* - RHOSP 17.1 uses `neutron-ovn-metadata-agent` (the `ovn_metadata_agent` container), with metadata namespaces and proxies. Metadata HTTP service is not implemented solely by OVN logical flows. The https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/configuring_red_hat_openstack_platform_networking/neutron-troubleshoot_rhosp-network[RHOSP 17.1 verification procedure] explicitly checks this container.
 
 *Single integration bridge* - `br-int` handles everything. There is no separate `br-tun`. Geneve tunnel ports are added directly to `br-int`. This simplifies the architecture and reduces the number of flow table hops per packet.
 
@@ -487,7 +491,7 @@ ML2/OVN replaces the multiple Neutron agents with OVN's distributed architecture
 [NOTE]
 .Key Concept
 ====
-The shift from ML2/OVS to ML2/OVN eliminates four separate agent processes (L2, L3, DHCP, metadata) and replaces them with a single `ovn-controller` per node. This dramatically reduces the number of moving parts that can fail and simplifies the operational model.
+ML2/OVN replaces the Neutron OVS and L3 agents and provides native DHCP for ordinary VM ports. It still requires OVN databases, `ovn-northd`, per-chassis `ovn-controller`, and the OVN metadata agent when metadata is enabled.
 ====
 
 
@@ -504,11 +508,11 @@ When the ML2/OVN mechanism driver processes a Neutron API request, it translates
 
 |*Network*
 |*Logical Switch*
-|Each Neutron network becomes an OVN logical switch. The network's segmentation ID maps to the logical switch's tunnel key.
+|Each Neutron network becomes an OVN logical switch. Its OVN datapath tunnel key is allocated in the SB DB; do not equate it with the Neutron provider segmentation ID.
 
 |*Subnet*
 |*DHCP Options + Logical Switch config*
-|Subnet information (CIDR, gateway, DNS) is stored as DHCP options on the logical switch. OVN uses these to respond to DHCP requests.
+|Subnet CIDR and options are stored in `DHCP_Options`, referenced by `Logical_Switch_Port.dhcpv4_options` / `dhcpv6_options` for DHCP-enabled ports.
 
 |*Port*
 |*Logical Switch Port*
@@ -551,7 +555,7 @@ ovn-nbctl ls-list
 
 # Compare a specific network
 openstack network show <network-id>
-ovn-nbctl ls-find external_ids:neutron\\:network_name=<network-name>
+ovn-nbctl find Logical_Switch 'external_ids:neutron:network_name="<network-name>"'
 
 # List OVN logical switch ports for a network
 ovn-nbctl lsp-list <logical-switch-name>
@@ -611,6 +615,8 @@ Notice there is no `br-tun` bridge, no VLAN-to-VNI translation, and no patch por
 
 ==== VM to External Network
 
+The diagram below shows *centralized north-south NAT*. RHOSP 17.1 new ML2/OVN deployments enable DVR by default: an eligible VM floating IP can be translated on its compute node when the required external bridge mapping/connectivity exists. Subnet SNAT for traffic without a floating IP remains on a gateway chassis. Verify the deployed DVR setting before choosing a capture point. See https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/configuring_red_hat_openstack_platform_networking/config-dvr_rhosp-network[RHOSP 17.1 routing architectures].
+
 ----
 Compute Node                        Gateway Node
 VM-A --> br-int --> geneve tunnel    geneve tunnel --> br-int --> router pipeline
@@ -625,7 +631,7 @@ Flow path:
 . *Compute node - br-int routing pipeline*: OVN performs L3 routing within the `br-int` flow tables. The packet's TTL is decremented, the source MAC is changed to the router's MAC, and the destination MAC is changed to the next hop's MAC. But since the external port is on the gateway chassis (not this compute), the packet is sent via a Geneve tunnel to the gateway node.
 . *Gateway node - br-int*: The packet arrives and continues through the routing pipeline. NAT rules are applied:
 ** If the VM has a floating IP: SNAT translates the source IP.
-** If SNAT is enabled on the router: The source IP is translated to the router's external IP.
+** If the VM has no floating IP and SNAT is enabled on the router: The source IP is translated to the router's external IP.
 . *Gateway node - br-ex*: The packet exits to the physical network through `br-ex`.
 
 === Gateway Nodes and Chassis Redirect
@@ -634,9 +640,9 @@ In OVN, certain functions must be centralized on specific nodes because they req
 
 When a logical router has a gateway port (external connectivity), OVN uses the concept of *chassis redirect*:
 
-* The logical router port connected to the external network is a "redirect" type port.
-* This port is bound to a specific gateway chassis.
-* Traffic destined for external networks is tunneled to the gateway chassis for processing.
+* `ovn-northd` creates a derived SB `Port_Binding` of type `chassisredirect` for the distributed gateway port; this is not the type of the NB logical router port.
+* This derived binding identifies the active gateway chassis.
+* Traffic that requires centralized processing is redirected to that chassis; distributed floating-IP traffic can exit on the VM's compute node.
 * Multiple gateway chassis can be configured for HA (active/standby using BFD).
 
 [source,bash]
@@ -697,7 +703,7 @@ ovn-sbctl list bfd
 
 |North-south with floating IP
 |Through network node (or compute with DVR)
-|Through gateway chassis (or compute in some cases)
+|On compute with DVR and external connectivity; otherwise through gateway chassis
 
 |North-south SNAT
 |Through network node
@@ -705,7 +711,7 @@ ovn-sbctl list bfd
 
 |DHCP response time
 |dnsmasq process in namespace
-|Direct flow response (faster)
+|OVN native responder in ovn-controller; no dnsmasq for ordinary VM ports
 
 |Security group evaluation
 |OVS conntrack or iptables
@@ -737,7 +743,7 @@ Most Neutron features are supported by both ML2/OVS and ML2/OVN. However, there 
 
 * Distributed routing (native, no DVR complexity)
 * Built-in DHCP (no dnsmasq dependency)
-* OVN-native load balancing
+* OVN-native load balancing through the Octavia OVN provider, within the RHOSP 17.1 feature matrix
 * Faster control plane convergence
 * Simpler HA model (BFD-based gateway HA)
 
@@ -750,7 +756,7 @@ Most Neutron features are supported by both ML2/OVS and ML2/OVN. However, there 
 
 [NOTE]
 ====
-As of RHOSP 16.2 and later, ML2/OVN has reached full feature parity for the vast majority of use cases. Red Hat maintains a detailed feature comparison matrix in the product documentation. Always consult the release-specific documentation for the exact list of supported features.
+Do not assume feature parity from upstream OVN capabilities. In the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html-single/configuring_load_balancing_as_a_service/configuring_load_balancing_as_a_service[RHOSP 17.1 Octavia support matrix], the OVN provider supports ML2/OVN L3 HA and DVR, but health monitors are Technology Preview and terminated HTTPS is unsupported. These limits differ from the Amphora provider and from other Red Hat releases.
 ====
 
 
@@ -765,7 +771,7 @@ As of RHOSP 16.2 and later, ML2/OVN has reached full feature parity for the vast
 
 |Services to monitor
 |neutron-openvswitch-agent, neutron-l3-agent, neutron-dhcp-agent, neutron-metadata-agent
-|ovn-controller, ovn-northd, OVN NB/SB databases
+|ovn-controller, ovn-northd, OVN NB/SB databases, ovn-metadata-agent
 
 |Log locations
 |Individual agent logs on each node
@@ -826,7 +832,7 @@ This section provides commands to run on a live RHOSP environment. These assume 
 
 [NOTE]
 ====
-These commands are for exploration and learning. They are all read-only and safe to run on a production environment. Commands that modify state are clearly marked.
+These are inspection and lab examples. Check the execution context and impact before use: traffic generation and packet captures have operational cost, while gateway assignment and database compaction commands change state. The output blocks are retained examples, not validation of a particular RHOSP 17.1 deployment.
 ====
 
 
@@ -1009,9 +1015,9 @@ ip netns exec qrouter-<router-id> iptables -t nat -L -n -v
 === For ML2/OVN Environments
 
 [IMPORTANT]
-.Containerized OVN Services in RHOSP 17.x
+.Containerized OVN Services in RHOSP 17.1
 ====
-In RHOSP 17.x with TripleO, the OVN databases and `ovn-northd` run as Pacemaker-managed Podman containers on the controller nodes. You cannot run `ovn-nbctl` or `ovn-sbctl` directly on the host - you must `exec` into the appropriate container.
+In RHOSP 17.1 with TripleO, OVN control-plane services run in Podman containers managed by the deployment's HA configuration. Use the appropriate container to access its tools and local sockets. A host client can also connect with an explicit reachable DB endpoint and the required TLS credentials; the host's default Unix socket must not be assumed to exist.
 
 The typical container names are:
 
@@ -1036,7 +1042,7 @@ sudo podman exec ovn_cluster_north_db_server ovn-nbctl show
 sudo podman exec ovn_cluster_south_db_server ovn-sbctl show
 ----
 
-Because the OVN databases run in a Raft cluster across the three controllers, append `--no-leader-only` if you need to query a specific node rather than the current leader:
+For a Raft deployment, `--no-leader-only` allows a read from a follower, which can be stale; it does not select an arbitrary server. The container's local socket selects the instance below. See https://www.ovn.org/support/dist-docs/ovn-nbctl.8.html[ovn-nbctl(8)]:
 
 [source,bash]
 ----
@@ -1057,7 +1063,7 @@ On *compute nodes*, `ovn-controller` runs as a Podman container named `ovn_contr
 sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
 ----
 
-The commands in the sections below are shown without the `podman exec` prefix for readability. In a RHOSP 17.x environment, prefix each command with `sudo podman exec <container-name>` as shown above.
+The abbreviated OVN commands below run inside the appropriate container: NB for `ovn-nbctl`, SB for `ovn-sbctl` and `ovn-trace`. Run OVS commands on the chassis that owns the local OVS instance. Inspect `podman ps`, `podman inspect <container-name>` and the process arguments before assuming service names, configuration mounts or socket paths. Configuration under `/etc/neutron/` below is relative to the Neutron container, not necessarily the host. See the https://docs.redhat.com/en/documentation/red_hat_openstack_platform/17.1/html/configuring_red_hat_openstack_platform_networking/neutron-troubleshoot_rhosp-network[RHOSP 17.1 container inspection procedure].
 ====
 
 ==== Check Neutron Configuration
@@ -1660,17 +1666,19 @@ ovn-appctl -t /var/run/ovn/ovnnb_db.ctl cluster/status OVN_Northbound
 # Check OVN SB DB cluster health
 ovn-appctl -t /var/run/ovn/ovnsb_db.ctl cluster/status OVN_Southbound
 
-# Check ovn-northd is running and processing
-systemctl status ovn-northd
-journalctl -u ovn-northd --since "10 minutes ago"
+# Check the deployed OVN containers and HA resources on the controller
+sudo podman ps --format '{{.Names}} {{.Status}}' | grep ovn
+sudo pcs status
+# Inspect logs in the container or its mounted log directory
+sudo podman logs --since 10m <northd-container-name>
 
 # Check ovn-controller connectivity on a compute node
 ovs-vsctl get open_vswitch . external_ids:ovn-remote
 # Should show the SB DB connection string
 
-# Check ovn-controller status
-systemctl status ovn-controller
-journalctl -u ovn-controller --since "10 minutes ago" | grep -i "error\|warn\|disconnect"
+# Check the ovn-controller container on a compute node
+sudo podman ps --filter name=ovn_controller
+sudo podman exec ovn_controller ovn-appctl -t ovn-controller connection-status
 
 # Verify the controller is connected to the SB DB
 ovs-vsctl list open_vswitch | grep ovn
@@ -1712,13 +1720,13 @@ If the OVN Raft cluster loses quorum (e.g., 2 out of 3 members are down), the da
 
 . *Neutron is the API layer; OVS/OVN is the implementation layer.* Neutron defines what the network should look like. ML2/OVS or ML2/OVN implements it on the infrastructure.
 
-. *ML2/OVS uses multiple agents; ML2/OVN uses a single ovn-controller.* The agent reduction in ML2/OVN simplifies operations and reduces failure modes.
+. *ML2/OVN reduces the Neutron agent set.* Keep the OVN metadata agent, databases and ovn-northd in the operational inventory alongside ovn-controller.
 
 . *ML2/OVS uses br-int + br-tun + br-ex; ML2/OVN uses br-int (+ br-ex for external).* Fewer bridges means simpler packet paths and easier troubleshooting.
 
 . *ML2/OVN provides native distributed routing.* No DVR complexity, no network node bottleneck for east-west traffic. This is the single biggest architectural advantage.
 
-. *ML2/OVN eliminates external dependencies for DHCP, metadata, and routing.* These are implemented as logical flows within OVN rather than external processes in namespaces.
+. *ML2/OVN provides native DHCP and logical routing.* Native DHCP uses ovn-controller; metadata still uses the OVN metadata agent and proxies.
 
 . *Troubleshooting ML2/OVS is bottom-up (flows, bridges, namespaces). Troubleshooting ML2/OVN is top-down then bottom-up (logical topology, then flows).* Use `ovn-trace` and `ovn-nbctl` before reaching for `ovs-ofctl` and `tcpdump`.
 
