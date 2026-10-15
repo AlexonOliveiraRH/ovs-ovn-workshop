@@ -628,7 +628,7 @@ The physical NIC has MTU 1500, which is the bottleneck. After Geneve encapsulati
 ~58 bytes of overhead, any inner packet larger than 1442 bytes will result in an outer
 packet exceeding 1500 bytes, which the physical NIC and network cannot carry.
 
-Check OVS interface details using the actual tunnel Interface row. `genev_sys_6081` is a kernel device and need not exist as an OVSDB row. Discover names with `ovs-vsctl --columns=name,type,options,statistics find Interface type=geneve`. The original transcript below assumes such a row exists and is retained without validation.
+Check OVS interface details using the actual tunnel Interface row. `genev_sys_6081` is a kernel device and need not exist as an OVSDB row. Discover names with `ovs-vsctl --columns=name,type,options,statistics find Interface type=geneve`. The example below assumes such a row exists; its output has not been validated.
 
 [source,bash]
 ----

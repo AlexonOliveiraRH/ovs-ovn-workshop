@@ -1,6 +1,6 @@
 #!/bin/bash
-# Limpeza restrita aos nomes de namespaces informados pelo restore do workshop.
-# ip-netns(8): remover o nome não encerra os processos que mantêm o namespace vivo.
+# Limit cleanup to namespace names supplied by the workshop restore scripts.
+# ip-netns(8): removing a name does not stop processes that keep the namespace alive.
 cleanup_lab_namespaces() {
     local namespaces ns existing found pids pid attempt
     namespaces=$(ip netns list)
@@ -16,7 +16,7 @@ cleanup_lab_namespaces() {
 
         pids=$(ip netns pids "$ns")
         for pid in $pids; do
-            # Um processo pode terminar entre a consulta e o sinal.
+            # A process may exit between the query and the signal.
             kill "$pid" 2>/dev/null || true
         done
         for attempt in 1 2 3 4 5; do
@@ -25,7 +25,7 @@ cleanup_lab_namespaces() {
             sleep 1
         done
         if [[ -n "$pids" ]]; then
-            echo "ERRO: processos ainda ativos em $ns; exclusão cancelada: $pids" >&2
+            echo "ERROR: Processes are still active in $ns; deletion canceled: $pids" >&2
             return 1
         fi
         ip netns del "$ns"

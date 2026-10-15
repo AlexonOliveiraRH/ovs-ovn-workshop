@@ -1041,7 +1041,7 @@ ovs-dpctl dump-flows | wc -l
 [NOTE]
 .Key Concept
 ====
-There is no universal healthy cache-hit percentage or packet latency. Compare hit/miss/lost counter deltas under a defined workload, including flow churn, packet sizes and enabled actions. The EMC is specific to the userspace datapath - see the xref:#_ovs_dpdk[OVS-DPDK section].
+There is no universal healthy cache-hit percentage or packet latency. Compare hit/miss/lost counter deltas under a defined workload, including flow churn, packet sizes and enabled actions. The EMC is specific to the userspace datapath - see the xref:#_ovs_and_dpdk[OVS-DPDK section].
 ====
 
 

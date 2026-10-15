@@ -4,7 +4,7 @@ A comprehensive, hands-on workshop designed for Red Hat engineers who need to un
 
 ## Published Site
 
-This workshop is published via GitHub Pages using [Antora](https://antora.org/) with the [Red Hat Showroom](https://github.com/rhpds/showroom_template_nookbag) theme.
+This repository builds a workshop site using [Antora](https://antora.org/) with the [Red Hat Showroom](https://github.com/rhpds/showroom_template_nookbag) theme. The included workflow can publish the site to GitHub Pages when Pages is enabled for the repository.
 
 **Live site:** *(URL available after GitHub Pages is enabled)*
 
@@ -51,6 +51,7 @@ ovs-ovn-workshop/
 │   ├── rhoso/                         # RHOSO inspection scripts
 │   └── openshift/                     # OpenShift inspection scripts
 ├── diagrams/                          # Architecture diagrams source files
+├── tests/                             # Local regression tests for lab helpers
 ├── site.yml                           # Antora playbook
 ├── package.json                       # Node.js dependencies (Antora)
 └── .github/workflows/gh-pages.yml     # GitHub Pages CI/CD
@@ -58,21 +59,39 @@ ovs-ovn-workshop/
 
 ## Local Preview
 
-Run the site locally with Podman:
-
-```bash
-podman run --rm --name antora -v $PWD:/antora:Z -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
-```
-
-Then open http://localhost:8080 in your browser. The site rebuilds automatically when you edit `.adoc` or `.yml` files.
-
-Alternatively, build with npm:
+Build the complete site, including the interactive slide deck:
 
 ```bash
 npm install
-npx antora site.yml
-# Open www/modules/index.html in a browser
+npm run build
+# Open www/modules/index.html in your browser
 ```
+
+Run `npm run build` again after editing the content or slides. To preview the published directory over HTTP:
+
+```bash
+python3 -m http.server 8080 --directory www
+```
+
+Open http://localhost:8080/modules/index.html. Stop the preview server with Ctrl+C.
+
+For live preview of the Antora pages, you can also use Podman:
+
+```bash
+podman run --rm --name antora -v "$PWD:/antora:Z" -p 8080:8080 -i -t ghcr.io/juliaaano/antora-viewer
+```
+
+The container viewer rebuilds Antora pages when you edit `.adoc` or `.yml` files. Use `npm run build` when you need the complete output with the slide deck packaged under `www/slides/`.
+
+## Local Checks
+
+Run the lab helper regression tests without connecting to lab machines:
+
+```bash
+python3 -B tests/test_lab_safety.py
+```
+
+These tests use simulated system commands. They check script behavior and safety boundaries, but do not replace end-to-end testing on the target platform.
 
 ## Contributing
 

@@ -14,7 +14,7 @@
 
 == OpenShift Networking Overview
 
-This chapter uses *OCP 4.18*, with the default Layer 3 OVN-Kubernetes network in Interconnect mode, as its reference. Historical comparisons do not define support for later releases, managed-service variants or every additional-network topology. Existing captured outputs remain unchanged; aggregate examples are identified where they differ from a node-local IC view.
+This chapter uses *OCP 4.18*, with the default Layer 3 OVN-Kubernetes network in Interconnect mode, as its reference. Historical comparisons do not define support for later releases, managed-service variants or every additional-network topology. Aggregate examples can differ from the output of a node-local IC database; check the scope described with each example.
 
 Before diving into OVN-Kubernetes, it helps to understand the networking model that all Kubernetes distributions - including OpenShift - follow, and how OpenShift evolved to its current implementation.
 
@@ -1100,7 +1100,7 @@ ovnkube-node-pqr12                       8/8     Running   0          5d    192.
 * `ovnkube-control-plane` pods run on control plane nodes and coordinate cluster-wide resources (EgressIP, zone management).
 * `ovnkube-node` pods run on every node (DaemonSet) and contain the full OVN stack in IC mode: nbdb, sbdb, northd, ovn-controller, and ovnkube-controller. *These are the pods you use to query OVN databases.*
 
-The retained listing above is not a replica/container-count specification for 4.18. The official architecture example shows two `ovnkube-control-plane` pods with `kube-rbac-proxy` and `ovnkube-cluster-manager`, and eight containers per ordinary `ovnkube-node` pod. Inspect the deployed manifests for the actual configuration.
+The listing above is not a replica/container-count specification for 4.18. The official architecture example shows two `ovnkube-control-plane` pods with `kube-rbac-proxy` and `ovnkube-cluster-manager`, and eight containers per ordinary `ovnkube-node` pod. Inspect the deployed manifests for the actual configuration.
 
 ==== Check Node IPs and Pod CIDRs
 
@@ -1125,7 +1125,7 @@ This output confirms the per-node subnet allocation. For example, all pods on `w
 
 ==== Access the OVN Northbound Database
 
-To run `ovn-nbctl` commands in OCP 4.18 IC mode, exec into the specific node's `ovnkube-node` pod using `nbdb`. It contains local topology plus the remote-zone representations required for connectivity. The retained `show`, `ls-list` and `lr-list` examples below aggregate several nodes and must not be treated as expected output from one IC database.
+To run `ovn-nbctl` commands in OCP 4.18 IC mode, exec into the specific node's `ovnkube-node` pod using `nbdb`. It contains local topology plus the remote-zone representations required for connectivity. The `show`, `ls-list` and `lr-list` examples below aggregate several nodes and must not be treated as expected output from one IC database.
 
 [source,bash]
 ----
@@ -1178,7 +1178,7 @@ router 5e6f7890-1234-5678-ef01-234567890123 (GR_worker-0)
     nat dnat_and_snat ...
 ----
 
-This retained aggregate example illustrates the object types; a single 4.18 IC database does not enumerate every node's pod switch and gateway router:
+This aggregate example illustrates the object types; a single 4.18 IC database does not enumerate every node's pod switch and gateway router:
 
 * Per-node logical switches (`worker-0`, `worker-1`) with pod ports
 * The `join` logical switch connecting routers
@@ -1525,13 +1525,13 @@ PING 10.129.2.30 (10.129.2.30) 56(84) bytes of data.
 
 [NOTE]
 ====
-The retained ping output shows TTL 63, but it does not establish the hop count for the OCP 4.18 IC path. That path includes routing in the source and destination zones; determine TTL changes from the actual trace/capture and initial TTL rather than assuming one router hop.
+The ping output shows TTL 63, but it does not establish the hop count for the OCP 4.18 IC path. That path includes routing in the source and destination zones; determine TTL changes from the actual trace/capture and initial TTL rather than assuming one router hop.
 ====
 
 
 ==== Use ovn-trace from OVN-K Pods
 
-`ovn-trace` reads the *Southbound* database and simulates logical processing without sending packets. In IC mode, a source-zone trace can stop at a `remote` transit port; it does not prove delivery through the destination zone or the physical network. Use the destination zone's state to continue the analysis. See https://www.ovn.org/support/dist-docs/ovn-trace.8.html[ovn-trace(8)]. The retained two-pod listing below must be assembled by querying each pod's own zone.
+`ovn-trace` reads the *Southbound* database and simulates logical processing without sending packets. In IC mode, a source-zone trace can stop at a `remote` transit port; it does not prove delivery through the destination zone or the physical network. Use the destination zone's state to continue the analysis. See https://www.ovn.org/support/dist-docs/ovn-trace.8.html[ovn-trace(8)]. The two-pod listing below must be assembled by querying each pod's own zone.
 
 [source,bash]
 ----

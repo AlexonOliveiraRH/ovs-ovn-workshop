@@ -63,7 +63,7 @@ near 100% of a CPU core.
 
 [IMPORTANT]
 ====
-The supplied transcripts are retained for review; they are not measurements validated by this workshop. This scenario mixes kernel-datapath and userspace-PMD output and does not establish a single causal chain. Confirm the actual datapath, container and software version before using a command. Capacity and throughput numbers below are specific to the supplied examples, not OpenShift limits.
+The example outputs are not validated measurements. This scenario mixes kernel-datapath and userspace-PMD output and does not establish a single causal chain. Confirm the actual datapath, container and software version before using a command. Capacity and throughput numbers below are specific to these examples, not OpenShift limits.
 ====
 
 === Step 1: Baseline Performance Test with iperf3
@@ -339,7 +339,7 @@ Megaflow masks depend on the fields needed to preserve the result of the full Op
 ====
 
 
-The original command below is not available in https://github.com/openvswitch/ovs/blob/v3.3.0/lib/dpctl.c[OVS 3.3.0]; its supplied output is retained but must not be treated as validated command output. For kernel mask statistics, run `ovs-appctl dpctl/show -s` and inspect `masks: hit`, `total` and `hit/pkt` where supported.
+The `dpctl/dump-mega-stats` command below is not available in https://github.com/openvswitch/ovs/blob/v3.3.0/lib/dpctl.c[OVS 3.3.0]; the associated output must not be treated as validated command output. For kernel mask statistics, run `ovs-appctl dpctl/show -s` and inspect `masks: hit`, `total` and `hit/pkt` where supported.
 
 [source,bash]
 ----
@@ -730,7 +730,7 @@ system@ovs-system:
       0.234: flow=9012 packets=20123
 ----
 
-*Finding:* 124,567 is below 131,072, so this snapshot does not show the limit being reached. The supplied dump duration is long, but determining its cause requires synchronized samples and version-specific counter semantics. The chain below is the original hypothesis, not a verified causal result.
+*Finding:* 124,567 is below 131,072, so this snapshot does not show the limit being reached. The supplied dump duration is long, but determining its cause requires synchronized samples and version-specific counter semantics. The chain below is a hypothesis, not a verified causal result.
 
 ----
 Performance degradation chain:
@@ -763,7 +763,7 @@ Performance degradation chain:
 
 == Root Cause
 
-The supplied material suggests a performance regression after policy changes, but does not establish its root cause. Kernel and PMD counters are mixed, the mask-statistics command is unsupported, and a single occupancy snapshot cannot prove cache or conntrack exhaustion. Recollect counters from the same datapath and interval, profile CPU work, and compare policy changes that preserve access semantics. Do not present the original hypothesis as a confirmed OpenShift defect or benchmark.
+The supplied material suggests a performance regression after policy changes, but does not establish its root cause. Kernel and PMD counters are mixed, the mask-statistics command is unsupported, and a single occupancy snapshot cannot prove cache or conntrack exhaustion. Recollect counters from the same datapath and interval, profile CPU work, and compare policy changes that preserve access semantics. The proposed causal chain is not a confirmed OpenShift defect or benchmark.
 
 
 [NOTE]

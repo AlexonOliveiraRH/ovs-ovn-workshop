@@ -360,11 +360,11 @@ ovs-vswitchd --version
 
 === 1.7 DPDK Tradeoffs
 
-O modo DPDK pode melhorar o desempenho em cargas adequadas ao processamento em userspace, mas não garante ganho de throughput ou latência. O resultado depende de NIC, NUMA, filas, CPU, tamanho dos pacotes, configuração e workload, e precisa ser medido.
+DPDK can improve performance for workloads suited to userspace processing, but it does not guarantee better throughput or latency. Results depend on the NIC, NUMA layout, queues, CPU, packet size, configuration and workload, and must be measured.
 
 *Dedicated CPU cores:*
 
-PMDs normalmente fazem polling contínuo e podem manter alta utilização de CPU mesmo com pouco tráfego. O planejamento deve reservar capacidade e afinidade adequadas, sem assumir que todo ciclo ocupado representa trabalho útil. Versões com https://docs.openvswitch.org/en/stable/topics/dpdk/pmd/[PMD load-based sleeping] podem reduzir polling em baixa carga, com contrapartidas de latência e disponibilidade conforme versão/produto; não é correto afirmar que toda configuração usa invariavelmente 100% de cada core.
+PMDs normally poll continuously and can maintain high CPU utilization even with little traffic. Plan sufficient capacity and appropriate CPU affinity without assuming that every busy cycle represents useful work. Versions with https://docs.openvswitch.org/en/stable/topics/dpdk/pmd/[PMD load-based sleeping] can reduce polling under light loads, with latency trade-offs and feature availability that depend on the version and product. Not every configuration consistently uses 100% of each core.
 
 *Memory overhead (hugepages):*
 
@@ -2216,9 +2216,9 @@ OpenShift uses a conservative 100-byte overhead margin instead of the exact 58-b
 '''
 
 [#_6_known_issues_and_workarounds]
-== 6. Cenários de diagnóstico e limites conhecidos
+== 6. Diagnostic Scenarios and Known Limitations
 
-Os cenários abaixo orientam investigações; não constituem uma lista de bugs confirmados em todas as versões. Sintomas semelhantes podem ter causas diferentes. Sem referência de defeito e builds afetados/corrigidos, não atribua uma versão de correção nem aplique um workaround automaticamente.
+The following scenarios guide investigations; they are not a list of bugs confirmed in every version. Similar symptoms can have different causes. Without a defect reference and the affected and fixed builds, do not name a fix version or automatically apply a workaround.
 
 === Issue 1: OVN Conntrack Zone Exhaustion
 
@@ -2589,9 +2589,9 @@ sudo ovn-nbctl ls-del scale-test
 
 *Expected observations:*
 
-* Aguarde a convergência de cada lote (`sudo ovn-nbctl --timeout=30 --wait=sb sync`) antes de registrar a contagem. A contagem global também inclui outros datapaths e não é um benchmark isolado.
-* Registre os números observados; não existe um multiplicador universal de flows por ACL ou por porta. Versão, otimizações e combinação de políticas afetam o resultado.
-* Para avaliar tempo de processamento, é necessária uma medição controlada. O aumento da quantidade de ACLs, sozinho, não comprova uma degradação mensurável neste pequeno lab.
+* Wait for each batch to converge (`sudo ovn-nbctl --timeout=30 --wait=sb sync`) before recording the count. The global count also includes other datapaths and is not an isolated benchmark.
+* Record the observed numbers; there is no universal flow multiplier per ACL or port. The version, optimizations and combination of policies affect the result.
+* Evaluating processing time requires a controlled measurement. Increasing the ACL count alone does not demonstrate measurable degradation in this small lab.
 
 *Discussion questions:*
 
@@ -2611,7 +2611,7 @@ sudo ovn-nbctl ls-del scale-test
 
 [source,bash]
 ----
-# Confira os nomes e MTUs; identifique o caminho real até o IP de encap remoto.
+# Check names and MTUs; identify the actual path to the remote encapsulation IP.
 ip -br link
 
 # Check OVS bridge MTU
@@ -2625,38 +2625,38 @@ ip link show genev_sys_6081 2>/dev/null || echo "Geneve tunnel interface not fou
 
 [source,bash]
 ----
-# Defina UNDERLAY_IF e GENEVE_OVERHEAD conforme o caminho e o produto.
-# 58 é apenas um exemplo IPv4 + Geneve com as opções consideradas neste módulo.
-# O OCP 4.18 orienta uma margem de 100 bytes; não substitua essa orientação por 58.
-: "${UNDERLAY_IF:?Defina a interface do underlay}"
-: "${GENEVE_OVERHEAD:?Defina a margem de encapsulamento aplicável}"
+# Set UNDERLAY_IF and GENEVE_OVERHEAD for the path and product.
+# 58 is only an IPv4 + Geneve example with the options considered in this module.
+# OCP 4.18 specifies a 100-byte margin; do not replace that guidance with 58.
+: "${UNDERLAY_IF:?Set the underlay interface}"
+: "${GENEVE_OVERHEAD:?Set the applicable encapsulation margin}"
 PHYS_MTU=$(ip -o link show dev "$UNDERLAY_IF" | awk '{for (i=1; i<NF; i++) if ($i=="mtu") print $(i+1)}')
 if [[ $PHYS_MTU =~ ^[0-9]+$ && $GENEVE_OVERHEAD =~ ^[0-9]+$ ]] &&
    (( PHYS_MTU > GENEVE_OVERHEAD )); then
     EFFECTIVE_MTU=$(( PHYS_MTU - GENEVE_OVERHEAD ))
-    printf 'MTU local: %s; margem: %s; limite calculado: %s bytes\n' \
+    printf 'Local MTU: %s; margin: %s; calculated limit: %s bytes\n' \
         "$PHYS_MTU" "$GENEVE_OVERHEAD" "$EFFECTIVE_MTU"
 else
-    echo 'Valores ausentes ou inválidos; não prossiga com o teste.' >&2
+    echo 'Missing or invalid values; do not proceed with the test.' >&2
 fi
 ----
 
-Esse cálculo considera o link local; uma MTU menor em outro salto reduz o limite do caminho. Não altera interfaces nem garante conectividade. Confira o cabeçalho externo IPv4/IPv6, as opções Geneve e a documentação do produto, como a https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html-single/advanced_networking/index[orientação de MTU do OCP 4.18].
+This calculation considers the local link; a lower MTU at another hop reduces the path limit. It does not change interfaces or guarantee connectivity. Check the outer IPv4/IPv6 header, Geneve options and product documentation, such as the https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html-single/advanced_networking/index[OCP 4.18 MTU guidance].
 
 . If you have two hosts with OVN tunnels, test PMTUD:
 
 [source,bash]
 ----
-# Execute dentro da VM/pod/namespace de origem, com destino em outro host.
-# Defina EFFECTIVE_MTU nessa sessão com o valor verificado acima.
-# Defina REMOTE_WORKLOAD_IP com o IPv4 remoto. Os 28 bytes são IP sem opções + ICMP.
-: "${EFFECTIVE_MTU:?Defina o limite calculado nesta sessão}"
-: "${REMOTE_WORKLOAD_IP:?Defina o IPv4 do workload remoto}"
+# Run inside the source VM/pod/namespace, targeting a workload on another host.
+# Set EFFECTIVE_MTU in this session to the value verified above.
+# Set REMOTE_WORKLOAD_IP to the remote IPv4 address. The 28 bytes cover IP without options + ICMP.
+: "${EFFECTIVE_MTU:?Set the calculated limit in this session}"
+: "${REMOTE_WORKLOAD_IP:?Set the remote workload IPv4 address}"
 
-# Teste no limite calculado, sem permitir fragmentação IPv4.
+# Test at the calculated limit without allowing IPv4 fragmentation.
 ping -4 -M do -s $(( EFFECTIVE_MTU - 28 )) "$REMOTE_WORKLOAD_IP" -c 3 -W 2
 
-# Teste um byte acima; correlacione o resultado com captura e MTU do caminho.
+# Test one byte above the limit; correlate the result with a capture and the path MTU.
 ping -4 -M do -s $(( EFFECTIVE_MTU - 27 )) "$REMOTE_WORKLOAD_IP" -c 3 -W 2
 ----
 
@@ -2664,15 +2664,15 @@ ping -4 -M do -s $(( EFFECTIVE_MTU - 27 )) "$REMOTE_WORKLOAD_IP" -c 3 -W 2
 
 [source,bash]
 ----
-# Captura de fragmentos IPv4 no underlay; interrompa se não houver pacotes.
+# Capture IPv4 fragments on the underlay; stop if no packets arrive.
 sudo tcpdump -i "$UNDERLAY_IF" '(ip[6:2] & 0x1fff) != 0 or (ip[6] & 0x20) != 0' -c 10
 ----
 
 *Expected observations:*
 
-* No exemplo com MTU 1500 e margem 58, o limite calculado é 1442 e o payload ICMP IPv4 correspondente é 1414 bytes. Isso é cálculo, não uma medição deste ambiente.
-* `-M do` não permite fragmentar o pacote IPv4 interno; uma falha pode ser rejeição local por MTU, erro ICMP remoto ou silêncio por filtragem. Não interprete qualquer falha como prova de PMTUD saudável.
-* Tráfego pequeno funcionando e grande falhando sugere investigar MTU, mas também exige verificar os caminhos de ida/volta e as políticas ICMP. A captura de fragmentos externa não é uma verificação completa de PMTUD.
+* With an MTU of 1500 and a margin of 58, the calculated limit is 1442 and the corresponding IPv4 ICMP payload is 1414 bytes. This is a calculation, not a measurement of this environment.
+* `-M do` prevents fragmentation of the inner IPv4 packet; a failure can indicate local MTU rejection, a remote ICMP error or silence due to filtering. Do not interpret every failure as proof that PMTUD is working.
+* Small packets succeeding while large packets fail suggests investigating MTU, but also requires checking the forward and return paths and ICMP policies. Capturing outer fragments is not a complete PMTUD check.
 
 *Discussion questions:*
 
@@ -2737,7 +2737,7 @@ done
 
 [NOTE]
 ====
-Compactação é uma operação de escrita, não uma consulta de saúde. `ovsdb-server` já possui compactação automática; avalie necessidade, caminhos reais, backup e procedimento do produto antes de executar manualmente. O exemplo abaixo é para o lab standalone com esses sockets, não para todos os contêineres ou bancos de produção. Não esconde mensagens de erro e não implica que a operação foi executada nesta auditoria.
+Compaction is a write operation, not a health query. `ovsdb-server` already provides automatic compaction; assess the need, actual paths, backup and product procedure before running it manually. The example below applies to the standalone lab with these sockets, not to every container or production database. It leaves compaction errors visible.
 ====
 
 [source,bash]
@@ -2747,7 +2747,7 @@ echo "=== Before Compaction ==="
 ls -lh /var/lib/ovn/ovn*_db.db 2>/dev/null || \
 ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
 
-# Compacte somente os bancos nomeados, se a operação tiver sido autorizada.
+# Compact only the named databases, if the operation has been authorized.
 sudo ovs-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/compact OVN_Northbound
 sudo ovs-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact OVN_Southbound
 
@@ -2764,20 +2764,20 @@ ls -lh /etc/openvswitch/ovn*_db.db 2>/dev/null
 # Create a monitoring script concept
 echo "=== Health Check Summary ==="
 
-# Registre os tamanhos encontrados; caminhos e limites operacionais variam.
+# Record the sizes found; paths and operational limits vary.
 for DB in /var/lib/ovn/ovn*_db.db /etc/ovn/ovn*_db.db /etc/openvswitch/ovn*_db.db; do
   if [ -f "$DB" ]; then
     stat -c '%n: %s bytes' "$DB"
   fi
 done
 
-# Falha de leitura não deve virar contagem zero ou um resultado saudável.
+# A read failure must not be reported as a zero count or a healthy result.
 if MAX=$(sudo sysctl -n net.netfilter.nf_conntrack_max) &&
    COUNT=$(sudo sysctl -n net.netfilter.nf_conntrack_count) && [ "$MAX" -gt 0 ]; then
   PCT=$(( COUNT * 100 / MAX ))
-  echo "Ocupação de conntrack: $PCT% ($COUNT / $MAX); correlacione com tendência e falhas."
+  echo "Conntrack occupancy: $PCT% ($COUNT / $MAX); correlate with trends and failures."
 else
-  echo 'Não foi possível calcular a ocupação; investigue a leitura.' >&2
+  echo 'Unable to calculate occupancy; investigate the read failure.' >&2
 fi
 ----
 
@@ -2918,15 +2918,15 @@ Understanding limitations is not about being pessimistic - it is about being pre
 
 . *Scale is not infinite.* OVN has practical limits on logical switches, ports, ACLs, and flows. Know the numbers for your product and stay below them.
 
-. *Meça os dois planos.* Cálculo e distribuição de flows podem limitar mudanças em larga escala; processamento de pacotes, NICs, CPU, memória e conntrack também podem limitar o dataplane. O gargalo depende da carga, não é uma propriedade universal do OVN.
+. *Measure both planes.* Flow computation and distribution can limit large-scale changes; packet processing, NICs, CPU, memory and conntrack can also limit the data plane. The bottleneck depends on the workload and is not a universal property of OVN.
 
-. *MTU importa.* O overhead depende dos cabeçalhos externos e das opções Geneve. Os 58 bytes de um exemplo IPv4 não são universais; use a margem e o procedimento da versão do produto, considerando também ICMP/PMTUD.
+. *MTU matters.* Overhead depends on the outer headers and Geneve options. The 58 bytes in an IPv4 example are not universal; use the margin and procedure for the product version, accounting for ICMP/PMTUD as well.
 
 . *Conntrack is finite.* Stateful ACLs and NAT consume conntrack entries. In NAT-heavy environments (Kubernetes, OpenStack with floating IPs), conntrack exhaustion is a real risk.
 
-. *Bancos precisam de observabilidade.* OVSDB possui compactação automática; acompanhe crescimento, espaço, logs e estado do cluster. Compactação manual requer justificativa e procedimento adequado, não uma agenda arbitrária. Consulte https://www.openvswitch.org/support/dist-docs/ovsdb-server.1.html[ovsdb-server(1)].
+. *Databases need observability.* OVSDB provides automatic compaction; monitor growth, disk space, logs and cluster state. Manual compaction requires justification and an appropriate procedure, not an arbitrary schedule. See https://www.openvswitch.org/support/dist-docs/ovsdb-server.1.html[ovsdb-server(1)].
 
-. *DPDK envolve contrapartidas.* Pode beneficiar certas cargas, exigindo planejamento de CPU, memória, NUMA e ferramentas de diagnóstico. Compare resultados medidos antes de escolher o datapath.
+. *DPDK involves trade-offs.* It can benefit certain workloads and requires planning for CPU, memory, NUMA and diagnostic tools. Compare measured results before choosing a datapath.
 
 . *Set expectations, not promises.* When customers ask about missing features or future capabilities, provide honest assessments and current alternatives rather than speculative timelines.
 

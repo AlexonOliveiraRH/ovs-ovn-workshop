@@ -832,7 +832,7 @@ This section provides commands to run on a live RHOSP environment. These assume 
 
 [NOTE]
 ====
-These are inspection and lab examples. Check the execution context and impact before use: traffic generation and packet captures have operational cost, while gateway assignment and database compaction commands change state. The output blocks are retained examples, not validation of a particular RHOSP 17.1 deployment.
+These are inspection and lab examples. Check the execution context and impact before use: traffic generation and packet captures have operational cost, while gateway assignment and database compaction commands change state. The output blocks are illustrative examples, not validation of a particular RHOSP 17.1 deployment.
 ====
 
 

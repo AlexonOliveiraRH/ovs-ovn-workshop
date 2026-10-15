@@ -4,7 +4,7 @@
 
 [IMPORTANT]
 ====
-Technical review: the original command outputs and log excerpts below are preserved, but they do not validate the proposed missing-DNS root cause. In https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0], mandatory DHCPv4 options are `server_id`, `server_mac` and `lease_time`; `dns_server` is optional. The exact RHOSP package build and any claimed downstream defect still require verification. Do not use this scenario as proof that DNS configuration is required to obtain a DHCP lease.
+The command outputs and log excerpts below do not establish missing DNS configuration as the root cause. In https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0], mandatory DHCPv4 options are `server_id`, `server_mac` and `lease_time`; `dns_server` is optional. The exact RHOSP package build and any claimed downstream defect still require verification. Do not use this scenario as proof that DNS configuration is required to obtain a DHCP lease.
 ====
 
 *Customer report:* "New VMs in RHOSP are not getting IP addresses via DHCP. Existing VMs
@@ -660,10 +660,10 @@ help pinpoint the exact cause of the failure.
 
 [WARNING]
 ====
-A transcrição anterior atribuía ao ovn-controller uma mensagem sobre `dns_server` obrigatório, sem arquivo original que comprovasse sua origem. Ela foi retirada: DNS é opcional no https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0 verificado]. Não há uma saída esperada de erro para apresentar aqui. Colete os logs reais, registre a versão exata dos pacotes e confronte a mensagem com o código correspondente antes de usá-la como evidência.
+DNS is optional in https://github.com/ovn-org/ovn/blob/v23.06.0/ovn-nb.xml[OVN 23.06.0]; there is no authenticated log evidence here of an ovn-controller error requiring `dns_server`. Collect actual logs, record the exact package versions and compare any message with the corresponding code before using it as evidence.
 ====
 
-*Conclusão:* sem um log autêntico e uma reprodução, essa etapa não confirma a causa da falha. Preserve as coletas originais; traces lógicos complementam capturas de pacotes, não as substituem.
+*Finding:* Without an authentic log and a reproduction, this step does not confirm the cause of the failure. Preserve the original captures and logs; logical traces complement packet captures but do not replace them.
 
 
 '''
@@ -716,7 +716,7 @@ A client's Parameter Request List does not turn optional DNS information into a 
 [#_step_1_fix_the_subnet_configuration]
 === Step 1: Optional DNS Configuration (Not a Proven DHCP Fix)
 
-The original DNS change below is retained as a configuration example, not a verified fix for missing Offers. Configure organization-approved resolvers only if DNS distribution is desired. To resolve the DHCP failure, identify the failed stage from captures and logs, correct that specific configuration through Neutron and retest.
+The DNS change below is a configuration example, not a verified fix for missing Offers. Configure organization-approved resolvers only if DNS distribution is desired. To resolve the DHCP failure, identify the failed stage from captures and logs, correct that specific configuration through Neutron and retest.
 
 [source,bash]
 ----
@@ -766,7 +766,7 @@ server_mac = fa:16:3e:00:00:02
 
 *Finding:* DNS information is now present in the supplied example. The mandatory DHCPv4 fields were already present before the change; this does not establish why Offers were absent.
 
-The original comparison below uses "fix" as a label; it shows a DNS configuration
+The comparison below uses "fix" as a label; it shows a DNS configuration
 change, not a demonstrated repair of DHCP address allocation:
 
 ----

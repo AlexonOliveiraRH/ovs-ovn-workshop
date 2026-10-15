@@ -547,7 +547,7 @@ Nov 13 08:16:02 compute-1.lab.redhat.local ovn-controller[1856]: 0001|ovn_contro
 
 Verify that `ovn-controller` can reach the southbound database:
 
-The original transcripts below use a short `ovs-appctl` target. This resolves only when the client's runtime directory matches the controller's socket location. With the displayed `/var/run/ovn/ovn-controller.pid`, normally use `ovn-appctl -t ovn-controller connection-status`, or pass the actual absolute control-socket path to either client. See xref:11-management-tooling.adoc#_ovn_controller_appctl_commands[the runtime socket reference].
+The command examples below use a short `ovs-appctl` target. This resolves only when the client's runtime directory matches the controller's socket location. With the displayed `/var/run/ovn/ovn-controller.pid`, normally use `ovn-appctl -t ovn-controller connection-status`, or pass the actual absolute control-socket path to either client. See xref:11-management-tooling.adoc#_ovn_controller_appctl_commands[the runtime socket reference].
 
 [source,bash]
 ----

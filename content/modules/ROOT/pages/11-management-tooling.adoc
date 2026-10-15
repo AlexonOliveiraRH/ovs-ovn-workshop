@@ -392,7 +392,7 @@ sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "n_packets=0"
 sudo ovs-ofctl dump-flows br-int -O OpenFlow15 | grep "10\.0\.0\.1"
 ----
 
-Somente linhas com `actions=` são contadas, excluindo o cabeçalho da resposta. Quando `table=` é omitido, a tabela é 0; um número explícito substitui esse padrão. A análise considera somente os campos anteriores a `actions=`, portanto `learn(table=...)` não altera a tabela atribuída ao flow. Consulte https://raw.githubusercontent.com/openvswitch/ovs/v3.3.0/lib/ofp-flow.c[OVS 3.3.0, ofputil_flow_stats_format()].
+Only lines containing `actions=` are counted, excluding the response header. When `table=` is omitted, the table is 0; an explicit number overrides that default. The parser considers only fields before `actions=`, so `learn(table=...)` does not change the table assigned to the flow. See https://raw.githubusercontent.com/openvswitch/ovs/v3.3.0/lib/ofp-flow.c[OVS 3.3.0, ofputil_flow_stats_format()].
 
 '''
 

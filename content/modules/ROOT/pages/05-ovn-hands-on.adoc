@@ -2,7 +2,7 @@
 
 [NOTE]
 ====
-Command output blocks are instructional examples, not evidence that this audit ran the lab. Record installed OVS/OVN/kernel versions and retain actual outputs when validating it. The exercises below assume the Linux `system` datapath; upstream references do not establish support for a Red Hat product release.
+Command output blocks are instructional examples unless identified as captured results. Record installed OVS/OVN/kernel versions and retain actual outputs when validating the lab in your environment. The exercises below assume the Linux `system` datapath; upstream references do not establish support for a Red Hat product release.
 ====
 
 
@@ -785,7 +785,7 @@ sudo ovs-ofctl dump-flows br-int | head -30
 
 == Exercise 4: Enabling DHCP
 
-*Objetivo:* Configurar o responder DHCP do OVN e verificar uma aquisição real de lease, sem aplicar seus parâmetros ao host do laboratório.
+*Objective:* Configure OVN's DHCP responder and verify an actual lease acquisition without applying its settings to the lab host.
 
 === Step 4.1: Create DHCP options
 
@@ -860,17 +860,17 @@ OVN's `put_dhcp_opts()` action uses a packet-in to the local `ovn-controller` to
 
 === Step 4.5: Test DHCP from a namespace
 
-Neste laboratório, `vm1` é um namespace de rede, não uma VM com sistema de arquivos próprio. Executar o cliente DHCP com os hooks padrão pode alterar arquivos compartilhados, inclusive a configuração de DNS do host. O https://man7.org/linux/man-pages/man8/ip-netns.8.html[manual de ip-netns] explica o tratamento especial de arquivos em `/etc/netns/NOME/`; o namespace de rede, isoladamente, não fornece esse isolamento.
+In this lab, `vm1` is a network namespace, not a VM with its own filesystem. Running the DHCP client with its default hooks can change shared files, including the host's DNS configuration. The https://man7.org/linux/man-pages/man8/ip-netns.8.html[ip-netns manual] explains the special handling of files under `/etc/netns/NAME/`; a network namespace alone does not provide this isolation.
 
-Use o teste abaixo no nó central, a partir da raiz da cópia do workshop. Mantenha o endereço estático do exercício 3. O helper usa `dhclient -sf /bin/true`, PID e lease exclusivos, captura os pacotes e encerra os processos que iniciou. Ele verifica o ciclo *DORA* — Discover, Offer, Request e ACK — mas deliberadamente *não aplica* IP, rota ou DNS recebidos. Veja as opções `-sf`, `-pf` e `-lf` no https://manpages.debian.org/testing/isc-dhcp-client/dhclient.8.en.html[manual do cliente DHCP].
+Run the test below on the central node from the root of your workshop copy. Keep the static address from exercise 3. The helper uses `dhclient -sf /bin/true` with dedicated PID and lease files, captures packets and stops the processes it started. It verifies the *DORA* exchange - Discover, Offer, Request and ACK - but deliberately *does not apply* the received IP address, routes or DNS settings. See the `-sf`, `-pf` and `-lf` options in the https://manpages.debian.org/testing/isc-dhcp-client/dhclient.8.en.html[DHCP client manual].
 
 [source,bash]
 ----
-# Pré-requisitos: dhclient e tcpdump já instalados; vm1 configurado como acima.
+# Prerequisites: dhclient and tcpdump installed; vm1 configured as shown above.
 sudo bash labs/standalone/check-ovn-dhcp.sh
 ----
 
-Recortes literais da validação no Fedora 44 em 15/10/2026, com linhas intermediárias omitidas. Horários, identificadores e diretórios temporários variam:
+DHCP capture and lease excerpts from validation on Fedora 44 on October 15, 2026, with intervening lines omitted. Timestamps, identifiers and temporary directories vary:
 
 ----
 4 packets captured
@@ -879,7 +879,7 @@ Recortes literais da validação no Fedora 44 em 15/10/2026, com linhas intermed
 /etc/resolv.conf: OK
 ----
 
-As quatro mensagens decodificadas na captura:
+The four messages decoded from the capture:
 
 ----
 DHCP-Message (53), length 1: Discover
@@ -888,33 +888,38 @@ DHCP-Message (53), length 1: Request
 DHCP-Message (53), length 1: ACK
 ----
 
-E os campos registrados na lease:
+The fields recorded in the lease:
 
 ----
   fixed-address 10.0.0.11;
   option routers 10.0.0.1;
   option dhcp-server-identifier 10.0.0.1;
   option domain-name-servers 8.8.8.8;
-DORA concluído; hook /bin/true; IP e DNS do host não foram aplicados pelo cliente.
+----
+
+Expected helper status after a successful run:
+
+----
+DORA completed; hook /bin/true; the client did not apply the host IP or DNS settings.
 ----
 
 
 [NOTE]
 ====
-O helper mantém as evidências nos diretórios que imprime. A validação usou `dhcp-client` 4.4.3 no Fedora 44 e estado sob `/var/lib/dhclient/`. Nessa instalação, as mensagens do cliente apareceram no journal; não dependa de uma saída textual idêntica no terminal. Em outra distribuição, confira a disponibilidade do cliente, os caminhos de estado e as políticas de acesso antes de executar. O script não instala pacotes.
+The helper keeps the evidence in the directories identified by `DHCP_CAPTURE_DIR=` and `DHCP_STATE_DIR=` in its output. Validation used `dhcp-client` 4.4.3 on Fedora 44 with state under `/var/lib/dhclient/`. On that installation, client messages appeared in the journal; do not expect identical terminal output. On another distribution, check client availability, state paths and access policies before running the test. The script does not install packages.
 
-O `broadcast-dhcp-discover` do Nmap não é um substituto equivalente: ele consulta uma oferta, mas não configura o endereço da interface nem comprova todo o ciclo de aquisição. Além disso, usa por padrão uma MAC diferente da porta deste lab; uma consulta diagnóstica deve informar a MAC permitida. Consulte a https://nmap.org/nsedoc/scripts/broadcast-dhcp-discover.html[documentação do script Nmap].
+Nmap's `broadcast-dhcp-discover` is not an equivalent substitute: it requests an offer but does not configure the interface address or verify the full acquisition cycle. Its default MAC also differs from this lab port's MAC; a diagnostic query must specify the allowed MAC. See the https://nmap.org/nsedoc/scripts/broadcast-dhcp-discover.html[Nmap script documentation].
 ====
 
 [NOTE]
-.Diferença para uma VM real
+.How a Real VM Differs
 ====
-Dentro de uma VM com sistema de arquivos próprio, o gerenciador de rede do guest normalmente aplica a lease e mantém sua renovação. Se o guest usa ISC dhclient, um comando de referência é `sudo dhclient -v INTERFACE_DO_GUEST`, usando a interface correta e sem disputar sua gestão com outro cliente ou com NetworkManager. Não copie esse comando para o namespace deste lab: aqui o objetivo é observar o protocolo sem executar os hooks de configuração. IPAM de pods no OpenShift é outro mecanismo, não esse teste DHCP.
+Inside a VM with its own filesystem, the guest's network manager normally applies the lease and handles renewal. If the guest uses ISC dhclient, a reference command is `sudo dhclient -v GUEST_INTERFACE`, using the correct interface and without competing with another client or NetworkManager for control of it. Do not copy that command into this lab's namespace: the goal here is to observe the protocol without running configuration hooks. OpenShift pod IPAM uses a different mechanism from this DHCP test.
 ====
 
 [source,bash]
 ----
-# Confirme que o endereço estático permanece; isto não prova aplicação da lease.
+# Confirm that the static address remains; this does not prove the lease was applied.
 sudo ip netns exec vm1 ip addr show vm1
 ----
 
@@ -936,8 +941,8 @@ sudo ovn-trace --summary network1 \
 
 === Try it yourself
 
-* Altere a opção DNS e confira seu valor na oferta/lease, não no DNS do host.
-* Compare o endereço configurado na porta lógica com `fixed-address` na lease. O helper fornecido é específico para `vm1` e `10.0.0.11` da topologia didática, não para nomes ou IPs físicos dos participantes.
+* Change the DNS option and check its value in the offer or lease, not in the host's DNS configuration.
+* Compare the logical port's configured address with `fixed-address` in the lease. The helper is specific to `vm1` and `10.0.0.11` in the lab topology, not participants' physical hostnames or IP addresses.
 * Use `ovn-trace` with the `--detailed` flag instead of `--summary` for more information
 
 '''
@@ -1777,7 +1782,7 @@ sudo watch -n 1 'ovs-appctl dpctl/dump-conntrack | grep -F "10.0.1.100"'
 sudo ip netns exec vm1 curl --fail --show-error --connect-timeout 2 --max-time 10 http://10.0.1.100:80/
 ----
 
-Linha real coletada em 15/10/2026, no chassis central do lab, com uma requisição mantida ativa durante a consulta. Porta de origem, backend, zona, marca e estado variam entre execuções:
+Actual output collected on October 15, 2026, on the lab's central chassis, with a request kept active during the query. The source port, backend, zone, mark and state vary between runs:
 
 ----
 tcp,orig=(src=10.0.0.11,dst=10.0.1.100,sport=60186,dport=80),reply=(src=10.0.1.12,dst=10.0.0.11,sport=8080,dport=60186),zone=2,mark=2,protoinfo=(state=ESTABLISHED)
@@ -2093,11 +2098,11 @@ Do not run an unqualified `dpctl/flush-conntrack`: it can remove connections bel
 [[lab-restore]]
 == Lab Restore
 
-O script `labs/standalone/restore-ovn-lab.sh` recria o estado ao fim do exercício informado: `6` prepara o início do exercício 7. Ele não é um snapshot de cada comando executado manualmente. A rodada final de 15/10/2026 passou pelos alvos 1–10 e reexecuções 6/9/10 nas três VMs Fedora 44, incluindo conectividade, DHCP, ACL, NAT e HTTP/LB. Não houve reboot durante essa validação.
+The `labs/standalone/restore-ovn-lab.sh` script recreates the state at the end of the specified exercise: `6` prepares the start of exercise 7. It is not a snapshot of every manually executed command. Targets 1-10 and repeat runs of 6, 9 and 10 passed on three Fedora 44 VMs on October 15, 2026, covering connectivity, DHCP, ACLs, NAT and HTTP/load balancing. No reboot occurred during that validation.
 
 [WARNING]
 ====
-Use somente nós e bancos dedicados ao workshop. O restore altera serviços, conexões dos bancos, firewall e IDs dos chassis, e recria os objetos nominais dos exercícios. Nomes iguais não provam propriedade em um ambiente compartilhado. As falhas remotas e de verificação agora geram retorno não zero, sem mensagem final de sucesso. Mantenha `lab-netns.sh` ao lado do script; `check-ovn-dhcp.sh` é o teste complementar do passo 4.5. Nenhum desses scripts deve ser aplicado em OCP/RHOSP/RHOSO de produção.
+Use only nodes and databases dedicated to the workshop. The restore script changes services, database connections, firewall settings and chassis IDs, and recreates the named exercise objects. Matching names do not establish ownership in a shared environment. Remote execution or verification failures return a nonzero exit status without a final success message. Keep `lab-netns.sh` beside the script; `check-ovn-dhcp.sh` provides the additional test in step 4.5. Do not use any of these scripts in production OCP/RHOSP/RHOSO environments.
 ====
 
 Configure the script by setting environment variables for your lab nodes and their IPs:
@@ -2163,7 +2168,7 @@ bash labs/standalone/restore-ovn-lab.sh 10
 
 [IMPORTANT]
 ====
-O restore não instala pacotes. Instale previamente OVS/OVN apropriados para a distribuição, conforme o exercício 1. Os alvos 9/10 exigem Python 3 e curl no central, onde ficam os três backends; o teste DHCP separado requer dhclient e tcpdump. As variáveis físicas devem refletir seu ambiente: são aceitos IPv4 decimal e destinos SSH simples, sem opções embutidas. `CENTRAL=local` exige execução privilegiada no nó central. O checkpoint 1 inicia/configura serviços e registra chassis, mas não substitui instalação nem provisionamento de VMs.
+The restore script does not install packages. Install the appropriate OVS/OVN packages for your distribution beforehand, as described in exercise 1. Targets 9 and 10 require Python 3 and curl on the central node, which hosts all three backends; the separate DHCP test requires dhclient and tcpdump. Host variables must match your environment: dotted-decimal IPv4 addresses and simple SSH targets without embedded options are accepted. `CENTRAL=local` requires privileged execution on the central node. Checkpoint 1 starts and configures services and registers chassis, but does not replace package installation or VM provisioning.
 ====
 
 

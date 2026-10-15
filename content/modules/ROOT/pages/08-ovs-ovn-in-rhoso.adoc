@@ -774,7 +774,7 @@ ovn-controller-ovs-7k4m2                   1/1     Running   0   3d2h
 
 [NOTE]
 ====
-The NB DB pods are typically `ovsdbserver-nb-*` and SB DB pods are `ovsdbserver-sb-*`; discover actual pod and container names before substituting them below. The existing output blocks are retained as supplied examples, not newly collected validation. In the https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/pkg/ovndbcluster/statefulset.go[18.0 FR4 operator], `OVN_RUNDIR=/tmp`: DB client sockets are `/tmp/ovnnb_db.sock` and `/tmp/ovnsb_db.sock`, while administrative sockets end in `.ctl`. The https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/tests/kuttl/common/scripts/check_cluster_status.sh[operator's Raft checks] use `/tmp/ovnnb_db.ctl` or `/tmp/ovnsb_db.ctl`. Verify these paths in the deployed image; they are not OCP's `/var/run/ovn` paths.
+The NB DB pods are typically `ovsdbserver-nb-*` and SB DB pods are `ovsdbserver-sb-*`; discover actual pod and container names before substituting them below. The output blocks are examples and do not validate your deployment. In the https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/pkg/ovndbcluster/statefulset.go[18.0 FR4 operator], `OVN_RUNDIR=/tmp`: DB client sockets are `/tmp/ovnnb_db.sock` and `/tmp/ovnsb_db.sock`, while administrative sockets end in `.ctl`. The https://github.com/openstack-k8s-operators/ovn-operator/blob/18.0-fr4/tests/kuttl/common/scripts/check_cluster_status.sh[operator's Raft checks] use `/tmp/ovnnb_db.ctl` or `/tmp/ovnsb_db.ctl`. Verify these paths in the deployed image; they are not OCP's `/var/run/ovn` paths.
 
 [source,bash]
 ----
@@ -1017,7 +1017,7 @@ For data plane node commands, SSH into the compute node first: ```bash ssh root@
 
 ==== Checking ovn-controller Status
 
-For the RHOSO 18.0 EDPM container deployment, inspect the `edpm_ovn_controller` unit and the `ovn_controller` container. The standalone `ovn-controller.service` output retained below is not the expected EDPM unit name. The https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/migrate-assembly_adopting_the_data_plane[RHOSO 18.0 data-plane procedure] identifies `edpm_ovn_controller` and `edpm_ovn_metadata_agent`.
+For the RHOSO 18.0 EDPM container deployment, inspect the `edpm_ovn_controller` unit and the `ovn_controller` container. The standalone `ovn-controller.service` in the example below is not the expected EDPM unit name. The https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/migrate-assembly_adopting_the_data_plane[RHOSO 18.0 data-plane procedure] identifies `edpm_ovn_controller` and `edpm_ovn_metadata_agent`.
 
 [source,bash]
 ----
@@ -1413,7 +1413,7 @@ lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_f2e3d4c5-6789-01ab-cdef-222222222222   
 lrp-a1b2c3d4-5678-90ab-cdef-1234567890ef_e1f2a3b4-5678-90ab-cdef-111111111111    1
 ----
 
-The priority-5 chassis is preferred when healthy; verify the active `chassisredirect` binding in the SB DB. The retained NAT example includes `external_mac`, so it alone does not establish that the floating-IP traffic follows the centralized diagram; inspect `logical_port` too.
+The priority-5 chassis is preferred when healthy; verify the active `chassisredirect` binding in the SB DB. The NAT example includes `external_mac`, so it alone does not establish that the floating-IP traffic follows the centralized diagram; inspect `logical_port` too.
 
 *Step 3: Trace the full path with ovn-trace.*
 

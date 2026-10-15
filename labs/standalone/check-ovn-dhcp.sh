@@ -1,5 +1,5 @@
 #!/bin/bash
-# DORA real sem aplicar configuração ou executar hooks de DNS.
+# Run a DORA exchange without applying configuration or running DNS hooks.
 set -euo pipefail
 umask 077
 destino=$(mktemp -d /tmp/ovn-dhcp-e2e.XXXXXX)
@@ -18,8 +18,8 @@ finalizar() {
     fi
 }
 trap finalizar EXIT
-printf 'EVIDENCIA_DHCP=%s\n' "$destino"
-printf 'ESTADO_DHCP=%s\n' "$estado"
+printf 'DHCP_CAPTURE_DIR=%s\n' "$destino"
+printf 'DHCP_STATE_DIR=%s\n' "$estado"
 ls -Zd "$estado"
 sha256sum /etc/resolv.conf > "$destino/dns-antes.sha256"
 ip netns exec vm1 ip -j addr show dev vm1 > "$destino/ip-antes.json"
@@ -43,4 +43,4 @@ cmp "$destino/ip-antes.json" "$destino/ip-depois.json"
 tcpdump -n -vv -r "$destino/dora.pcap"
 grep -E 'fixed-address|dhcp-server-identifier|domain-name-servers|routers' "$estado/lease"
 cp "$estado/lease" "$destino/lease"
-echo 'DORA concluído; hook /bin/true; IP e DNS do host não foram aplicados pelo cliente.'
+echo 'DORA completed; hook /bin/true; the client did not apply the host IP or DNS settings.'

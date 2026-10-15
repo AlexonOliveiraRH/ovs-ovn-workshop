@@ -4,7 +4,7 @@
 
 [IMPORTANT]
 ====
-Technical review: the supplied transcripts are preserved, but their MAC values containing `ex` or `up` are not valid hexadecimal Ethernet addresses and cannot be treated as real capture evidence. The original explanation also confuses the host bridge MAC with OVN's logical NAT MAC. Read the corrected interpretation below before attempting remediation; the exact product build and packet path still require verification.
+MAC values containing `ex` or `up` in the examples below are not valid hexadecimal Ethernet addresses and cannot be treated as real capture evidence. Distinguish the host bridge MAC from OVN's logical NAT MAC when investigating floating-IP reachability. Verify the exact product build and packet path before attempting remediation.
 ====
 
 *Customer report:* "Assigned a floating IP to a VM in RHOSP but cannot reach it from the
@@ -454,7 +454,7 @@ identify which controller this belongs to:
     link/ether 52:54:00:ex:c1:01 brd ff:ff:ff:ff:ff:ff
 ----
 
-*Finding:* These invalid placeholder MACs do not establish the real destination. The original sketch below expresses the unverified hypothesis; it incorrectly assumes the floating IP must move to the new host bridge MAC.
+*Finding:* These invalid placeholder MACs do not establish the real destination. The sketch below illustrates an unverified hypothesis with an incorrect assumption: that the floating IP must move to the new host bridge MAC.
 
 ----
 Current (broken) state:
@@ -558,7 +558,7 @@ Verify with tcpdump (if we had captured at the time):
 [NOTE]
 .Key Concept
 ====
-Gratuitous ARP can use a Request or Reply. In https://github.com/ovn-org/ovn/blob/v23.06.0/controller/pinctrl.c[OVN 23.06 pinctrl], GARP uses `ARP_OP_REQUEST`; the original reconstructed Reply above is not a verified capture. GARP can refresh neighbor information and move a MAC between physical switch ports. Reception and learning can be affected by:
+Gratuitous ARP can use a Request or Reply. In https://github.com/ovn-org/ovn/blob/v23.06.0/controller/pinctrl.c[OVN 23.06 pinctrl], GARP uses `ARP_OP_REQUEST`; the reconstructed Reply example above is not a verified capture. GARP can refresh neighbor information and move a MAC between physical switch ports. Reception and learning can be affected by:
 
 * Some switches/routers have GARP filtering enabled for security
 * Some routers have static ARP entries that GARP cannot override
@@ -672,9 +672,9 @@ The supplied material does not establish a stale upstream ARP entry as the root 
 
 === Immediate Fix: Trigger ARP Refresh
 
-*Original proposal 1: Remove and re-add NAT - not a diagnostic recommendation*
+*NAT removal and recreation - not a diagnostic recommendation*
 
-Do not execute the original sequence below merely to refresh ARP. It interrupts the floating IP and can discard NAT metadata or distribution settings managed by Neutron. Preserve the rule and inspect its current configuration first; make any necessary reassociation through the owning OpenStack workflow after confirming the defect.
+Do not execute the sequence below merely to refresh ARP. It interrupts the floating IP and can discard NAT metadata or distribution settings managed by Neutron. Preserve the rule and inspect its current configuration first; make any necessary reassociation through the owning OpenStack workflow after confirming the defect.
 
 [source,bash]
 ----
@@ -709,7 +709,7 @@ Apr 15 10:15:01 controller-1 ovn-controller[12345]: pinctrl_run: sending GARP fo
 
 [WARNING]
 ====
-The original delete/add sequence has no demonstrated recovery-time bound and is not a safe generic fix. A sub-second disruption cannot be promised.
+The delete/add sequence has no demonstrated recovery-time bound and is not a safe generic fix. A sub-second disruption cannot be promised.
 ====
 
 
@@ -732,9 +732,9 @@ For Linux-based router:
 
 Use this only after confirming that this one neighbor entry is wrong. The expected reply uses OVN's advertised logical MAC, not necessarily controller-1's bridge MAC. If the neighbor entry is already correct, investigate the switch FDB instead.
 
-*Original proposal 3: Host arping - not equivalent to OVN GARP*
+*Host arping - not equivalent to OVN GARP*
 
-Do not execute the original command below as an OVN repair: it can advertise the host's `br-ex` MAC for an IP owned by the logical router. Inspect OVN-generated announcements on the physical uplink and compare them with `Logical_Router_Port.mac` and the NAT configuration.
+Do not execute the command below as an OVN repair: it can advertise the host's `br-ex` MAC for an IP owned by the logical router. Inspect OVN-generated announcements on the physical uplink and compare them with `Logical_Router_Port.mac` and the NAT configuration.
 
 [source,bash]
 ----
@@ -756,7 +756,7 @@ Host `arping -A` does not reproduce the logical packet injection used by OVN. Cl
 
 === Verify Recovery
 
-After applying a remedy justified by captured evidence, verify from an external client. The original recovery transcript below is preserved and still contains invalid placeholder MACs:
+After applying a remedy justified by captured evidence, verify from an external client. The recovery example below contains invalid placeholder MACs and does not validate actual recovery:
 
 [source,bash]
 ----

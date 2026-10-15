@@ -21,7 +21,7 @@
 #   Exercise 6: br1 with vm5/vm6 + Geneve tunnel
 #   Exercise 7-10: Start from Exercise 6 state (each does its own setup/cleanup)
 #
-# Mantenha lab-netns.sh no mesmo diretório deste script.
+# Keep lab-netns.sh in the same directory as this script.
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lab-netns.sh"
@@ -51,8 +51,8 @@ cleanup() {
     cleanup_lab_namespaces vm1 vm2 vm3 vm4 vm5 vm6 monitor trunk-ns
     ovs-vsctl --if-exists del-br br0
     ovs-vsctl --if-exists del-br br1
-    # QoS/Queue não têm propriedade comprovada; preservar registros órfãos
-    # em vez de excluir globalmente políticas que podem pertencer a outras bridges.
+    # QoS/Queue ownership is unknown. Preserve orphaned records because
+    # deleting policies globally could affect other bridges.
 
     for veth in veth-vm1 veth-vm2 veth-vm3 veth-vm4 veth-vm5 veth-vm6 veth-mirror veth-trunk eth-a eth-b; do
         ip link del "$veth" 2>/dev/null || true
@@ -171,7 +171,7 @@ verify() {
     fi
 
     echo ""
-    echo "=== Resultado da restauração (até o exercício $TARGET) ==="
+    echo "=== Restore results (through Exercise $TARGET) ==="
 
     case $EFFECTIVE_TARGET in
         2) echo "  Topology: br0 (empty bridge)" ;;
@@ -189,8 +189,8 @@ verify() {
         echo "WARNING: Some connectivity tests failed. Check 'ovs-vsctl show' for details."
         exit 1
     fi
-    echo "  Estado: fim do exercício $EFFECTIVE_TARGET."
-    echo "  Os alvos 7–10 restauram somente a base do exercício 6."
+    echo "  State: end of Exercise $EFFECTIVE_TARGET."
+    echo "  Targets 7-10 restore only the Exercise 6 base state."
     echo ""
 }
 
@@ -198,8 +198,8 @@ verify() {
 echo "=== Restoring OVS Hands-On Lab (up to Exercise $TARGET) ==="
 echo ""
 
-echo "AVISO: use somente em laboratório exclusivo. As bridges br0/br1 e os" >&2
-echo "namespaces do workshop serão recriados, encerrando seus processos." >&2
+echo "WARNING: Use only in a dedicated lab. Bridges br0/br1 and workshop" >&2
+echo "namespaces will be recreated, terminating their processes." >&2
 cleanup
 
 for ex in $(seq 2 $EFFECTIVE_TARGET); do

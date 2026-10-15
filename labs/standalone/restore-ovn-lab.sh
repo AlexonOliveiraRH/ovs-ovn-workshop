@@ -2,9 +2,9 @@
 #
 # OVN Hands-On Lab (Module 05) - Restore Script
 #
-# Restaura o estado ao fim do exercício informado: restore 6 prepara o 7.
-# Execute em uma máquina com acesso SSH aos três nós do laboratório,
-# ou diretamente no nó central.
+# Restore the state at the end of the specified exercise: target 6 prepares for 7.
+# Run on a machine with SSH access to all three lab nodes,
+# or directly on the central node.
 #
 # Usage: bash restore-ovn-lab.sh [exercise_number]
 #   exercise_number: 1-10 (default: 10, restores everything)
@@ -33,8 +33,8 @@
 #   CENTRAL_IP=10.0.0.1 COMPUTE1_IP=10.0.0.2 COMPUTE2_IP=10.0.0.3 \
 #       bash restore-ovn-lab.sh 6
 #
-# Mantenha lab-netns.sh no mesmo diretório deste script.
-# Os exercícios 9 e 10 requerem Python 3 e curl em central, onde estão vm4–vm6.
+# Keep lab-netns.sh in the same directory as this script.
+# Exercises 9 and 10 require Python 3 and curl on central, which hosts vm4-vm6.
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lab-netns.sh"
@@ -92,8 +92,8 @@ if [[ "$TARGET" -ge 1 && ( -z "$CENTRAL_IP" || -z "$COMPUTE1_IP" || -z "$COMPUTE
     exit 1
 fi
 
-# Validar antes de interpolar valores no código remoto ou iniciar o SSH.
-# A configuração tcp:IP:porta deste lab aceita somente IPv4 decimal.
+# Validate before interpolating values into remote code or starting SSH.
+# This lab uses tcp:IP:port configuration and accepts only decimal IPv4 addresses.
 valid_ipv4() {
     local address="$1" octet
     local -a octets
@@ -106,22 +106,22 @@ valid_ipv4() {
 
 for variable in CENTRAL_IP COMPUTE1_IP COMPUTE2_IP; do
     if ! valid_ipv4 "${!variable}"; then
-        echo "ERRO: $variable deve conter um endereço IPv4 decimal válido, sem opções ou comandos." >&2
+        echo "ERROR: $variable must contain a valid decimal IPv4 address, with no options or commands." >&2
         exit 1
     fi
 done
 for variable in CENTRAL COMPUTE1 COMPUTE2; do
-    # Alias SSH, hostname ou IPv4, opcionalmente precedido por usuário@.
+    # SSH alias, hostname, or IPv4 address, optionally preceded by user@.
     if [[ ! "${!variable}" =~ ^([a-zA-Z_][a-zA-Z0-9_.-]*@)?[a-zA-Z0-9_][a-zA-Z0-9_.-]*$ ]] ||
        [[ "$variable" != CENTRAL && "${!variable}" == local ]]; then
-        echo "ERRO: $variable deve conter um destino SSH simples; somente CENTRAL aceita local." >&2
+        echo "ERROR: $variable must contain a simple SSH destination; only CENTRAL accepts local." >&2
         exit 1
     fi
 done
 
 run_node() {
     local node="$1" script="$2"
-    # O shell iniciado por SSH não herda as opções do shell local.
+    # A shell started by SSH does not inherit the local shell options.
     if [[ "$node" == "local" ]]; then
         bash -euo pipefail -s <<< "$script"
     else
@@ -158,11 +158,11 @@ cleanup() {
         ovs-vsctl --if-exists del-port br-int vm3
     '
 
-    # O workshop não cria namespaces em compute2. Não há nada a excluir ali.
-    # Não esvaziar conntrack globalmente: isso também afetaria tráfego alheio.
+    # The workshop creates no namespaces on compute2, so none need deletion there.
+    # Do not flush conntrack globally: that would also affect unrelated traffic.
     run_central '
-        # DHCP_Options é raiz: excluir switches não coleta esses registros.
-        # Preservar legados sem marca e registros usados por portas externas.
+        # DHCP_Options is a root table: deleting switches does not collect its records.
+        # Preserve untagged legacy records and records used by ports outside the lab.
         owned=$(ovn-nbctl --format=csv --data=bare --no-heading --columns=_uuid find DHCP_Options external_ids:workshop=restore-ovn-lab)
         for uuid in $owned; do
             shared=0
@@ -223,15 +223,15 @@ exercise_1() {
         systemctl stop ovn-controller
     "
 
-    # Limpar com OVS/NB disponíveis e os três controllers já parados.
+    # Clean up with OVS/NB available and all three controllers stopped.
     cleanup
 
     # Phase 2: Clear stale chassis, set external_ids, start ovn-controller.
     # After a reboot, chassis entries from a previous session persist in the
     # SB database. If the system-id changed, the old entry blocks registration
     # ("already has encap ip ... cannot duplicate").
-    # Capturar os IDs atuais dos três nós antes de substituí-los.
-    # IDs antigos não associados a esses nós exigem investigação manual.
+    # Capture the current IDs of all three nodes before replacing them.
+    # Old IDs not associated with these nodes require manual investigation.
     local central_id compute1_id compute2_id chassis_names
     central_id=$(get_central_system_id)
     compute1_id=$(run_compute1 'ovs-vsctl get open_vswitch . external_ids:system-id | tr -d \"')
@@ -406,7 +406,7 @@ exercise_7() {
     echo "--- Exercise 7: ACLs on network1 ---"
 
     run_central '
-        # allow-related gera o tratamento de estado; não copiar regras internas de CT.
+        # allow-related handles connection state; do not copy internal CT rules.
 
         # Allow ICMP
         ovn-nbctl acl-add network1 to-lport 1000 "ip4 && icmp4" allow-related
@@ -507,7 +507,7 @@ exercise_9() {
 
     '
 
-    # Mesmo handler do Step 9.2: lê HTTP, calcula bytes e não serve arquivos.
+    # The Step 9.2 handler parses HTTP, calculates byte counts, and does not serve files.
     local backend_code backend_code_quoted
     backend_code='
 import sys
@@ -526,8 +526,8 @@ with HTTPServer(("0.0.0.0", 8080), Handler) as server:
     server.serve_forever()
 '
     printf -v backend_code_quoted '%q' "$backend_code"
-    # Desconectar todos os descritores do SSH. A verificação HTTP detecta
-    # falhas de partida; cleanup_lab_namespaces encerra os processos no restore.
+    # Disconnect all file descriptors from SSH. HTTP verification detects
+    # startup failures; cleanup_lab_namespaces stops the processes during restore.
     run_central "
         for ns in vm4 vm5 vm6; do
             nohup ip netns exec \"\$ns\" python3 -u -c $backend_code_quoted \"\$ns\" </dev/null >/dev/null 2>&1 &
@@ -540,7 +540,7 @@ verify_control_plane() {
     for node in "$CENTRAL" "$COMPUTE1" "$COMPUTE2"; do
         status=$(run_node "$node" 'ovn-appctl -t ovn-controller connection-status') || return 1
         if [[ "$status" != connected ]]; then
-            echo "FAIL: controller de $node não está conectado ao SB: $status" >&2
+            echo "FAIL: The controller on $node is not connected to SB: $status" >&2
             return 1
         fi
     done
@@ -551,16 +551,16 @@ verify_control_plane() {
         for name in "${chassis[@]}"; do
             case "$name" in
                 central|compute1|compute2) ids[$name]=$(ovn-sbctl get Chassis "$name" _uuid) ;;
-                *) : ;; # Chassis alheios não são requisito nem alvo de exclusão.
+                *) : ;; # Other chassis are neither required nor targeted for deletion.
             esac
         done
-        [[ ${#ids[@]} == 3 ]] || { echo "FAIL: faltam chassis do laboratório." >&2; exit 1; }
+        [[ ${#ids[@]} == 3 ]] || { echo "FAIL: Lab chassis are missing." >&2; exit 1; }
         for item in vm1:3:central vm2:3:central vm3:5:compute1 vm4:6:central vm5:6:central ext-gw:8:central vm6:9:central; do
             IFS=: read -r port minimum owner <<< "$item"
             if (( TARGET >= minimum )); then
                 bound=$(ovn-sbctl get Port_Binding "$port" chassis)
                 if [[ "$bound" != "${ids[$owner]}" ]]; then
-                    echo "FAIL: $port sem binding no chassis $owner: $bound" >&2
+                    echo "FAIL: $port is not bound to chassis $owner: $bound" >&2
                     exit 1
                 fi
             fi
@@ -574,9 +574,9 @@ verify() {
     echo "=== Verification ==="
 
     if verify_control_plane; then
-        echo "Três chassis, conexões SB e bindings esperados: OK"
+        echo "Three chassis, SB connections, and expected bindings: OK"
     else
-        echo "FAIL: plano de controle incompleto."
+        echo "FAIL: The control plane is incomplete."
         failed=1
     fi
 
@@ -599,7 +599,7 @@ verify() {
     if [[ "$TARGET" -ge 5 ]]; then
         echo "--- Namespaces (compute1) ---"
         if ! run_compute1 'ip netns list'; then
-            echo "FAIL: não foi possível consultar os namespaces de compute1."
+            echo "FAIL: Could not query namespaces on compute1."
             failed=1
         fi
         echo ""
@@ -655,7 +655,7 @@ verify() {
     fi
 
     if [[ "$failed" -ne 0 ]]; then
-        echo "ERRO: a verificação falhou; restauração não validada." >&2
+        echo "ERROR: Verification failed; the restore has not been validated." >&2
         return 1
     fi
     echo ""
@@ -673,11 +673,11 @@ echo "  Compute1: $COMPUTE1 ($COMPUTE1_IP)"
 echo "  Compute2: $COMPUTE2 ($COMPUTE2_IP)"
 echo ""
 
-echo "AVISO: use somente em laboratório exclusivo. Serviços, conexões dos bancos," >&2
-echo "IDs dos chassis e objetos com os nomes do workshop serão alterados." >&2
-echo "Processos nos namespaces do workshop serão encerrados." >&2
+echo "WARNING: Use only in a dedicated lab. Services, database connections," >&2
+echo "chassis IDs, and objects with workshop names will be changed." >&2
+echo "Processes in workshop namespaces will be terminated." >&2
 
-# Interromper antes da limpeza se qualquer nó estiver inacessível.
+# Stop before cleanup if any node is unreachable.
 run_central 'true'
 run_compute1 'true'
 run_compute2 'true'
@@ -685,7 +685,7 @@ if [[ "$TARGET" -ge 9 ]]; then
     run_central '
         for cmd in python3 curl; do
             if ! command -v "$cmd" >/dev/null; then
-                echo "ERRO: $cmd é necessário para o exercício 9; nenhuma restauração foi iniciada." >&2
+                echo "ERROR: $cmd is required for Exercise 9; no restore has started." >&2
                 exit 1
             fi
         done
