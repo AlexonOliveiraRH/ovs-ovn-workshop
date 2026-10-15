@@ -1,0 +1,60 @@
+name: github pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/**'
+      - 'slides/**'
+      - 'site.yml'
+      - 'package.json'
+      - '.github/workflows/gh-pages.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'content/**'
+      - 'slides/**'
+      - 'site.yml'
+      - 'package.json'
+      - '.github/workflows/gh-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Antora and extensions
+        run: npm i -g @antora/cli@3.1 @antora/site-generator@3.1 @sntke/antora-mermaid-extension@0.0.9
+      - name: Build site
+        run: antora --fetch site.yml
+      - name: Bundle slide deck into the site
+        run: npm run bundle:slides
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

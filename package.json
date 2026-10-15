@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "build": "antora site.yml && npm run bundle:slides",
+    "build:fetch": "antora --fetch site.yml && npm run bundle:slides",
+    "bundle:slides": "rm -rf www/slides && cp -r slides www/slides"
+  },
   "devDependencies": {
     "@antora/cli": "3.1",
     "@antora/site-generator": "3.1",
